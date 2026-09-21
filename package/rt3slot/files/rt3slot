@@ -1,0 +1,173 @@
+#!/bin/sh
+# RT3000 Machine-B product slot manager - Product R1.
+#
+# Selector writes go exclusively through rt3bcwrite's fail-closed live-EB
+# read-modify-write transaction (RB001).
+#
+# Firmware identity comes exclusively from rt3release, which hashes the running
+# kernel and rootfs PAYLOAD and compares it against /etc/rt3000-release.json
+# (RB002).  No UBI image_seq / EC counter / VID header / PEB placement is ever
+# used as identity.
+
+RT3BCWRITE=${RT3BCWRITE:-/usr/sbin/rt3bcwrite}
+RT3RELEASE=${RT3RELEASE:-/usr/sbin/rt3release}
+PROC_MTD=${PROC_MTD:-/proc/mtd}
+DEV_ROOT=${DEV_ROOT:-/dev}
+CMDLINE_FILE=${CMDLINE_FILE:-/proc/cmdline}
+SYNC_CMD=${SYNC_CMD:-sync}
+REBOOT_CMD=${REBOOT_CMD:-reboot}
+
+say() { printf '%s\n' "$*"; }
+err() { printf 'rt3slot: %s\n' "$*" >&2; }
+die() { err "$*"; exit 1; }
+
+mtd_node() {
+    [ -r "$DEV_ROOT/mtd${1}ro" ] && { printf '%s\n' "$DEV_ROOT/mtd${1}ro"; return; }
+    [ -r "$DEV_ROOT/mtd${1}" ] && { printf '%s\n' "$DEV_ROOT/mtd${1}"; return; }
+    return 1
+}
+
+mtd_name() {
+    sed -n "s/^mtd${1}: [0-9a-fA-F]* [0-9a-fA-F]* \"\(.*\)\"$/\1/p" "$PROC_MTD" | head -n1
+}
+
+mtd_geometry_ok() {
+    line=$(grep "^mtd${1}:" "$PROC_MTD" 2>/dev/null) || return 1
+    # shellcheck disable=SC2086
+    set -- $line
+    [ "$2" = "02800000" ] && [ "$3" = "00020000" ]
+}
+
+ubi_magic_ok() {
+    node=$(mtd_node "$1") || return 1
+    [ "$(dd if="$node" bs=1 count=4 2>/dev/null)" = "UBI#" ]
+}
+
+# --- payload identity (RB002) ------------------------------------------------
+# `rt3release verify` exits 0 only when BOTH the kernel and rootfs payloads of
+# the running slot hash to the values recorded in the release manifest.
+verify_qsdk() {
+    mtd_geometry_ok 16 || { err "QSDK mtd16 geometry mismatch"; return 1; }
+    ubi_magic_ok 16 || { err "QSDK mtd16 has no UBI EC header"; return 1; }
+    case "$(mtd_name 16)" in rootfs|rootfs_1) ;; *) err "QSDK mtd16 label mismatch"; return 1;; esac
+    [ -x "$RT3RELEASE" ] || { err "rt3release backend unavailable"; return 1; }
+    "$RT3RELEASE" verify >/dev/null 2>&1 || {
+        err "QSDK slot payload identity does not match the release manifest"
+        return 1
+    }
+    # Identity must be content-derived.  Refuse to report QSDK valid on a build
+    # whose verification still depends on UBI format metadata.
+    dep=$("$RT3RELEASE" verify 2>/dev/null | sed -n 's/^IMAGE_SEQ_DEPENDENCY=//p' | head -n1)
+    [ "$dep" = "NONE" ] || { err "identity backend still depends on image_seq"; return 1; }
+    return 0
+}
+
+verify_oem() {
+    mtd_geometry_ok 15 || { err "OEM mtd15 geometry mismatch"; return 1; }
+    ubi_magic_ok 15 || { err "OEM mtd15 has no UBI EC header"; return 1; }
+    case "$(mtd_name 15)" in rootfs|oem_rootfs) ;; *) err "OEM mtd15 label mismatch"; return 1;; esac
+}
+
+runtime_system() {
+    rel=${UNAME_R_OVERRIDE:-$(uname -r 2>/dev/null)}
+    cmd=$(cat "$CMDLINE_FILE" 2>/dev/null)
+    case "$rel:$cmd" in
+        5.4.*:*ubiblock0_1*) echo QSDK ;;
+        4.4.*:*) echo OEM ;;
+        *:*root=/dev/ubiblock0_1*) echo QSDK ;;
+        *:*root=mtd:ubi_rootfs*) echo OEM ;;
+        *) echo UNKNOWN ;;
+    esac
+}
+
+selector_report() { "$RT3BCWRITE" --show 2>/dev/null; }
+
+persistent_selector() {
+    printf '%s\n' "$1" | sed -n 's/^mtd2([^)]*) rootfs selector = 0x0000000\([01]\)$/\1/p' | head -n1
+}
+copy_health() {
+    printf '%s\n' "$1" | sed -n 's/^copies_agree=//p' | head -n1
+}
+
+release_field() {  # <FIELD> -> value or empty
+    "$RT3RELEASE" show 2>/dev/null | sed -n "s/^${1}=//p" | head -n1
+}
+
+do_status() {
+    report=$(selector_report) || die "BOOTCONFIG backend unavailable"
+    sel=$(persistent_selector "$report"); [ -n "$sel" ] || sel=UNKNOWN
+    health=$(copy_health "$report"); [ -n "$health" ] || health=UNKNOWN
+    run=$(runtime_system)
+    case "$sel" in 0) next=OEM;; 1) next=QSDK;; *) next=UNKNOWN;; esac
+    verify_oem >/dev/null 2>&1 && os=PASS || os=FAIL
+
+    # RB002 status UX: report identity from stable content, and be explicit when
+    # the inactive slot cannot be verified through a lightweight content path.
+    rk=$(release_field RELEASE_KERNEL_ID)
+    rr=$(release_field RELEASE_ROOTFS_ID)
+    rname=$(release_field RELEASE_NAME)
+    rbase=$(release_field RELEASE_NETWORK_BASELINE)
+    if verify_qsdk >/dev/null 2>&1; then qs=PASS; else qs=FAIL; fi
+
+    say "runtime_system=$run"
+    say "persistent_selector=$sel"
+    say "next_boot_target=$next"
+    say "bootconfig_copy_health=$health"
+    say "oem_slot_status=$os"
+    say "qsdk_slot_status=$qs"
+    say "running_slot=${sel:+$([ "$sel" = 1 ] && echo QSDK || echo OEM)}"
+    say "RUNNING_SLOT=$run"
+    say "RUNNING_RELEASE=${rname:-UNKNOWN}"
+    say "RUNNING_KERNEL_ID=${rk:-UNKNOWN}"
+    say "RUNNING_ROOTFS_ID=${rr:-UNKNOWN}"
+    say "RELEASE_NETWORK_BASELINE=${rbase:-UNKNOWN}"
+    say "QSDK_SLOT_VALID=$qs"
+    say "QSDK_SLOT_RELEASE=${rname:-UNKNOWN}"
+    # The inactive slot's payload is not reachable via /dev/ubi0_0 or
+    # /dev/ubiblock0_1, so a lightweight content check is not possible.
+    say "INACTIVE_CONTENT_VERIFY=UNSUPPORTED"
+    say "oem_partition=mtd15:$(mtd_name 15)"
+    say "qsdk_partition=mtd16:$(mtd_name 16)"
+}
+
+do_verify() {
+    case "$1" in
+        oem) verify_oem || exit 1; say "OEM_SLOT_VERIFY=PASS" ;;
+        qsdk) verify_qsdk || exit 1; say "QSDK_SLOT_VERIFY=PASS" ;;
+        *) die "usage: rt3slot verify oem|qsdk" ;;
+    esac
+}
+
+do_switch() {
+    target=$1; reboot_after=$2
+    case "$target" in
+        oem) want=0; verify_oem || die "OEM target verification failed; refusing switch" ;;
+        qsdk) want=1; verify_qsdk || die "QSDK target verification failed; refusing switch" ;;
+        *) die "internal target error" ;;
+    esac
+    "$SYNC_CMD" || die "sync failed"
+    "$RT3BCWRITE" --set "$want" || die "selector update failed (see copy= lines above)"
+    "$RT3BCWRITE" --verify-only "$want" || die "selector verification failed"
+    say "SWITCH_RESULT=PASS"
+    say "next_boot_target=$( [ "$want" = 0 ] && echo OEM || echo QSDK )"
+    if [ "$reboot_after" = 1 ]; then
+        "$SYNC_CMD" || die "final sync failed"
+        exec "$REBOOT_CMD"
+    fi
+}
+
+usage() {
+    err "usage: rt3slot status | verify oem|qsdk | oem|qsdk [--reboot]"
+    exit 2
+}
+
+case "${1:-}" in
+    status) [ "$#" -eq 1 ] || usage; do_status ;;
+    verify) [ "$#" -eq 2 ] || usage; do_verify "$2" ;;
+    oem|qsdk)
+        target=$1; shift
+        case "$#:${1:-}" in 0:) rb=0;; 1:--reboot) rb=1;; *) usage;; esac
+        do_switch "$target" "$rb"
+        ;;
+    *) usage ;;
+esac

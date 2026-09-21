@@ -1,0 +1,53 @@
+From abb6f6b133915245276bd317a2244f1587e5793f Mon Sep 17 00:00:00 2001
+From: hzy <hzyitc@outlook.com>
+Date: Sun, 14 Jul 2024 16:53:46 +0800
+Subject: [PATCH 1/1] swconfig: Support more speeds
+
+---
+ drivers/net/phy/swconfig_leds.c | 20 +++++++++++++++++++-
+ 1 file changed, 19 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/net/phy/swconfig_leds.c b/drivers/net/phy/swconfig_leds.c
+index df53e5c..ac9f892 100644
+--- a/drivers/net/phy/swconfig_leds.c
++++ b/drivers/net/phy/swconfig_leds.c
+@@ -24,10 +24,16 @@
+ #define SWCONFIG_LED_PORT_SPEED_10	0x02	/* 10 Mbps */
+ #define SWCONFIG_LED_PORT_SPEED_100	0x04	/* 100 Mbps */
+ #define SWCONFIG_LED_PORT_SPEED_1000	0x08	/* 1000 Mbps */
++#define SWCONFIG_LED_PORT_SPEED_2500	0x10	/* 2500 Mbps */
++#define SWCONFIG_LED_PORT_SPEED_5000	0x20	/* 5000 Mbps */
++#define SWCONFIG_LED_PORT_SPEED_10000	0x40	/* 10000 Mbps */
+ #define SWCONFIG_LED_PORT_SPEED_ALL	(SWCONFIG_LED_PORT_SPEED_NA | \
+ 					 SWCONFIG_LED_PORT_SPEED_10 | \
+ 					 SWCONFIG_LED_PORT_SPEED_100 | \
+-					 SWCONFIG_LED_PORT_SPEED_1000)
++					 SWCONFIG_LED_PORT_SPEED_1000 | \
++					 SWCONFIG_LED_PORT_SPEED_2500 | \
++					 SWCONFIG_LED_PORT_SPEED_5000 | \
++					 SWCONFIG_LED_PORT_SPEED_10000)
+ 
+ #define SWCONFIG_LED_MODE_LINK		0x01
+ #define SWCONFIG_LED_MODE_TX		0x02
+@@ -478,6 +484,18 @@ swconfig_led_work_func(struct work_struct *work)
+ 					sw_trig->link_speed[i] =
+ 						SWCONFIG_LED_PORT_SPEED_1000;
+ 					break;
++				case SWITCH_PORT_SPEED_2500:
++					sw_trig->link_speed[i] =
++						SWCONFIG_LED_PORT_SPEED_2500;
++					break;
++				case SWITCH_PORT_SPEED_5000:
++					sw_trig->link_speed[i] =
++						SWCONFIG_LED_PORT_SPEED_5000;
++					break;
++				case SWITCH_PORT_SPEED_10000:
++					sw_trig->link_speed[i] =
++						SWCONFIG_LED_PORT_SPEED_10000;
++					break;
+ 				}
+ 			}
+ 		}
+-- 
+2.40.1
+

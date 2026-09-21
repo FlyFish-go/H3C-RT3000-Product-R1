@@ -1,0 +1,75 @@
+From: OpenAI Codex <noreply@openai.com>
+Date: Mon, 21 Sep 2026 20:05:00 +0800
+Subject: [PATCH] ath11k: use 2048 RXDMA descriptors for QCN6122 256M profile
+
+The RT3000 external QCN6102 is represented by the QCN6122 hardware target
+in this QSDK release.  Its 256M profile otherwise uses a 1024-entry RXDMA
+buffer ring and can overflow during HE160 uplink load.  Use a bounded 2048
+entry ring only for this target and advertise the same count to WIFILI NSS.
+Other hardware targets retain the existing profile value.
+
+This is a RAM-only diagnostic axis; it does not change BDF or the RX AMPDU
+runtime knob.
+
+Signed-off-by: OpenAI Codex <noreply@openai.com>
+---
+ drivers/net/wireless/ath/ath11k/dp.c    | 11 +++++++++++
+ drivers/net/wireless/ath/ath11k/dp.h    |  2 ++
+ drivers/net/wireless/ath/ath11k/dp_rx.c |  2 +-
+ drivers/net/wireless/ath/ath11k/nss.c   |  3 ++-
+ 4 files changed, 16 insertions(+), 2 deletions(-)
+
+--- a/drivers/net/wireless/ath/ath11k/dp.c
++++ b/drivers/net/wireless/ath/ath11k/dp.c
+@@ -11,6 +11,17 @@
+ #include "dp_rx.h"
+ #include "peer.h"
+ 
++u32 ath11k_dp_rxdma_buf_ring_size(struct ath11k_base *ab)
++{
++#if defined(CPTCFG_ATH11K_MEM_PROFILE_256M)
++	/* QCN6102 uses the QCN6122 hardware target in QSDK 11.5. */
++	if (ab->hw_rev == ATH11K_HW_QCN6122)
++		return 2048;
++#endif
++
++	return DP_RXDMA_BUF_RING_SIZE;
++}
++
+ static void ath11k_dp_htt_htc_tx_complete(struct ath11k_base *ab,
+ 						  struct sk_buff *skb)
+ {
+--- a/drivers/net/wireless/ath/ath11k/dp.h
++++ b/drivers/net/wireless/ath/ath11k/dp.h
+@@ -1983,6 +1983,8 @@ int ath11k_dp_service_srng(struct ath11k
+ 				   int budget);
+ int ath11k_dp_htt_connect(struct ath11k_dp *dp);
+ void ath11k_dp_vdev_tx_attach(struct ath11k *ar, struct ath11k_vif *arvif);
++
++u32 ath11k_dp_rxdma_buf_ring_size(struct ath11k_base *ab);
+ void ath11k_dp_sta_tx_attach(struct ath11k_sta *arsta, int peer_id);
+ void ath11k_dp_free(struct ath11k_base *ab);
+ int ath11k_dp_alloc(struct ath11k_base *ab);
+--- a/drivers/net/wireless/ath/ath11k/dp_rx.c
++++ b/drivers/net/wireless/ath/ath11k/dp_rx.c
+@@ -626,7 +626,7 @@ static int ath11k_dp_rx_pdev_srng_alloc(
+ 	ret = ath11k_dp_srng_setup(ar->ab,
+ 				   &dp->rx_refill_buf_ring.refill_buf_ring,
+ 				   HAL_RXDMA_BUF, 0,
+-				   dp->mac_id, DP_RXDMA_BUF_RING_SIZE);
++				   dp->mac_id, ath11k_dp_rxdma_buf_ring_size(ab));
+ 	if (ret) {
+ 		ath11k_warn(ar->ab, "failed to setup rx_refill_buf_ring\n");
+ 		return ret;
+--- a/drivers/net/wireless/ath/ath11k/nss.c
++++ b/drivers/net/wireless/ath/ath11k/nss.c
+@@ -4571,7 +4571,8 @@ int ath11k_nss_pdev_init(struct ath11k_b
+ 	pdevmsg->radio_id = radio_id;
+ 	pdevmsg->lmac_id = ar->lmac_id;
+ 	pdevmsg->target_pdev_id = ar->pdev->pdev_id;
+-	pdevmsg->num_rx_swdesc = WIFILI_RX_DESC_POOL_WEIGHT * DP_RXDMA_BUF_RING_SIZE;
++	pdevmsg->num_rx_swdesc = WIFILI_RX_DESC_POOL_WEIGHT *
++		ath11k_dp_rxdma_buf_ring_size(ab);
+ 	pdevmsg->scheme_id = scheme_id;
+ 
+ 	/* Store rxdma ring info to the message */

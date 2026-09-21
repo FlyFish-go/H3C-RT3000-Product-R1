@@ -1,0 +1,52 @@
+Fix build
+
+---
+ arch/arm/kernel/vmlinux.lds.S | 2 +-
+ drivers/soc/qcom/ctx-save.c   | 4 ++--
+ net/ipv6/ip6mr.c              | 2 +-
+ 3 files changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/arch/arm/kernel/vmlinux.lds.S b/arch/arm/kernel/vmlinux.lds.S
+index 406f2f1ed..5198ce351 100644
+--- a/arch/arm/kernel/vmlinux.lds.S
++++ b/arch/arm/kernel/vmlinux.lds.S
+@@ -73,7 +73,7 @@ SECTIONS
+ 	. = ALIGN(4);
+ 	__ex_table : AT(ADDR(__ex_table) - LOAD_OFFSET) {
+ 		__start___ex_table = .;
+-		ARM_MMU_KEEP(*(__ex_table))
++		KEEP(*(__ex_table))
+ 		__stop___ex_table = .;
+ 	}
+ 
+diff --git a/drivers/soc/qcom/ctx-save.c b/drivers/soc/qcom/ctx-save.c
+index 3c1248297..e1fa9a0b6 100644
+--- a/drivers/soc/qcom/ctx-save.c
++++ b/drivers/soc/qcom/ctx-save.c
+@@ -1508,8 +1508,8 @@ static int ctx_save_probe(struct platform_device *pdev)
+ 
+ #ifdef CONFIG_QCA_MINIDUMP
+ 	ret = register_module_notifier(&wlan_module_exit_nb);
+-    if (ret)
+-        dev_err(&pdev->dev, "Failed to register WLAN  module exit notifier\n");
++	if (ret)
++		dev_err(&pdev->dev, "Failed to register WLAN  module exit notifier\n");
+ 
+ 	ret = atomic_notifier_chain_register(&panic_notifier_list,
+ 				&wlan_panic_nb);
+diff --git a/net/ipv6/ip6mr.c b/net/ipv6/ip6mr.c
+index 45dcd1fd7..8d9328190 100644
+--- a/net/ipv6/ip6mr.c
++++ b/net/ipv6/ip6mr.c
+@@ -105,7 +105,7 @@ static ip6mr_mfc_event_offload_callback_t __rcu
+ 
+ #ifdef CONFIG_IPV6_MROUTE_MULTIPLE_TABLES
+ #define ip6mr_for_each_table(mrt, net) \
+-	list_for_each_entry_rcu(mrt, &net->ipv6.mr_tables, list)
++	list_for_each_entry_rcu(mrt, &net->ipv6.mr6_tables, list)
+ 
+ static struct mr_table *ip6mr_mr_table_iter(struct net *net,
+ 					    struct mr_table *mrt)
+-- 
+2.25.1
+

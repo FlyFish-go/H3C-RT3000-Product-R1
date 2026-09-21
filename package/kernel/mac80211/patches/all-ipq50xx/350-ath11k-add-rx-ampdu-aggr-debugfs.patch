@@ -1,0 +1,102 @@
+From 4f1f8d7c2e8a3d9f6b1c0a5e7d4f2b8c6a9e1d03 Mon Sep 17 00:00:00 2001
+From: RT3000 Codex <rt3000@example.invalid>
+Date: Mon, 21 Sep 2026 20:00:00 +0800
+Subject: [PATCH] ath11k: add inert runtime RX A-MPDU aggregation knob
+
+Expose a per-vdev debugfs writer for an explicit RX A-MPDU aggregation
+window.  The knob is inert until userspace writes a value; vdev creation
+does not send a WMI command.  Values are deliberately restricted to the
+firmware-supported non-zero range 1..255.
+
+The existing TX ampdu/amsdu writers and their semantics are unchanged.
+
+--- a/drivers/net/wireless/ath/ath11k/core.h
++++ b/drivers/net/wireless/ath/ath11k/core.h
+@@ -353,6 +353,7 @@ struct ath11k_vif {
+ 	struct ath11k_reg_tpc_power_info reg_tpc_info;
+ 	struct dentry *debugfs_twt;
+ 	struct dentry *ampdu_aggr_size;
++	struct dentry *rx_ampdu_aggr_size;
+ 	struct dentry *amsdu_aggr_size;
+ 	struct dentry *wmi_ctrl_stat;
+ 	struct dentry *mac_filter;
+--- a/drivers/net/wireless/ath/ath11k/debugfs.c
++++ b/drivers/net/wireless/ath/ath11k/debugfs.c
+@@ -768,6 +768,54 @@ static const struct file_operations fops_ampdu_aggr_size = {
+ 	.llseek = default_llseek,
+ };
+ 
++static ssize_t ath11k_write_rx_ampdu_aggr_size(struct file *file,
++						 const char __user *ubuf,
++						 size_t count, loff_t *ppos)
++{
++	struct ath11k_vif *arvif = file->private_data;
++	struct ath11k_base *ab = arvif->ar->ab;
++	struct ath11k *ar = arvif->ar;
++	unsigned int rx_aggr_size = 0;
++	int ret;
++	struct set_custom_aggr_size_params params = {0};
++
++	mutex_lock(&ar->conf_mutex);
++	if (ar->state != ATH11K_STATE_ON) {
++		ath11k_warn(ar->ab, "pdev %d not in ON state\n", ar->pdev->pdev_id);
++		mutex_unlock(&ar->conf_mutex);
++		return -ENETDOWN;
++	}
++	mutex_unlock(&ar->conf_mutex);
++
++	if (kstrtouint_from_user(ubuf, count, 0, &rx_aggr_size))
++		return -EINVAL;
++
++	if (rx_aggr_size < 1 ||
++	    rx_aggr_size > ATH11K_CONFIG_AGGR_MAX_AMPDU_SIZE) {
++		ath11k_warn(ab, "Valid RX AMPDU Aggregation Size is in the range 1-255");
++		return -EINVAL;
++	}
++
++	params.aggr_type = WMI_VDEV_CUSTOM_AGGR_TYPE_AMPDU;
++	params.rx_aggr_size = rx_aggr_size;
++	params.tx_aggr_size_disable = true;
++	params.vdev_id = arvif->vdev_id;
++
++	ret = ath11k_wmi_send_aggr_size_cmd(arvif->ar, &params);
++	if (ret)
++		ath11k_warn(ab, "Failed to set rx ampdu config vdev_id %d ret %d\n",
++			   params.vdev_id, ret);
++
++	return ret ? ret : count;
++}
++
++static const struct file_operations fops_rx_ampdu_aggr_size = {
++	.write = ath11k_write_rx_ampdu_aggr_size,
++	.open = simple_open,
++	.owner = THIS_MODULE,
++	.llseek = default_llseek,
++};
++
+ static ssize_t ath11k_write_amsdu_aggr_size(struct file *file,
+ 						    const char __user *ubuf,
+ 						    size_t count, loff_t *ppos)
+@@ -820,5 +868,9 @@ void ath11k_debug_aggr_size_config_init(struct ath11k_vif *arvif)
+ 						     arvif,
+ 						     &fops_ampdu_aggr_size);
++	arvif->rx_ampdu_aggr_size = debugfs_create_file("rx_ampdu_aggr_size", 0644,
++								 arvif->vif->debugfs_dir,
++								 arvif,
++								 &fops_rx_ampdu_aggr_size);
+ 	arvif->amsdu_aggr_size = debugfs_create_file("amsdu_aggr_size", 0644,
+ 						     arvif->vif->debugfs_dir,
+ 						     arvif,
+--- a/drivers/net/wireless/ath/ath11k/mac.c
++++ b/drivers/net/wireless/ath/ath11k/mac.c
+@@ -7776,5 +7776,8 @@ err_vdev_del:
+ 	debugfs_remove(arvif->ampdu_aggr_size);
+ 	arvif->ampdu_aggr_size = NULL;
+ 
++	debugfs_remove(arvif->rx_ampdu_aggr_size);
++	arvif->rx_ampdu_aggr_size = NULL;
++
+ 	debugfs_remove(arvif->amsdu_aggr_size);
+ 	arvif->amsdu_aggr_size = NULL;
+-- 
+2.34.1

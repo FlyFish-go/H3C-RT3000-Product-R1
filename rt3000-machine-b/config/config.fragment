@@ -1,0 +1,7 @@
+# RT3000 Machine-B — R1-NET-D build config (essential fragment)
+# Full .config is a generated artifact; identity is recorded by hash.
+
+CONFIG_TARGET_ipq50xx=y
+CONFIG_TARGET_ipq50xx_arm=y
+CONFIG_TARGET_MULTI_PROFILE=y
+CONFIG_TARGET_DEVICE_ipq50xx_arm_DEVICE_h3c_rt3000=y

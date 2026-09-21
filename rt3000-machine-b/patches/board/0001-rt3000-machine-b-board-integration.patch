@@ -1,0 +1,234 @@
+diff --git a/include/image-commands.mk b/include/image-commands.mk
+index 4d54a14..6dcc4fa 100644
+--- a/include/image-commands.mk
++++ b/include/image-commands.mk
+@@ -86,6 +86,8 @@ define Build/append-ubi
+ 	sh $(TOPDIR)/scripts/ubinize-image.sh \
+ 		$(if $(UBOOTENV_IN_UBI),--uboot-env) \
+ 		$(if $(KERNEL_IN_UBI),--kernel $(IMAGE_KERNEL)) \
++		$(if $(UBI_ROOTFS_NAME),--rootfs-name $(UBI_ROOTFS_NAME)) \
++		$(if $(UBI_IMAGE_SEQ),--image-seq $(UBI_IMAGE_SEQ)) \
+ 		$(foreach part,$(UBINIZE_PARTS),--part $(part)) \
+ 		$(IMAGE_ROOTFS) \
+ 		$@.tmp \
+diff --git a/scripts/ubinize-image.sh b/scripts/ubinize-image.sh
+index c6f8bce..8d21065 100755
+--- a/scripts/ubinize-image.sh
++++ b/scripts/ubinize-image.sh
+@@ -6,6 +6,7 @@ part=""
+ ubootenv=""
+ ubinize_param=""
+ kernel=""
++rootfs_name="rootfs"
+ rootfs=""
+ outfile=""
+ err=""
+@@ -76,14 +77,16 @@ ubilayout() {
+ 		rootsize="$( round_up "$( stat -c%s "$2" )" 1024 )"
+ 		;;
+ 	esac
+-	ubivol $vol_id rootfs "$2" "$autoresize" "$rootsize"
++	# Vendor profiles may require a legacy root volume name.  The default
++	# remains rootfs so existing image recipes are byte/contract compatible.
++	ubivol $vol_id "$rootfs_name" "$2" "$autoresize" "$rootsize"
+ 
+ 	vol_id=$(( $vol_id + 1 ))
+ 	[ "$rootfs_type" = "ubifs" ] || ubivol $vol_id rootfs_data "" 1
+ }
+ 
+ set_ubinize_seq() {
+-	if [ -n "$SOURCE_DATE_EPOCH" ] ; then
++	if [ -z "$ubinize_seq" ] && [ -n "$SOURCE_DATE_EPOCH" ] ; then
+ 		ubinize_seq="-Q $SOURCE_DATE_EPOCH"
+ 	fi
+ }
+@@ -101,6 +104,18 @@ while [ "$1" ]; do
+ 		shift
+ 		continue
+ 		;;
++	"--image-seq")
++		ubinize_seq="-Q $2"
++		shift
++		shift
++		continue
++		;;
++	"--rootfs-name")
++		rootfs_name="$2"
++		shift
++		shift
++		continue
++		;;
+ 	"--part")
+ 		parts="$parts $2"
+ 		shift
+diff --git a/target/linux/ipq50xx/base-files/etc/board.d/02_network b/target/linux/ipq50xx/base-files/etc/board.d/02_network
+index 39f5014..843e3a4 100755
+--- a/target/linux/ipq50xx/base-files/etc/board.d/02_network
++++ b/target/linux/ipq50xx/base-files/etc/board.d/02_network
+@@ -25,13 +25,20 @@ ipq50xx_setup_interfaces()
+ 				"1:wan"
+ 			;;
+ 		h3c,rt3000)
+-			# RT3000 front panel (frozen G4C1 evidence):
+-			# LAN1=switch port2, LAN2=port3, LAN3=port4,
+-			# WAN rides the internal GE PHY path (eth0), CPU=port6
++			# Machine-B two-switch model (Probe B/E evidence).
++			#
++			#   internal switch0 (QCA MP, 3 ports): port1 -> eth0 (WAN jack),
++			#                                      port2 -> eth1 (LAN CPU port)
++			#   external switch1 (QCA8337, MDIO):  port6t CPU uplink -> eth1,
++			#                                      ports 2 3 4 = the LAN jacks
++			#
++			# The external switch is a port-expander with VLANs DISABLED,
++			# matching the OEM /etc/config/network evidence.  The previous
++			# single 6-port VLAN model was disproven by Probes A/B/E.
++			ucidef_set_interfaces_lan_wan "eth1" "eth0"
+ 			ucidef_add_switch "switch1" \
+-				"6u@eth1" "5u@eth0" \
+-				"2:lan:1" "3:lan:2" "4:lan:3" \
+-				"1:wan"
++				"6u@eth1" \
++				"2:lan:1" "3:lan:2" "4:lan:3"
+ 			;;
+ 	esac
+ }
+diff --git a/target/linux/ipq50xx/base-files/lib/upgrade/platform.sh b/target/linux/ipq50xx/base-files/lib/upgrade/platform.sh
+index 19ceb64..50138af 100644
+--- a/target/linux/ipq50xx/base-files/lib/upgrade/platform.sh
++++ b/target/linux/ipq50xx/base-files/lib/upgrade/platform.sh
+@@ -25,6 +25,10 @@ platform_do_upgrade() {
+ 		xiaomi,cr881x)
+ 			mi_dualboot_do_upgrade "$1"
+ 			;;
++		h3c,rt3000)
++			v "Sysupgrade is disabled on H3C RT3000 Product R0; use the verified OEM/slot workflow."
++			return 1
++			;;
+ 		*)
+ 			default_do_upgrade "$1"
+ 			;;
+diff --git a/target/linux/ipq50xx/dts/ipq5000-rt3000.dts b/target/linux/ipq50xx/dts/ipq5000-rt3000.dts
+index 0fbd402..f99df49 100644
+--- a/target/linux/ipq50xx/dts/ipq5000-rt3000.dts
++++ b/target/linux/ipq50xx/dts/ipq5000-rt3000.dts
+@@ -42,7 +42,7 @@
+ 	};
+ 
+ 	chosen {
+-		bootargs-append = " coherent_pool=2M loglevel=7 mtdparts=qcom_nand.0:0x80000@0(0:SBL1)ro,0x80000@0x80000(0:MIBIB)ro,0x40000@0x100000(0:BOOTCONFIG)ro,0x40000@0x140000(0:BOOTCONFIG1)ro,0x100000@0x180000(0:QSEE)ro,0x100000@0x280000(0:QSEE_1)ro,0x40000@0x380000(0:DEVCFG)ro,0x40000@0x3c0000(0:DEVCFG_1)ro,0x40000@0x400000(0:CDT)ro,0x40000@0x440000(0:CDT_1)ro,0x80000@0x480000(0:APPSBLENV)ro,0x140000@0x500000(0:APPSBL)ro,0x140000@0x640000(0:APPSBL_1)ro,0x100000@0x780000(0:ART)ro,0x80000@0x880000(0:TRAINING)ro,0x2800000@0x900000(rootfs),0x2800000@0x3100000(rootfs_1),0x600000@0x5900000(pdt_data)ro,0x600000@0x5f00000(pdt_data_1)ro,0x100000@0x6500000(exp)ro,0x1700000@0x6600000(plugin)ro";
++		bootargs-append = " coherent_pool=2M loglevel=7 mtdparts=qcom_nand.0:0x80000@0(0:SBL1)ro,0x80000@0x80000(0:MIBIB)ro,0x40000@0x100000(0:BOOTCONFIG),0x40000@0x140000(0:BOOTCONFIG1),0x100000@0x180000(0:QSEE)ro,0x100000@0x280000(0:QSEE_1)ro,0x40000@0x380000(0:DEVCFG)ro,0x40000@0x3c0000(0:DEVCFG_1)ro,0x40000@0x400000(0:CDT)ro,0x40000@0x440000(0:CDT_1)ro,0x80000@0x480000(0:APPSBLENV)ro,0x140000@0x500000(0:APPSBL)ro,0x140000@0x640000(0:APPSBL_1)ro,0x100000@0x780000(0:ART)ro,0x80000@0x880000(0:TRAINING)ro,0x2800000@0x900000(oem_rootfs)ro,0x2800000@0x3100000(rootfs),0x600000@0x5900000(pdt_data)ro,0x600000@0x5f00000(pdt_data_1)ro,0x100000@0x6500000(exp)ro,0x1700000@0x6600000(plugin)ro ubi.block=0,1 root=/dev/ubiblock0_1";
+ 		stdout-path = "serial0:115200n8";
+ 	};
+ 
+@@ -117,6 +117,25 @@
+ 			bias-pull-up;
+ 		};
+ 	};
++
++	/* MDIO1 (to the external QCA8337).  Without this pinmux the bus
++	 * cannot clock and every mdio@90000 transaction returns 0x0000.
++	 * Values are from the QSDK reference board DTS. */
++	mdio1_pins: mdio1_pins {
++		mux_0 {
++			pins = "gpio36";
++			function = "mdc";
++			drive-strength = <8>;
++			bias-pull-up;
++		};
++
++		mux_1 {
++			pins = "gpio37";
++			function = "mdio";
++			drive-strength = <8>;
++			bias-pull-up;
++		};
++	};
+ };
+ 
+ &blsp1_uart1 {
+@@ -330,6 +349,30 @@
+ 			switch_cpu_bmp = <0x40>;
+ 			switch_lan_bmp = <0x1e>;
+ 			switch_wan_bmp = <0x0>;
++
++			/* LAN PHYs live on the external switch: port_id 1-4 map to
++			 * PHY addresses 0-3 on mdio1 (QSDK reference board DTS). */
++			qcom,port_phyinfo {
++				port@0 {
++					port_id = <1>;
++					phy_address = <0>;
++				};
++
++				port@1 {
++					port_id = <2>;
++					phy_address = <1>;
++				};
++
++				port@2 {
++					port_id = <3>;
++					phy_address = <2>;
++				};
++
++				port@3 {
++					port_id = <4>;
++					phy_address = <3>;
++				};
++			};
+ 		};
+ 	};
+ 
+@@ -381,6 +424,30 @@
+ 
+ &mdio1 {
+ 	status = "ok";
++	pinctrl-0 = <&mdio1_pins>;
++	pinctrl-names = "default";
++
++	/* External QCA8337 reset.  The qca-mdio driver (mdio-qca.c) consumes
++	 * this in qca_phy_reset(), driven BEFORE of_mdiobus_register():
++	 *   gpio_direction_output(gpio, 0)  -> assert  (100ms)
++	 *   gpio_set_value(gpio, 1)         -> release (100ms)
++	 * Value and GPIO number are taken from the Machine-B OEM working DTB
++	 * (/proc/device-tree/soc/mdio@90000/phy-reset-gpio = <&tlmm 26 0>). */
++	phy-reset-gpio = <&tlmm 26 0>;
++
++	/* Three external PHYs, matching the OEM working device tree
++	 * (ethernet-phy@0, @1, @2) and the driver's QCA_MAX_PHY_RESET limit. */
++	ethernet-phy@0 {
++		reg = <0>;
++	};
++
++	ethernet-phy@1 {
++		reg = <1>;
++	};
++
++	ethernet-phy@2 {
++		reg = <2>;
++	};
+ };
+ 
+ &q6v5_wcss {
+diff --git a/target/linux/ipq50xx/image/Makefile b/target/linux/ipq50xx/image/Makefile
+index b6b00b5..8556a2a 100644
+--- a/target/linux/ipq50xx/image/Makefile
++++ b/target/linux/ipq50xx/image/Makefile
+@@ -97,6 +97,8 @@ define Device/h3c_rt3000
+   $(call Device/FitImage)
+   $(call Device/UbiFit)
+   SOC := ipq5000
++  UBI_ROOTFS_NAME := ubi_rootfs
++  UBI_IMAGE_SEQ := 815647064
+   DEVICE_VENDOR := H3C
+   DEVICE_MODEL := Magic RT3000
+   BLOCKSIZE := 128k
+@@ -109,7 +111,9 @@ define Device/h3c_rt3000
+ 	ATH11K_MEM_PROFILE_256M \
+ 	ath11k-firmware-ipq5018 \
+ 	ath11k-firmware-qcn6122 \
+-	ipq-wifi-h3c_rt3000
++	ipq-wifi-h3c_rt3000 \
++	rt3bcwrite \
++	rt3slot
+ endef
+ TARGET_DEVICES += h3c_rt3000
+ 

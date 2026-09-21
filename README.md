@@ -1,215 +1,145 @@
-# H3C Magic RT3000 Product R1
+# H3C Magic RT3000 · Product R1
 
-[English](README_EN.md)
+[English](README_EN.md) · [样机配置](rt3000-machine-b/docs/HARDWARE_SUPPORT.md) · [支持项目](#支持项目) · [测试记录](rt3000-machine-b/docs/WIFI5_SESSION_2026-09-21.md) · [构建说明](rt3000-machine-b/docs/BUILD_PUBLIC.md) · [已知限制](rt3000-machine-b/release/KNOWN_ISSUES.md)
 
-适用于部分硬件配置的 **H3C Magic RT3000** 的第三方固件项目。
+这是一个**基于 Qualcomm QSDK 11.5、使用 OpenWrt 21.02.7 的设备适配项目**，采用 QSDK 的供应商内核、无线驱动与网络加速栈，**不是 OpenWrt 主线适配项目**。
 
-目前项目处于 **Developer Preview（开发者预览）** 阶段。
+以 **RT3000 / RW3000 / RC3000 / NX30 全系适配**为长期目标。从 RT3000 开始，逐台厘清硬件差异，打通网络、无线、NAND 写入与启动恢复，再把经过验证的适配能力扩展到其他机型。
 
-> [!WARNING]
-> 本项目不是 H3C 官方固件。
->
-> 刷写第三方固件存在设备无法启动、配置丢失等风险。
-> 在刷写前，请务必阅读安装与恢复文档，并确认你的设备硬件配置与已验证机型一致。
+**Product R1 是这条路线的第一个实机里程碑：RT3000 B 机的基本功能已完成阶段验证，NAND 写入和 OEM / QSDK 双系统启动、切换与回退流程已在该机上验证。** 这为后续机型适配建立了基础；全系支持仍是路线目标。
 
----
+当前处于 **Developer Preview** 阶段。较早的 Product R1 预发布版本有写入 NAND 和双系统验收记录；最新 Wi-Fi Candidate 13 仅经过 RAM 启动测试，尚未作为正式刷机版本验收。本次公开脱敏源码与开发记录，暂不发布新的固件二进制。
 
-## 已验证硬件配置
+基于 [hzyitc/openwrt-redmi-ax3000](https://github.com/hzyitc/openwrt-redmi-ax3000)，保留 OpenWrt 构建结构、上游版权和许可证。
 
-当前 Product R1 仅在以下 RT3000 硬件配置上完成实际测试：
+## 适配路线与当前状态
 
-| 项目 | 已验证配置 |
+| 机型 / 样机 | 当前状态 | 后续工作 |
+|---|---|---|
+| RT3000 · B 机 | **首个实机里程碑：基本功能阶段验证完成** | 完善功能覆盖、稳定性与性能验证 |
+| RT3000 · A 机 | **曾 RAM 启动、Wi-Fi 可开启；未完成逐项验证**。早期修改 APPSEL 后变砖 | 获得可用样机后继续验证 |
+| RT3000 · C 机 | **未通过、暂未支持**：有线交换机适配尚未完成 | 完成交换机适配，再进行整机验收 |
+| RW3000 | **规划支持，尚未验证** | 核对硬件版本、建立板级配置和实机证据 |
+| RC3000 | **规划支持，尚未验证** | 核对硬件版本、建立板级配置和实机证据 |
+| NX30 | **规划支持，尚未验证** | 核对硬件版本、建立板级配置和实机证据 |
+
+A / B / C 是项目内部的实体样机编号，不是厂商硬件版本号。每一种交换机、NAND 和板级组合都需要单独确认；不会把 B 机的通过结果直接套到其他样机或机型。硬件记录与证据边界见 [样机配置](rt3000-machine-b/docs/HARDWARE_SUPPORT.md)。
+
+## RT3000 A / B / C 样机配置
+
+三台样机的主要配置一致：**Qualcomm IPQ5018 / ARMv7、256 MiB RAM、128 MiB SPI-NAND、集成 2.4 GHz 无线和外置 QCN6102 5 GHz 无线**，均为 1 × WAN + 3 × LAN。差异集中在 NAND 和有线交换机：
+
+| 样机 | NAND | 有线交换机 | 实机进展 |
+|---|---|---|---|
+| A 机 | Winbond **W25N01GWZEIG** / 128 MiB | Qualcomm **QCA8337** | 曾 RAM 启动，Wi-Fi 可开启，观察期间未出现 kernel panic；未完成逐项功能验证 |
+| B 机 | GigaDevice **GD5F1GQ5REYIG** / 128 MiB | Qualcomm **QCA8337** | 当前主力样机，基本功能、NAND 写入与双系统流程已完成阶段验证 |
+| C 机 | Winbond **W25N01GWZEIG** / 128 MiB，与 A 机相同 | Realtek **RTL8367S** | 有线交换机适配未完成，整机未通过、暂未支持 |
+
+A 机 NAND 芯片丝印为 `25N01GWZEIG / 2238 / 6205DS900`。A 机在早期探索中，因我对 **APPSEL 的不成熟修改而变砖**，目前无法继续测试；它并非从未运行过，但当时没有完成逐项验收，当前版本也未在 A 机上重新验证。
+
+5 GHz 硬件为 **QCN6102**，QSDK 软件目标名为 `QCN6122` / `qcn6122`。软件基础为 QSDK 11.5、Linux 5.4.164、OpenWrt 21.02.7。完整参数、验证范围和记录来源见 [样机配置](rt3000-machine-b/docs/HARDWARE_SUPPORT.md)。
+
+以上配置结合项目记录和我对实体样机的补充确认整理。配置相近不等于固件可直接通用；B 机的验收结果不覆盖 A/C 机或其他批次。仓库中的 Redmi / Xiaomi 等上游目标也不代表本项目重新验证了这些设备。
+
+## 已完成的工作
+
+- 修复 WAN 千兆接收路径的时钟配置问题，完成链路、DHCP、路由和 CRC 检查。
+- 接入 RT3000 板级配置、QCA8337 交换机及三个 LAN 口。
+- 完成 B 机 QSDK 槽位的 NAND 写入与内容校验，保留 OEM 槽位，并实测 OEM / QSDK 双系统启动和回退。
+- 实现校验失败即停止的双副本启动选择流程，以及基于镜像内容的运行身份检查。
+- 实现基于设备自身工厂 MAC 的稳定 LAN / Wi-Fi 地址派生，避免使用开发样机的固定地址。
+- 修复 5 GHz BDF 兼容和信号问题，接入完整 ath11k NSS/WIFILI 路径。
+- 保留 WAN 管理隔离和每台设备自身的身份配置；当前调试源码默认开启无密码的 2.4 GHz AP，便于首次接入。
+
+此前 R1-NET-D 和 Product R1 预发布验收，与最新 Wi-Fi 实验的验收范围不同。详见 [网络基线](rt3000-machine-b/docs/NETWORK_BRINGUP_CLOSURE.md)、[预发布验收](rt3000-machine-b/docs/PRODUCT_R1_PRERELEASE_1_ACCEPTANCE.md) 和 [最新阶段记录](rt3000-machine-b/docs/WIFI5_SESSION_2026-09-21.md)。
+
+## 无线性能：当前进展
+
+路径：iQOO Neo10 → RT3000 5 GHz HE160 → 千兆有线 Windows PC。使用 iperf3，每轮约 10 秒，以下均为服务端结果。
+
+| 条件 | TCP 上传 |
+|---|---:|
+| 单流，主信道 44，两次测试 | **760 / 789 Mbps** |
+| 四流，主信道 36，对照测试 | **879 Mbps** |
+| RT3000 → PC 纯有线单流控制 | **937 / 938 Mbps** |
+
+基本功能之后，我进行了 5 GHz 吞吐优化，目前按计划暂停扩展。**重复单流上传 ≥800 Mbps 的阶段目标尚未通过。** 四流、PHY 协商速率和单秒峰值不能替代单流验收。信道 44 是当前保留的实测配置，尚未通过充分重复的 A/B 证明收益来源；也不能据此宣称已经达到硬件绝对上限。
+
+最新配置使用 `nss_offload=1 frame_mode=2`，关闭通用 `nss_redirect`。C13 的 RXDMA 扩容已生效，但没有证据证明它解决了上行瓶颈。完整 [CSV 和脱敏原始日志](rt3000-machine-b/docs/evidence/2026-09-21-wifi5/) 与 [镜像身份清单](rt3000-machine-b/manifest/wifi5-candidate13-20260921.json) 随源码提供。
+
+## 获取源码与构建
+
+```sh
+git clone https://github.com/FlyFish-go/H3C-RT3000-Product-R1.git
+cd H3C-RT3000-Product-R1
+```
+
+仓库包含 OpenWrt 构建系统、RT3000 适配源码及补丁；内核、工具链和 feeds 等依赖需要按构建规则获取。先阅读 [公开源码构建说明](rt3000-machine-b/docs/BUILD_PUBLIC.md)，其中列出配置、依赖、历史构建结果和尚未完成的全新环境复现验证。
+
+## 安装：从原厂系统进入第二槽位
+
+**安装教程预留区 · 待补充。** 后续将在这里说明如何从原厂系统写入第二槽位、启动 Product R1，并验证原厂系统仍可回退。具体步骤将在研究和实机确认后填写，当前不提供刷写命令，也未发布可按此教程安装的新固件。
+
+| 步骤 | 待补充内容 |
 |---|---|
-| 设备 | H3C Magic RT3000 |
-| SoC | Qualcomm IPQ5018 |
-| RAM | 256 MiB |
-| Flash | 128 MiB SPI-NAND |
-| NAND 型号 | GigaDevice GD5F1GQ5REYIG |
-| 5 GHz Wi-Fi | Qualcomm QCN6122 |
-| Ethernet Switch | Qualcomm QCA8337 |
-| 有线接口 | 1 × WAN + 3 × LAN |
-| 系统架构 | ARMv7 |
+| 1. 安装前准备 | 支持的硬件版本、原厂固件版本、镜像校验与所需工具 |
+| 2. 备份与槽位确认 | 备份范围、第二槽位识别方法、恢复准备 |
+| 3. 从原厂系统写入第二槽位 | 进入方式、镜像传输、写入操作与完成判据 |
+| 4. 切换并启动 | 启动选择操作、首次启动预期与异常处理 |
+| 5. 安装后验证与回退 | 运行系统身份、基本功能检查、回到原厂系统的方法 |
 
-**只有硬件配置与上述信息匹配的设备，才属于目前已经验证的支持范围。**
+详细步骤留在 [安装文档](rt3000-machine-b/release/INSTALL.md)，已有 B 机恢复机制记录见 [RECOVERY](rt3000-machine-b/release/RECOVERY.md)。B 机历史上已经验证双系统流程；这份面向用户的原厂安装教程仍待整理，其他机型不能据此直接刷写。
 
-RT3000 可能存在不同生产批次、PCB/BOM、Flash 型号或其他硬件差异。
+## 默认管理方式
 
-在尚未确认兼容性之前，请不要将 Product R1 固件刷入其他硬件配置的 RT3000。
+- 接 LAN 后访问 `http://192.168.1.1/`；首次使用设置 root 密码。
+- WAN 侧默认不开放 SSH / LuCI 管理。
+- **2.4 GHz 默认开启，SSID 为 `RT3000`，无密码，接入 LAN，供调试使用。** 日常使用前请设置无线加密和管理密码。
+- 5 GHz 默认关闭；启用时自行设置 SSID 和 WPA2/WPA3 密码。
+- 不使用统一出厂密码，也不从 MAC 地址派生管理密码。
 
-后续如果有用户提供其他硬件批次并完成验证，我们会逐步扩充兼容列表。
+上述无线默认值是本次源码调整，适用于使用新镜像的首次初始化或恢复出厂设置；尚未重新构建固件或上机验证，也不会改变已经运行的设备。此前 Candidate 13 测速时 2.4 GHz 关闭，历史测试结果不代表此新配置的双频并发性能。
 
----
+## 目录
 
-## Product R1
+| 路径 | 内容 |
+|---|---|
+| `target/linux/ipq50xx/` | RT3000 DTS、网络及系统集成 |
+| `package/kernel/mac80211/` | ath11k、NSS/WIFILI 和诊断补丁 |
+| `package/firmware/ipq-wifi/` | 型号级 BDF 文件和封装规则 |
+| `rt3000-machine-b/tools/` | BDF 构造与受限设备控制工具 |
+| `rt3000-machine-b/tests/`、`tests/wifi/` | 离线回归和配置检查 |
+| `rt3000-machine-b/docs/` | 验收、实验、构建及脱敏说明 |
+| `rt3000-machine-b/manifest/` | 已测试镜像与证据的身份记录 |
 
-当前固件基于：
+## 已知限制
 
-- Qualcomm QSDK 11.5
-- Linux 5.4.164
-- OpenWrt 21.02.7
+当前没有完成 10/100 Mbps 以太网、WAN 物理拔插、长时间运行、LED/按键及 C13 双频并发等完整验证。最新有线控制和 LAN bridge 无线测速不等同于 WAN/NAT 所有场景的验收。详见 [KNOWN_ISSUES](rt3000-machine-b/release/KNOWN_ISSUES.md)。
 
-Product R1 并非简单的 OpenWrt 默认编译，而是针对 RT3000 硬件进行了适配、网络修复、启动与恢复机制以及产品化配置。
+## 支持项目
 
-首个公开版本将以：
+这个项目目前由我个人开发和维护。要把适配范围从 RT3000 扩展到 RW3000、RC3000 和 NX30，我最需要的是能放到桌面上反复验证的实体设备。欢迎通过以下方式支持项目：
 
-**Product R1 Developer Preview**
+1. **实体样机支持（最优先）。** 如果你有闲置的 RT3000 / RW3000 / RC3000 / NX30，尤其是不同 NAND、交换机或 PCB 批次的设备，欢迎联系我捐赠或借测。能正常启动的整机最有帮助；故障机、主板或配件也可以先提供型号和故障情况，确认是否适合用于修复与研究。
+2. **资金赞助 / 捐献。** 用于购买和维修样机、补充调试配件、承担运输等开发成本，让我能持续推进适配与实机验证。目前请通过邮箱联系，沟通赞助方式。
+3. **测试与资料支持。** 硬件照片、芯片丝印、原厂版本信息和脱敏测试日志，也能帮助我减少重复摸索。
 
-的形式发布。
+**联系邮箱：[yufeiyang45@qq.com](mailto:yufeiyang45@qq.com)**。提供样机时请注明型号、硬件版本、设备状态，以及希望捐赠还是借测；寄送安排请先通过邮件确认。
 
----
+赞助是对持续开发的支持，不能保证某个机型的完成时间或适配结果。感谢愿意提供设备、资料或资金，让这条适配路线继续向前的人。
 
-## 当前已验证功能
+## 贡献者
 
-目前已经在真实硬件上验证：
+目前本项目的开发与维护由 [FlyFish-go](https://github.com/FlyFish-go) 独立完成。
 
-- NAND / UBI 启动
-- Product R1 正常启动
-- LAN1 / LAN2 / LAN3
-- WAN 1000BASE-T
-- WAN DHCP
-- Internet 访问
-- WAN 收发
-- 2.4 GHz Wi-Fi
-- 5 GHz Wi-Fi
-- LuCI Web 管理界面
-- SSH
-- WAN 管理访问隔离
-- OEM 原厂系统保留
-- OEM / Product R1 启动切换
-- Product R1 回滚与恢复机制
-- 设备 MAC 地址策略
-- 重启后配置持久化
-- 固件运行身份检查
+## 反馈与脱敏
 
----
+欢迎在 [Issues](https://github.com/FlyFish-go/H3C-RT3000-Product-R1/issues) 中提供硬件版本、镜像 SHA256、复现步骤和脱敏日志。吞吐问题请标明上传/下载、流数、服务器拓扑及服务端汇总。
 
-## 尚未完成完整验证
+公开快照不包含本地开发历史、通知 Token、SSH 私钥、设备原始 ART/分区备份、完整抓包或开发环境目录。文档里的样机身份和测试样例已脱敏，生产代码仍读取设备自身身份；详见 [脱敏范围](rt3000-machine-b/docs/PUBLICATION.md)。
 
-以下项目目前尚未完成完整 qualification：
+## 上游与许可证
 
-- 10BASE-T
-- 100BASE-T
-- WAN 物理拔插长期测试
-- 长时间运行 / soak test
-- LED 行为
-- 硬件按键
-- NSS / ECM 最终性能调优
+感谢 [OpenWrt](https://github.com/openwrt/openwrt)、[hzyitc/openwrt-redmi-ax3000](https://github.com/hzyitc/openwrt-redmi-ax3000) 和相关 Qualcomm/QSDK 维护者。上游版权、作者信息、SPDX 声明和许可证均保留；许可文本见 [COPYING](COPYING) 与 [LICENSES](LICENSES/)。各组件继续适用其原有许可证，本次公开不会改变第三方组件的授权范围。
 
-这些项目目前不作为 Developer Preview 的发布阻塞项。
-
-它们不代表已经确认存在故障，只表示尚未完成完整测试。
-
-详见：
-
-[`KNOWN_ISSUES.md`](KNOWN_ISSUES.md)
-
----
-
-## 下载
-
-固件将在 GitHub Releases 页面发布：
-
-[Releases](../../releases)
-
-发布的每一个固件都会提供对应的 SHA256。
-
-**刷写前请务必核对固件 SHA256。**
-
----
-
-## 安装
-
-在刷写之前，请完整阅读：
-
-- [`INSTALL.md`](INSTALL.md)
-- [`RECOVERY.md`](RECOVERY.md)
-- [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md)
-
-尤其建议在刷写 Developer Preview 前确认自己具备基本的路由器恢复能力。
-
----
-
-## 安全默认设置
-
-Product R1 当前采用以下默认安全策略：
-
-- WAN 侧禁止访问 LuCI
-- WAN 侧禁止访问 SSH
-- Dropbear SSH 仅允许 LAN 侧访问
-- Wi-Fi 默认关闭
-- 用户需要自行设置 SSID 和无线密码后启用 Wi-Fi
-- 不使用统一的出厂密码
-- 不使用 MAC 地址派生管理密码
-
-首次启动后，请尽快设置 root 管理密码。
-
----
-
-## 问题反馈
-
-欢迎通过 GitHub Issues 或发布帖反馈实际使用情况。
-
-提交问题时，请尽量提供：
-
-- RT3000 硬件信息
-- NAND / Flash 型号（如可确认）
-- 原厂固件版本
-- Product R1 版本
-- 固件 SHA256
-- 安装结果
-- WAN 状态
-- LAN 状态
-- 2.4 GHz Wi-Fi 状态
-- 5 GHz Wi-Fi 状态
-- 是否能够进入 LuCI
-- 是否能够正常重启
-- 与问题相关的日志
-
-请勿在公开 Issue 中提交：
-
-- 管理密码
-- Wi-Fi 密码
-- SSH 私钥
-- Token
-- 其他个人凭据或敏感信息
-
----
-
-## 源码与许可证
-
-本仓库当前作为 Product R1 的：
-
-- 固件发布入口
-- 使用文档
-- 问题追踪
-- 用户反馈平台
-
-使用。
-
-当前内部开发仓库暂未公开。
-
-Product R1 中包含 Linux、OpenWrt 以及其他采用不同许可证的软件组件。
-
-与实际发布版本相关的许可证信息、第三方组件信息以及适用的对应源码提供方式，将随发布版本单独说明。
-
-内部开发记录、硬件 bring-up 日志、测试证据和开发环境并不等同于公开发行所要求提供的对应源码。
-
----
-
-## 项目状态
-
-当前阶段：
-
-**Product R1 Developer Preview 准备中**
-
-目标是首先向具备一定路由器刷机和恢复经验的用户开放测试，根据不同硬件批次和真实网络环境中的反馈逐步完善固件。
-
----
-
-## Disclaimer / 免责声明
-
-本项目为个人 / 社区独立开发项目，与 H3C 官方无关。
-
-H3C、Magic 及相关名称和商标归其各自权利人所有。
-
-刷写第三方固件具有风险。使用本项目固件即表示你理解并接受相关风险。
+本项目为独立适配项目，与 H3C 官方无关。

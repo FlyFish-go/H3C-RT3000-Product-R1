@@ -1,0 +1,51 @@
+#!/bin/sh
+# RT3000 Machine-B — first-boot management notice.
+#
+# Runs once.  Its only job is to tell the operator, clearly and at the place
+# they will actually look, that management access is not yet protected and what
+# to do about it.  It deliberately does NOT set, generate or store any
+# credential: inventing a password here would create exactly the factory-wide
+# shared secret this product must not ship.
+
+[ -f /etc/config/rt3000_firstboot_done ] && exit 0
+
+. /lib/functions.sh
+
+have_password() {
+	# A usable root password means the shadow entry has a hash.
+	local h
+	h=$(awk -F: '$1=="root"{print $2}' /etc/shadow 2>/dev/null)
+	[ -n "$h" ] && [ "$h" != "!" ] && [ "$h" != "*" ]
+}
+
+if have_password; then
+	touch /etc/config/rt3000_firstboot_done
+	exit 0
+fi
+
+cat <<'BANNER'
+
+  ============================================================
+   RT3000 Machine-B — Product R1 RC1
+  ------------------------------------------------------------
+   Management access is NOT yet protected.
+
+   No root password is set.  Until you set one, anyone who can
+   reach the LAN can log in as root.
+
+   Set a password now:
+     - LuCI:      http://192.168.1.1/  ->  System -> Administration
+     - Console:   passwd
+
+   2.4 GHz Wi-Fi: RT3000, enabled without a password for debugging.
+   This open AP joins the LAN.  5 GHz Wi-Fi remains disabled.
+   Set Wi-Fi security in LuCI -> Network -> Wireless before daily use.
+
+   WAN management is disabled by default and must stay that way.
+  ============================================================
+
+BANNER
+
+logger -t rt3000 "first boot: root password not set; see /etc/motd for guidance"
+touch /etc/config/rt3000_firstboot_done
+exit 0

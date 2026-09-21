@@ -1,0 +1,86 @@
+From 248437459e3ff65f83527dd03b958e365eba9b65 Mon Sep 17 00:00:00 2001
+From: hzy <hzyitc@outlook.com>
+Date: Sun, 14 Jul 2024 17:17:14 +0800
+Subject: [PATCH 1/1] add swconfig_leds support
+
+---
+ include/ref/ref_mib.h |  3 +++
+ src/init/ssdk_init.c  |  3 +++
+ src/ref/ref_mib.c     | 33 +++++++++++++++++++++++++++++++++
+ 3 files changed, 39 insertions(+)
+
+diff --git a/include/ref/ref_mib.h b/include/ref/ref_mib.h
+index 6cb06395..09f5453d 100755
+--- a/include/ref/ref_mib.h
++++ b/include/ref/ref_mib.h
+@@ -42,6 +42,9 @@ qca_ar8327_sw_get_port_mib(struct switch_dev *dev,
+ 		       						const struct switch_attr *attr,
+ 		       						struct switch_val *val);
+ 
++int qca_ar8327_sw_get_port_stats(struct switch_dev *dev, int port,
++									struct switch_port_stats *stats);
++
+ #endif
+ #ifdef __cplusplus
+ }
+diff --git a/src/init/ssdk_init.c b/src/init/ssdk_init.c
+index 5296aa98..ba179f77 100755
+--- a/src/init/ssdk_init.c
++++ b/src/init/ssdk_init.c
+@@ -1330,6 +1330,9 @@ const struct switch_dev_ops qca_ar8327_sw_ops = {
+ #if defined(IN_PORTCONTROL)
+ 	.get_port_link = qca_ar8327_sw_get_port_link,
+ #endif
++#if defined(IN_MIB)
++	.get_port_stats = qca_ar8327_sw_get_port_stats,
++#endif
+ #ifndef BOARD_AR71XX
+ #if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 0, 0))
+ 	.get_reg_val = qca_ar8327_sw_get_reg_val,
+diff --git a/src/ref/ref_mib.c b/src/ref/ref_mib.c
+index aeec213d..4a332d56 100644
+--- a/src/ref/ref_mib.c
++++ b/src/ref/ref_mib.c
+@@ -476,6 +476,39 @@ qca_ar8327_sw_get_port_mib(struct switch_dev *dev,
+ 
+     return 0;
+ }
++
++int
++qca_ar8327_sw_get_port_stats(struct switch_dev *dev, int port,
++									struct switch_port_stats *stats)
++{
++	struct qca_phy_priv *priv = qca_phy_priv_get(dev);
++
++	if (port >= dev->ports)
++		return -EINVAL;
++
++#ifdef HPPE
++	if ((priv->version == QCA_VER_HPPE || priv->version == QCA_VER_APPE) &&
++		qca_hppe_port_mac_type_get(priv->device_id, port) == PORT_XGMAC_TYPE)
++	{
++		fal_xgmib_info_t xgmib_info;
++		mutex_lock(&priv->mib_lock);
++		fal_get_xgmib_info(priv->device_id, port, &xgmib_info);
++		stats->tx_bytes = xgmib_info.TxByte;
++		stats->rx_bytes = xgmib_info.RxByte;
++		mutex_unlock(&priv->mib_lock);
++		return 0;
++	}
++#endif
++	{
++		fal_mib_counter_t mib_counter;
++		mutex_lock(&priv->mib_lock);
++		fal_mib_counter_get(priv->device_id, port, &mib_counter);
++		stats->tx_bytes = mib_counter.TxByte;
++		stats->rx_bytes = mib_counter.RxGoodByte;
++		mutex_unlock(&priv->mib_lock);
++		return 0;
++	}
++}
+ #endif
+ 
+ int
+-- 
+2.40.1
+

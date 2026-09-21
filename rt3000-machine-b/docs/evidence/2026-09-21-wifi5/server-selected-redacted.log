@@ -1,0 +1,168 @@
+Selected original iperf3 server output; LAN addresses replaced by role labels.
+Tests 1/2: wired controls; 8: four-stream phone diagnostic; 14/15: single-stream phone acceptance attempts.
+
+Server listening on 5201 (test #1)
+-----------------------------------------------------------
+Accepted connection from ROUTER, port 34162
+[  6] local WIRED_SERVER port 5201 connected to ROUTER port 34164
+[ ID] Interval           Transfer     Bitrate
+[  6]   0.00-1.00   sec   111 MBytes   928 Mbits/sec                  
+[  6]   1.00-2.00   sec   112 MBytes   939 Mbits/sec                  
+[  6]   2.00-3.00   sec   112 MBytes   940 Mbits/sec                  
+[  6]   3.00-4.00   sec   112 MBytes   938 Mbits/sec                  
+[  6]   4.00-5.00   sec   112 MBytes   942 Mbits/sec                  
+[  6]   5.00-6.00   sec   112 MBytes   940 Mbits/sec                  
+[  6]   6.00-7.00   sec   112 MBytes   937 Mbits/sec                  
+[  6]   7.00-8.00   sec   112 MBytes   935 Mbits/sec                  
+[  6]   8.00-9.00   sec   112 MBytes   936 Mbits/sec                  
+[  6]   9.00-10.00  sec   112 MBytes   936 Mbits/sec                  
+[  6]  10.00-10.00  sec   256 KBytes   806 Mbits/sec                  
+- - - - - - - - - - - - - - - - - - - - - - - - -
+[ ID] Interval           Transfer     Bitrate
+[  6]   0.00-10.00  sec  1.09 GBytes   937 Mbits/sec                  receiver
+-----------------------------------------------------------
+
+Server listening on 5201 (test #2)
+-----------------------------------------------------------
+Accepted connection from ROUTER, port 34166
+[  6] local WIRED_SERVER port 5201 connected to ROUTER port 34168
+[ ID] Interval           Transfer     Bitrate
+[  6]   0.00-1.00   sec   110 MBytes   924 Mbits/sec                  
+[  6]   1.00-2.00   sec   111 MBytes   929 Mbits/sec                  
+[  6]   2.00-3.00   sec   112 MBytes   937 Mbits/sec                  
+[  6]   3.00-4.00   sec   112 MBytes   941 Mbits/sec                  
+[  6]   4.00-5.00   sec   112 MBytes   940 Mbits/sec                  
+[  6]   5.00-6.00   sec   112 MBytes   940 Mbits/sec                  
+[  6]   6.00-7.00   sec   112 MBytes   941 Mbits/sec                  
+[  6]   7.00-8.00   sec   112 MBytes   940 Mbits/sec                  
+[  6]   8.00-9.00   sec   112 MBytes   942 Mbits/sec                  
+[  6]   9.00-10.00  sec   112 MBytes   941 Mbits/sec                  
+[  6]  10.00-10.01  sec   896 KBytes   954 Mbits/sec                  
+- - - - - - - - - - - - - - - - - - - - - - - - -
+[ ID] Interval           Transfer     Bitrate
+[  6]   0.00-10.01  sec  1.09 GBytes   938 Mbits/sec                  receiver
+-----------------------------------------------------------
+
+Server listening on 5201 (test #8)
+-----------------------------------------------------------
+Accepted connection from PHONE, port 56122
+[  6] local WIRED_SERVER port 5201 connected to PHONE port 56130
+[  9] local WIRED_SERVER port 5201 connected to PHONE port 56132
+[ 11] local WIRED_SERVER port 5201 connected to PHONE port 56146
+[ 13] local WIRED_SERVER port 5201 connected to PHONE port 56162
+[ ID] Interval           Transfer     Bitrate
+[  6]   0.00-1.00   sec  23.6 MBytes   198 Mbits/sec                  
+[  9]   0.00-1.00   sec  23.9 MBytes   200 Mbits/sec                  
+[ 11]   0.00-1.00   sec  23.8 MBytes   199 Mbits/sec                  
+[ 13]   0.00-1.00   sec  23.5 MBytes   197 Mbits/sec                  
+[SUM]   0.00-1.00   sec  94.8 MBytes   794 Mbits/sec                  
+- - - - - - - - - - - - - - - - - - - - - - - - -
+[  6]   1.00-2.00   sec  28.6 MBytes   240 Mbits/sec                  
+[  9]   1.00-2.00   sec  29.5 MBytes   248 Mbits/sec                  
+[ 11]   1.00-2.00   sec  21.5 MBytes   180 Mbits/sec                  
+[ 13]   1.00-2.00   sec  25.5 MBytes   214 Mbits/sec                  
+[SUM]   1.00-2.00   sec   105 MBytes   882 Mbits/sec                  
+- - - - - - - - - - - - - - - - - - - - - - - - -
+[  6]   2.00-3.00   sec  35.8 MBytes   300 Mbits/sec                  
+[  9]   2.00-3.00   sec  27.8 MBytes   233 Mbits/sec                  
+[ 11]   2.00-3.00   sec  19.9 MBytes   167 Mbits/sec                  
+[ 13]   2.00-3.00   sec  24.9 MBytes   209 Mbits/sec                  
+[SUM]   2.00-3.00   sec   108 MBytes   908 Mbits/sec                  
+- - - - - - - - - - - - - - - - - - - - - - - - -
+[  6]   3.00-4.00   sec  39.2 MBytes   329 Mbits/sec                  
+[  9]   3.00-4.00   sec  22.9 MBytes   192 Mbits/sec                  
+[ 11]   3.00-4.00   sec  17.8 MBytes   149 Mbits/sec                  
+[ 13]   3.00-4.00   sec  26.9 MBytes   225 Mbits/sec                  
+[SUM]   3.00-4.00   sec   107 MBytes   895 Mbits/sec                  
+- - - - - - - - - - - - - - - - - - - - - - - - -
+[  6]   4.00-5.00   sec  43.4 MBytes   364 Mbits/sec                  
+[  9]   4.00-5.00   sec  20.8 MBytes   174 Mbits/sec                  
+[ 11]   4.00-5.00   sec  17.1 MBytes   144 Mbits/sec                  
+[ 13]   4.00-5.00   sec  26.5 MBytes   222 Mbits/sec                  
+[SUM]   4.00-5.00   sec   108 MBytes   904 Mbits/sec                  
+- - - - - - - - - - - - - - - - - - - - - - - - -
+[  6]   5.00-6.00   sec  44.5 MBytes   373 Mbits/sec                  
+[  9]   5.00-6.00   sec  19.9 MBytes   167 Mbits/sec                  
+[ 11]   5.00-6.00   sec  17.0 MBytes   143 Mbits/sec                  
+[ 13]   5.00-6.00   sec  24.2 MBytes   203 Mbits/sec                  
+[SUM]   5.00-6.00   sec   106 MBytes   886 Mbits/sec                  
+- - - - - - - - - - - - - - - - - - - - - - - - -
+[  6]   6.00-7.00   sec  40.9 MBytes   343 Mbits/sec                  
+[  9]   6.00-7.00   sec  20.0 MBytes   168 Mbits/sec                  
+[ 11]   6.00-7.00   sec  17.5 MBytes   147 Mbits/sec                  
+[ 13]   6.00-7.00   sec  23.4 MBytes   196 Mbits/sec                  
+[SUM]   6.00-7.00   sec   102 MBytes   853 Mbits/sec                  
+- - - - - - - - - - - - - - - - - - - - - - - - -
+[  6]   7.00-8.00   sec  43.1 MBytes   362 Mbits/sec                  
+[  9]   7.00-8.00   sec  21.9 MBytes   183 Mbits/sec                  
+[ 11]   7.00-8.00   sec  18.8 MBytes   157 Mbits/sec                  
+[ 13]   7.00-8.00   sec  24.6 MBytes   207 Mbits/sec                  
+[SUM]   7.00-8.00   sec   108 MBytes   909 Mbits/sec                  
+- - - - - - - - - - - - - - - - - - - - - - - - -
+[  6]   8.00-9.00   sec  39.9 MBytes   335 Mbits/sec                  
+[  9]   8.00-9.00   sec  21.8 MBytes   183 Mbits/sec                  
+[ 11]   8.00-9.00   sec  19.0 MBytes   159 Mbits/sec                  
+[ 13]   8.00-9.00   sec  24.1 MBytes   202 Mbits/sec                  
+[SUM]   8.00-9.00   sec   105 MBytes   879 Mbits/sec                  
+- - - - - - - - - - - - - - - - - - - - - - - - -
+[  6]   9.00-10.00  sec  44.6 MBytes   374 Mbits/sec                  
+[  9]   9.00-10.00  sec  19.1 MBytes   160 Mbits/sec                  
+[ 11]   9.00-10.00  sec  18.5 MBytes   155 Mbits/sec                  
+[ 13]   9.00-10.00  sec  22.4 MBytes   188 Mbits/sec                  
+[SUM]   9.00-10.00  sec   105 MBytes   878 Mbits/sec                  
+- - - - - - - - - - - - - - - - - - - - - - - - -
+[  6]  10.00-10.02  sec   896 KBytes   386 Mbits/sec                  
+[  9]  10.00-10.02  sec   384 KBytes   165 Mbits/sec                  
+[ 11]  10.00-10.02  sec   384 KBytes   165 Mbits/sec                  
+[ 13]  10.00-10.02  sec   512 KBytes   221 Mbits/sec                  
+[SUM]  10.00-10.02  sec  2.12 MBytes   938 Mbits/sec                  
+- - - - - - - - - - - - - - - - - - - - - - - - -
+[ ID] Interval           Transfer     Bitrate
+[  6]   0.00-10.02  sec   384 MBytes   322 Mbits/sec                  receiver
+[  9]   0.00-10.02  sec   228 MBytes   191 Mbits/sec                  receiver
+[ 11]   0.00-10.02  sec   191 MBytes   160 Mbits/sec                  receiver
+[ 13]   0.00-10.02  sec   246 MBytes   206 Mbits/sec                  receiver
+[SUM]   0.00-10.02  sec  1.03 GBytes   879 Mbits/sec                  receiver
+-----------------------------------------------------------
+
+Server listening on 5201 (test #14)
+-----------------------------------------------------------
+Accepted connection from PHONE, port 42484
+[  6] local WIRED_SERVER port 5201 connected to PHONE port 42490
+[ ID] Interval           Transfer     Bitrate
+[  6]   0.00-1.00   sec  42.8 MBytes   358 Mbits/sec                  
+[  6]   1.00-2.00   sec   108 MBytes   909 Mbits/sec                  
+[  6]   2.00-3.00   sec  98.9 MBytes   830 Mbits/sec                  
+[  6]   3.00-4.00   sec  88.8 MBytes   744 Mbits/sec                  
+[  6]   4.00-5.00   sec  91.2 MBytes   766 Mbits/sec                  
+[  6]   5.00-6.00   sec  98.1 MBytes   823 Mbits/sec                  
+[  6]   6.00-7.00   sec  94.2 MBytes   790 Mbits/sec                  
+[  6]   7.00-8.00   sec  93.5 MBytes   784 Mbits/sec                  
+[  6]   8.00-9.00   sec  99.4 MBytes   834 Mbits/sec                  
+[  6]   9.00-10.00  sec  90.2 MBytes   757 Mbits/sec                  
+[  6]  10.00-10.01  sec  1.25 MBytes   887 Mbits/sec                  
+- - - - - - - - - - - - - - - - - - - - - - - - -
+[ ID] Interval           Transfer     Bitrate
+[  6]   0.00-10.01  sec   907 MBytes   760 Mbits/sec                  receiver
+-----------------------------------------------------------
+
+Server listening on 5201 (test #15)
+-----------------------------------------------------------
+Accepted connection from PHONE, port 46694
+[  6] local WIRED_SERVER port 5201 connected to PHONE port 46706
+[ ID] Interval           Transfer     Bitrate
+[  6]   0.00-1.00   sec  88.4 MBytes   741 Mbits/sec                  
+[  6]   1.00-2.00   sec  94.5 MBytes   793 Mbits/sec                  
+[  6]   2.00-3.00   sec   103 MBytes   863 Mbits/sec                  
+[  6]   3.00-4.00   sec  96.4 MBytes   808 Mbits/sec                  
+[  6]   4.00-5.00   sec  83.5 MBytes   700 Mbits/sec                  
+[  6]   5.00-6.00   sec  95.0 MBytes   797 Mbits/sec                  
+[  6]   6.00-7.00   sec   103 MBytes   861 Mbits/sec                  
+[  6]   7.00-8.00   sec  89.9 MBytes   754 Mbits/sec                  
+[  6]   8.00-9.00   sec  90.2 MBytes   756 Mbits/sec                  
+[  6]   9.00-10.00  sec  96.9 MBytes   813 Mbits/sec                  
+[  6]  10.00-10.01  sec   768 KBytes   785 Mbits/sec                  
+- - - - - - - - - - - - - - - - - - - - - - - - -
+[ ID] Interval           Transfer     Bitrate
+[  6]   0.00-10.01  sec   941 MBytes   789 Mbits/sec                  receiver
+-----------------------------------------------------------

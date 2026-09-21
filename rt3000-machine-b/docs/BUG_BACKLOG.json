@@ -1,0 +1,1491 @@
+{
+  "schema": "rt3000-bug-backlog/v2",
+  "device": "H3C Magic RT3000 (Machine B), running R1-NET-D on mtd16",
+  "session": "ENTER_PRODUCT_R0_1_AND_RUN_RUNTIME_BASELINE",
+  "generated_utc": "2026-09-19",
+  "phase": "NETWORK_BRINGUP_CLOSED_PRODUCT_R1_READY",
+  "fixes_applied": 0,
+  "severity_policy": "Assigned by USER IMPACT, not technical complexity.",
+  "severity_definitions": {
+    "P0": "Cannot be used as a router normally / data corruption / security or device risk / crash, reboot or OOM / core networking unavailable",
+    "P1": "Major function missing (LAN/WAN/Wi-Fi/NSS) / serious performance or stability problem",
+    "P2": "LED / UI / default config / log noise / optional tracing / polish"
+  },
+  "summary": {
+    "P0": 3,
+    "P1": 7,
+    "P2": 9,
+    "CLOSED": 2,
+    "total": 21,
+    "note": "RT3-B002 and RT3-B018 CLOSED by the network bring-up (R1-NET-D / R1-NET-B). RT3-RB001 and RT3-RB002 are the remaining P0 release blockers for Product R1."
+  },
+  "bugs": [
+    {
+      "id": "RT3-RB001",
+      "severity": "P1",
+      "release_blocker": true,
+      "title": "Packaged rt3bcwrite --set lacks per-copy sequential verify gate",
+      "area": "BOOTCONFIG_WRITER",
+      "impact": "The packaged selector writer processes both BOOTCONFIG copies in a single invocation and does not enforce the independent mtd3 write -> verify -> mtd2 write -> verify safety gate. A failure between copies can leave the pair in an unverified mixed state without an intervening check.",
+      "evidence": [
+        "rt3bcwrite.c main(): after the disagreement check it runs write_selector(&B) for mtd3 then write_selector(&A) for mtd2 with no intermediate verify gate",
+        "Observed live during the authorized slot flip: the packaged tool updates both copies in one call",
+        "The strict per-copy ordering was achieved only by building a separate single-copy tool (rt3sel1.c) whose write path is byte-identical to the proven writer"
+      ],
+      "suggested_fix_area": "rt3bcwrite --set to perform and report a verify after each copy, failing closed before touching the second",
+      "fixes_applied": false,
+      "note": "Registered per R1_FIX_PROBE_A instruction. BOOTCONFIG internals were NOT re-researched and the selector was NOT touched.",
+      "status": "HARDWARE_ACCEPTED",
+      "fix": "per-copy fail-closed transaction in package/rt3bcwrite.c; tests/rb001 22 assertions",
+      "hardware_acceptance": {
+        "date": "2026-09-19",
+        "tool": "packaged rt3slot oem / rt3bcwrite",
+        "mtd3_write": "PASS",
+        "mtd3_verify": "PASS",
+        "mtd2_write": "PASS",
+        "mtd2_verify": "PASS",
+        "ordering_proven": "mtd3 write=PASS verify=PASS emitted before mtd2 SECOND",
+        "oem_boot": "PASS (Linux 4.4.60)",
+        "mtd15_intact": true,
+        "offline_suite": "22/22 PASS, FAIL_CLOSED=YES"
+      }
+    },
+    {
+      "id": "RT3-B001",
+      "severity": "P0",
+      "title": "Both Wi-Fi radios ship disabled - no wireless at all",
+      "area": "WIFI",
+      "impact": "The device provides no wireless service of any kind. As a consumer router this is a primary function.",
+      "evidence": [
+        "wireless.radio0.disabled='1' and wireless.radio1.disabled='1' in /etc/config/wireless",
+        "wifi status: radio0 up=false disabled=true; radio1 up=false disabled=true",
+        "wlan0 and wlan1 operstate=down, txpower 0.00 dBm"
+      ],
+      "root_cause": "Shipped default configuration decision at image build time. NOT a driver, firmware, BDF, caldata or regulatory failure - all of those measured healthy (both phys report 'qmi caldata downloaded: type: 2').",
+      "not_a_bug_note": "Determined to be default-config, not firstboot behaviour: /etc/config/wireless exists in the image fully populated with AP interfaces.",
+      "suggested_fix_area": "/etc/config/wireless defaults in the product image",
+      "blocking": true,
+      "probe_a_findings": {
+        "wifi_24g_runtime": "PASS",
+        "wifi_5g_runtime": "PASS",
+        "method": "non-persistent UCI enable + ephemeral PSK, then reverted",
+        "wlan0": "type AP, ssid RT3-PROBE-2G, ch1 2412MHz 20MHz, txpower 25.00 dBm, beaconing",
+        "wlan1": "type AP, ssid RT3-PROBE-5G, ch36 5180MHz 80MHz, txpower 24.00 dBm, beaconing",
+        "hostapd": "running with sockets for wlan0 and wlan1",
+        "nss": "Created a NSS virtual interface for both wlan0 and wlan1",
+        "conclusion": "Both radios are fully functional; the P0 was purely the shipped disabled='1' default. FIX PROVEN by runtime."
+      }
+    },
+    {
+      "id": "RT3-B002",
+      "severity": "CLOSED",
+      "title": "WAN RX datapath dead - link and TX work, zero frames ever received",
+      "area": "NETWORK",
+      "impact": "No internet connectivity. The device cannot route traffic upstream, so it is not functioning as a router.",
+      "evidence": [
+        "ubus network.interface.wan status -> up=false, pending=true, proto=dhcp, device=eth0, data={}",
+        "ip route show -> only '192.0.2.0/24 dev br-lan scope link src 192.0.2.1'; no default route",
+        "logread: repeated 'wan (1341): udhcpc: sending discover' with no offer",
+        "eth0 link up with carrier 1 but no IPv4 address"
+      ],
+      "root_cause": "QSDK 11.5 never enables gephy_gcc_tx, the P_GEPHY_TX parent of gmac0_rx/tx_clk_src. Both RCGs therefore fall back to their reset parent xo (24 MHz). Root cause: the gate at src/adpt/mp/adpt_mp_portctrl.c:919 'if (uniphy_mode_new != uniphy_mode_old)' is FALSE because mac_mode was already seeded to 0xf from the DT switch_mac_mode (R1 boot log: 'mac mode = 0xf'). adpt_mp_uniphy_mode_configure() - the ONLY code that sets UNIPHY_CLK_RATE_125M via ssdk_mp_raw_clock_set() - is skipped. gephy_gcc_tx stays enable_count=0 and the RCGs sit on xo. 24 MHz cannot sample a 1000BASE-T stream, so every received frame fails CRC.",
+      "caveat": "1000BASE-T initial bring-up qualified. Physical 1G unplug/replug (NET-QUAL-001), 100BASE-T (NET-QUAL-002) and 10BASE-T (NET-QUAL-003) remain untested and must NOT be recorded as PASS.",
+      "blocking": false,
+      "probe_a_findings": {
+        "wan_dhcp": "WAN_ENVIRONMENT_NOT_AVAILABLE",
+        "wan_datapath": "BLOCKED_PHY_RX_CORRUPTION",
+        "port1_mib": {
+          "RxFcsErr": 25,
+          "RxFragment": 15,
+          "RxRunt": 0,
+          "RxAlignErr": 0,
+          "RxGoodByte": 0,
+          "RxBadByte": 0,
+          "RxOverFlow": 0
+        },
+        "eth0_stats": {
+          "rx_packets": 0,
+          "rx_bytes": 0,
+          "tx_packets": 741,
+          "tx_bytes": 249468
+        },
+        "port2_control": {
+          "RxFcsErr": 0,
+          "RxFragment": 0,
+          "RxGoodByte": 0
+        },
+        "udhcpc": "sending discover x3 -> 'no lease, failing'",
+        "subnet_conflict_handling": "upstream 192.0.2.0/24 overlapped product LAN; LAN moved NON-PERSISTENTLY to 192.168.50.1/24 to test; overlap NOT treated as a firmware fault",
+        "incidental": "toggling enable_eee on port 1 caused link down plus WARNING at kernel/workqueue.c:3040 __flush_work (PID swconfig); EEE restored to 1 and link recovered; device stayed up"
+      },
+      "follow_ups": [
+        "re-test with known-good cable and a different upstream switch port",
+        "try forced 100M/10M on the WAN port to test gigabit signal integrity",
+        "check whether the WAN path is meant to traverse ess-switch1's PHY rather than port 1 (ties to RT3-B005)",
+        "re-run DHCP only after RxGoodByte > 0 is observed"
+      ],
+      "probe_e_findings": {
+        "phy_link": "LINK (BMSR=0x796d link_status=1 ANLPAR=0xcde1)",
+        "tx": "WORKS",
+        "rx": "DEAD (0 frames, entire session)",
+        "environment_ruled_out": true,
+        "reclassified_from": "WAN_ENVIRONMENT_NOT_AVAILABLE"
+      },
+      "status": "CLOSED",
+      "fix_status": "EXPECTED FIXED BY R1-NET-B (same root cause) - awaiting device acceptance",
+      "r1_net_b_note": "measured WITH cable on R1-NET-B; switch layer proven good in the same session",
+      "isolation_evidence": "The three LAN jacks carry clean error-free traffic all the way to the CPU and serve DHCP clients, while WAN receives only corrupt frames. Same CPU, same bridge, same firmware, same session. Therefore the CPU-side receive path is healthy and the WAN fault is specific to internal switch0 port1 / eth0 / PHY7.",
+      "r1_net_c_candidate": "Likely trigger: OEM dp1 declares qcom,link-poll=<1>, absent on R1. The property has NO consumer in the QDSK 5.4 tree, suggesting the 5.4 nss-dp no longer implements the OEM 4.4 link-up/speed programming. Fix may need an explicit clk_set_rate to 125 MHz rather than a DTS property alone.",
+      "probe_g_findings": {
+        "oem_clocks": "gmac0_rx/tx_clk_src both parent to gephy_gcc_tx at 125 MHz",
+        "oem_125m_path": "adpt_mp_uniphy_mode_configure() -> ssdk_mp_raw_clock_set(125M)",
+        "q sdk_125m_path": "identical source present in qca-ssdk 11.5",
+        "gate": "if (uniphy_mode_new != uniphy_mode_old) in adpt_mp_portctrl.c:919",
+        "hypothesis": "mac_mode already 0xf -> configure skipped -> raw clock set never runs -> RCG stays xo/24MHz",
+        "register_read": "NOT_MEASURABLE on OEM (no DEVMEM, regmap debugfs read fails, no 4.4 source)",
+        "next": "PHASE F/G need slot switch to R1-NET-B"
+      },
+      "fix_ready": {
+        "ready_for_r1_net_c_source_fix": "YES",
+        "scope": "SSDK init / port-interface-mode sequencing",
+        "preferred": "restore the vendor 125 MHz path (make adpt_mp_uniphy_mode_configure run)",
+        "rejected": "hard-coded clk_set_rate(125000000); DTS change (DT already matches the OEM)",
+        "rate_coverage": "restoring the path preserves 100M/10M correctness"
+      },
+      "release_blocker": false,
+      "closed_by": "R1-NET-D",
+      "closed_utc": "2026-09-19",
+      "closure_evidence": "rt3000-close-work/evidence/R1_NET_D_INSTALL_20260919/R1_NET_D_ACCEPTANCE.md",
+      "closure_note": "RESOLVED ON HARDWARE. The recorded root_cause above is SUPERSEDED - it named the NET-C state-aliasing gate, which the R1-NET-C live install refuted (module hash verified present and running, clock tree unchanged). The authoritative root cause is: WAN is SSDK port 1 / GMAC0 / PHY-managed NON-force port, and the MP adapter bound ssdk_port_speed_clock_set() to `force_port == A_TRUE`, so GMAC0's speed clock was never programmed and the RCG stayed on xo / 24 MHz. Proven live by R1-PROBE-I (port 1: no clock setter; port 2: setter called, 125 MHz, ret=0). Fixed by R1-NET-D, which decouples speed-clock programming from the force-only gate and removes the duplicate runtime clock call.",
+      "verified_after_fix": {
+        "gmac0_rx_clk_src": "P_GEPHY_TX / 125000000",
+        "gmac0_tx_clk_src": "P_GEPHY_TX / 125000000",
+        "wan_link": "1000baseT full-duplex",
+        "eth0_rx_packets": 717,
+        "eth0_rx_errors": 0,
+        "eth0_rx_crc_errors": 0,
+        "RxGoodByte": 75397,
+        "RxFcsErr": 0,
+        "RxFragment": 0,
+        "dhcp": "PASS 192.0.2.2/24",
+        "default_route": "default via 192.0.2.1 dev eth0",
+        "gateway_reachable": "YES",
+        "internet_reachable": "YES"
+      }
+    },
+    {
+      "id": "RT3-B003",
+      "severity": "P0",
+      "title": "Root password unset while SSH password authentication is enabled",
+      "area": "SECURITY",
+      "impact": "Anyone who can reach the device on the LAN - or over Wi-Fi once radios are enabled - can log in as root with no password. Remote root compromise on the local segment.",
+      "evidence": [
+        "Console banner: 'There is no root password defined on this device!'",
+        "dropbear.@dropbear[0].PasswordAuth='on'",
+        "dropbear.@dropbear[0].RootPasswordAuth='on'",
+        "dropbear listening: /usr/sbin/dropbear -F -P /var/run/dropbear.1.pid -p 22 -K 300 -T 3"
+      ],
+      "root_cause": "Product image ships without a root password set, and does not force key-only auth.",
+      "suggested_fix_area": "image defaults / firstboot flow: force password set or disable password auth",
+      "blocking": true
+    },
+    {
+      "id": "RT3-B004",
+      "severity": "P1",
+      "title": "NSS hardware offload not provisioned - ECM module absent",
+      "area": "NSS",
+      "impact": "Hardware flow offload is the principal performance feature of this SoC. Without ECM, routing is CPU-bound rather than hardware-accelerated, so throughput on this 2-core Cortex-A7 will be far below the platform's capability.",
+      "evidence": [
+        "kmod-qca-nss-ecm NOT present in opkg list-installed",
+        "/sys/kernel/debug/ecm does not exist ('No such file or directory')",
+        "ls /lib/modules/$(uname -r)/ -> only qca-nss-dp.ko, qca-nss-drv.ko, qca-nss-wifi-meshmgr.ko",
+        "xt_FLOWOFFLOAD refcount 0; /proc/net/nf_flowtable absent",
+        "no nss*/ecm* netdevices in /sys/class/net"
+      ],
+      "measured_state": {
+        "NSS_INITIALIZED": "YES - firmware 781856 B copied to NSS core, 3 modules live, debugfs populated, DMA rings allocated",
+        "NSS_OFFLOAD_PROVEN": "NO"
+      },
+      "caveat": "Whether ECM is intended to ship and is simply missing, or was deliberately omitted, is a design question this baseline records but does not answer.",
+      "suggested_fix_area": "package selection: add kmod-qca-nss-ecm and wire up the offload path",
+      "blocking": false
+    },
+    {
+      "id": "RT3-B005",
+      "severity": "P1",
+      "title": "board.json describes a 6-port switch (switch1) the kernel never registers; live switch is 3-port switch0",
+      "area": "NETWORK",
+      "impact": "The intended LAN/WAN VLAN port grouping is never applied to hardware, so VLAN separation between LAN and WAN ports is not enforced at the switch level.",
+      "evidence": [
+        "swconfig list -> 'Found: switch0 - QCA MP'",
+        "/etc/board.json -> \"switch\": { \"switch1\": { ... } }",
+        "/etc/config/network -> network.@switch[0].name='switch1'",
+        "swconfig dev switch1 show -> 'Failed to connect to the switch'",
+        "swconfig dev switch0 show -> enable_vlan: 0 despite enable_vlan='1' in UCI",
+        "only ports 0,1,2 exist at runtime while board.json configures 1,2,3,4,5,6; port 6 returns '???' for all attributes"
+      ],
+      "root_cause": "NOT a simple rename typo. Device tree declares TWO switch instances: ess-switch@0x39c00000 (qcom,ess-switch-ipq50xx, access=local bus) and ess-switch1@1 (qcom,ess-switch-qca83xx, access=mdio). SSDK logs 'ess-switch dts node number: 2' and 'switch node is qca83xx!' but registers ONLY the first, so swconfig exposes a single 'switch0 - QCA MP' with 3 ports (cpu @ 0) and 128 vlans.",
+      "suggested_fix_area": "Add the MDIO child node + switch_mac_mode, and rewrite the h3c,rt3000 board.d/02_network entry to match the OEM model.",
+      "blocking": false,
+      "probe_a_findings": {
+        "rename_alone": "INSUFFICIENT",
+        "rename_effect_measured": "enable_vlan 0->1 and Port 1 pvid 0->2 (config reached hardware for the first time)",
+        "rename_limitation": "swconfig dev switch0 vlan 1 set ports '2 3 4 6' -> 'Failed to set attribute: Unspecific failure'; vlan 1/2 port maps remain empty",
+        "empirical_port_map": {
+          "0": "cpu (link down, all MIB zero)",
+          "1": "eth0 (TxByte 249468 ~ eth0 tx_bytes 248776)",
+          "2": "eth1 (TxByte 6168 == eth1 tx_bytes 6168)"
+        },
+        "second_switch_state": "ess-switch1 present in DT but unregistered; no platform device/driver binding; only mdio device is 88000.mdio:07 (phy_id 0x004dd0c0); switch_cpu_bmp/switch_lan_bmp/switch_wan_bmp all empty"
+      },
+      "probe_b_findings": {
+        "root_cause": "FOUND",
+        "rejected_at": "regi_init[3828] 'qca-ssdk module init, no device found!'",
+        "explanation": "ess-switch1@1 is parsed fully (compatible/bitmaps/initvals/reset_gpio all correct) but registration never runs because no device is probed on mdio@90000. Missing: an MDIO child device node, and the switch_mac_mode property.",
+        "oem_model": "OEM defines switch0 (internal, enable_vlan=1) and switch1 (external QCA8337, enable_vlan=0, ports '6t 2 3 4') as SEPARATE switches; LAN is a Linux bridge on eth1 and WAN is eth0 direct.",
+        "r01_error": "board.d/02_network models the front panel as a single 6-port VLAN switch named switch1 and never defines the external switch.",
+        "hw_presence_proven": "NO",
+        "bitmap_correction": "Probe A wrongly reported the switch_*_bmp properties as empty; they are populated and correct (cpu=0x40, lan=0x1e, wan=0x00)."
+      },
+      "probe_c_findings": {
+        "determination": "MDIO_READ_PATH_ESTABLISHED_EXTERNAL_SWITCH_ABSENT",
+        "control_bus": "mdio@88000 answered at phy 7 (0x004d/0xd0c0) - method proven",
+        "target_bus": "mdio@90000 - all 32 addresses returned 0x0000/0x0000, reads_ok=32",
+        "classification": "BUS_VALID_BUT_NO_DEVICES_RESPOND",
+        "userspace_path": "SIOCGMIIREG refused with EINVAL (driver has no phydev on nss-dp netdevs)",
+        "gpio26_state": "undriven input reading low; DT declares it as active-high reset for ess-switch1",
+        "hw_presence": "NOT PROVEN either way; chip may be held in reset, unpowered, or absent",
+        "scope_change": "the external switch is not a prerequisite for basic LAN/WAN function; switch0 carries the working datapath"
+      },
+      "probe_d_findings": {
+        "reset_semantics": "PROVEN FROM SOURCE: assert LOW 200ms, release HIGH 10ms (SSDK qca_ar8327_gpio_reset; raw-level API)",
+        "reset_executed": "YES - one pulse on global gpio 491 (pin index 26), reached deasserted/high, then freed",
+        "mdio90000_after": "reads_ok=32 valid_devices=0 (unchanged)",
+        "control_after": "mdio@88000 phy7 still VALID_RESPONSE=YES",
+        "root_cause": "CIRCULAR DEADLOCK: chip in reset cannot answer MDIO -> version unreadable -> chip_type never set to CHIP_ISISC -> reset never released. The qca83xx DT branch (ssdk_dts.c:1110) is an empty stub that sets nothing.",
+        "reset_not_the_cause": true,
+        "board_absence_confidence": "HIGHER (not proven)",
+        "gpio_numbering": "debugfs gpio26 is a PIN INDEX; global gpio = 491 (base 465)"
+      }
+    },
+    {
+      "id": "RT3-B006",
+      "severity": "P1",
+      "title": "No web management interface - LuCI not installed",
+      "area": "PRODUCT_UX",
+      "impact": "The only management paths are serial console and SSH. Typical consumer users have no serial adapter and expect a browser UI; the device is effectively unmanageable for them.",
+      "evidence": [
+        "no uhttpd, no nginx, no rpcd process running",
+        "opkg list-installed | grep -i luci -> no results",
+        "/www/cgi-bin/ contains no usable web content"
+      ],
+      "suggested_fix_area": "package selection: install luci + uhttpd",
+      "blocking": false
+    },
+    {
+      "id": "RT3-B007",
+      "severity": "P1",
+      "title": "Wi-Fi APs default to open networks (encryption=none)",
+      "area": "SECURITY",
+      "impact": "Even once the radios are enabled, both 2.4 GHz and 5 GHz APs would broadcast an unencrypted, open network joined to the LAN bridge. All client traffic on the air is exposed.",
+      "evidence": [
+        "wireless.default_radio0.encryption='none', ssid='OpenWrt', network='lan'",
+        "wireless.default_radio1.encryption='none', ssid='OpenWrt', network='lan'"
+      ],
+      "root_cause": "Product image ships no default WPA2/WPA3 passphrase and no per-unit PSK provisioning flow.",
+      "suggested_fix_area": "wireless defaults plus a first-boot provisioning step",
+      "blocking": false,
+      "conditional": "Becomes user-visible the moment RT3-B001 is fixed."
+    },
+    {
+      "id": "RT3-B008",
+      "severity": "P1",
+      "title": "No time synchronisation - clock stuck at image build date",
+      "area": "PRODUCT_UX",
+      "impact": "The system clock reads 'Mon Apr 17 13:27:22 UTC 2023', the image build time. Log timestamps, DHCP lease times, TLS certificate validation and any scheduled task are therefore wrong. Log correlation and any time-dependent security check become unreliable.",
+      "evidence": [
+        "date -> 'Mon Apr 17 13:27:22 UTC 2023'",
+        "ntpd running with pool.ntp.org servers but cannot reach them",
+        "/etc/resolv.conf points at 127.0.0.1 and there are no upstream resolvers"
+      ],
+      "root_cause": "Consequence of RT3-B002 (no WAN). Not an independent NTP defect - ntpd is configured and running correctly.",
+      "dependency": "Blocked by RT3-B002",
+      "blocking": false
+    },
+    {
+      "id": "RT3-B009",
+      "severity": "P1",
+      "title": "No DNS resolution to the internet",
+      "area": "PRODUCT_UX",
+      "impact": "Clients cannot resolve external names, which is the same user-visible failure as having no internet.",
+      "evidence": [
+        "/etc/resolv.conf -> nameserver 127.0.0.1, nameserver ::1",
+        "dnsmasq has no upstream resolvers because WAN has no lease",
+        "odhcpd/odhcp6c errors: 'Address not available'"
+      ],
+      "root_cause": "Consequence of RT3-B002 (no WAN). LAN-side DHCP/DNS service itself is correctly configured.",
+      "dependency": "Blocked by RT3-B002",
+      "blocking": false
+    },
+    {
+      "id": "RT3-B010",
+      "severity": "P2",
+      "title": "/sys/class/leds is empty - no LED support in the device tree",
+      "area": "BOARD",
+      "impact": "No status indication whatsoever: no power, WAN, LAN or Wi-Fi LEDs. Users cannot tell at a glance whether the device is booting, linked or faulted. Cosmetic and diagnostic only - no routing function depends on it.",
+      "evidence": [
+        "ls /sys/class/leds/ -> directory exists, exit 0, zero entries",
+        "ssdk_dt_parse_led[988]:INFO:current dts led_source_num is 0",
+        "/sys/bus/platform/drivers/leds-gpio has no bound device (only bind/unbind/uevent)",
+        "find /proc/device-tree -iname '*led*' returns nothing - no leds/gpio-leds node at all"
+      ],
+      "root_cause": "The running DTB contains no LED bindings. The leds-gpio driver and LED class infrastructure are present and functional but have nothing to attach to. NOT a kernel or driver defect, and NOT a permissions problem.",
+      "suggested_fix_area": "device tree: add LED nodes",
+      "fixes_applied": false,
+      "note": "Diagnosis only. No DTS change was made, per instruction."
+    },
+    {
+      "id": "RT3-B011",
+      "severity": "P2",
+      "title": "No button support - reset/WPS button not wired to userspace",
+      "area": "BOARD",
+      "impact": "No input device exists for any physical button. Reset/WPS behaviour is unverified, which has recovery and serviceability implications if a user needs to reset the device.",
+      "evidence": [
+        "/sys/bus/platform/drivers/gpio-keys-polled loaded but bound to no device",
+        "/proc/bus/input/devices is empty",
+        "/sys/class/input/ contains no devices",
+        "find /proc/device-tree -iname '*key*' -o -iname '*button*' returns nothing"
+      ],
+      "root_cause": "Same as RT3-B010 - no keys/button nodes in the running DTB.",
+      "suggested_fix_area": "device tree: add gpio-keys nodes",
+      "fixes_applied": false,
+      "escalation_note": "Promote to P1 for serviceability if a physical reset is part of the documented recovery procedure."
+    },
+    {
+      "id": "RT3-B012",
+      "severity": "P2",
+      "title": "No legitimate per-unit LAN/Wi-Fi MAC exists on this device",
+      "area": "BOARD",
+      "impact": "br-lan and eth1 carry c2:3a:b8:e7:91:ef, a fallback MAC. If it is regenerated each boot the LAN MAC changes every reboot, breaking DHCP reservations and client ARP caches.",
+      "evidence": [
+        "eth1 and br-lan MAC = c2:3a:b8:e7:91:ef (first octet 0xc2 has the LAA bit set)",
+        "kernel: 'GMAC2(8e890580) Invalid MAC@ - using c2:3a:b8:e7:91:ef'",
+        "U-Boot: 'eth0 MAC Address from ART is not valid', 'eth1 MAC Address from ART is not valid'",
+        "eth0 has a plausible H3C OUI: 00:11:22:33:44:55"
+      ],
+      "root_cause": "PROVEN. The ART partition is byte-identical to the generic Qualcomm reference caldata shipped in the firmware package: mtd13@0x1000 (1024 B) sha256 == /lib/firmware/ath11k/IPQ5018/hw1.0/caldata.bin sha256 == c2b961896eb4440ecb1a416cd77b284a9efab8d0c7dff9e2f6b2a3ed8709e499. Its MAC entries are the Qualcomm lab filler pattern (00:03:7f OUI, counter 0x123456..0x12345b). No per-unit MAC data exists anywhere on the unit.",
+      "open_question": "Stability across consecutive boots is UNVERIFIED - a two-boot comparison is required.",
+      "suggested_fix_area": "Manufacturing data (populate ART/ethaddr1 per unit) or a deliberately chosen deterministic derivation policy. Cannot be invented in source alone.",
+      "probe_a_findings": {
+        "mac_source": "UBOOT_ENV_ETHADDR_ONLY",
+        "wan_mac_source": "U-Boot env ethaddr = 00:11:22:33:44:55 (real H3C OUI, live on eth0, stable across sessions) -> LEGITIMATE",
+        "lan_mac_source": "U-Boot env ethaddr1 = 00:11:22:33:44:56 -> PLACEHOLDER, kernel rejects it",
+        "wifi24_mac_source": "firmware BDF 00:03:7f:12:19:19 -> lab filler",
+        "wifi5_mac_source": "firmware BDF 00:03:7f:12:78:78 -> lab filler",
+        "other_sources_exhausted": [
+          "soc serial_number=0",
+          "cpuinfo Serial=0000000000000000",
+          "no local-mac-address or mac-address property anywhere in /proc/device-tree",
+          "permaddr=NONE on eth0/eth1/br-lan/wlan0/wlan1",
+          "no MAC strings in mtd15 OEM rootfs",
+          "pdt_data mtd17/18 are bare UBI# headers"
+        ],
+        "mac_fix_proven": "PARTIAL - eth0 identity confirmed valid and stable; LAN/Wi-Fi MAC has no legitimate source"
+      }
+    },
+    {
+      "id": "RT3-B013",
+      "severity": "P2",
+      "title": "ART partition reads as erased on this unit",
+      "area": "BOARD",
+      "impact": "Per-unit factory data (notably Ethernet MAC) appears unpopulated, which is the upstream cause of RT3-B012. Wi-Fi calibration is NOT affected.",
+      "evidence": [
+        "dd if=/dev/mtd13 bs=1 count=64 -> all 0xff",
+        "U-Boot reports 'MAC Address from ART is not valid' for both eth0 and eth1"
+      ],
+      "not_affected": "Wi-Fi caldata comes from /lib/firmware (caldata.bin / caldata_1.bin, 131072 B each) and both phys report 'qmi caldata downloaded: type: 2'.",
+      "note": "mtd13 (0:ART) is read-only in the running kernel per /proc/cmdline; no write was attempted."
+    },
+    {
+      "id": "RT3-B014",
+      "severity": "P2",
+      "title": "QDSS trace config load failure produces misleading -12 error",
+      "area": "WIFI",
+      "impact": "Log noise only. Two error lines per boot that look alarming ('Failed to download QDSS config to FW: -12') and could send future debugging down the wrong path.",
+      "evidence": [
+        "ath11k: Direct firmware load for .../qdss_trace_config.bin failed with error -2 (three paths tried)",
+        "ath11k: qmi failed to load QDSS config: qdss_trace_config.bin",
+        "ath11k: Failed to download QDSS config to FW: -12",
+        "ls /lib/firmware/qdss_trace_config.bin -> No such file or directory; find -iname '*qdss*' -> nothing"
+      ],
+      "classification": "OPTIONAL TRACING NOISE",
+      "explicitly_not": [
+        "memory issue",
+        "datapath-impacting bug",
+        "the cause of the radios being down"
+      ],
+      "reasoning": "-2 is ENOENT (file simply not shipped); -12 is the downstream sysfs-fallback symptom, not independent OOM evidence (MemAvailable 79188 kB, zero OOM events); both phys complete caldata download and firmware version reporting, which occur later on the same init path. QDSS is a debug trace facility and does not gate the datapath.",
+      "suggested_fix_area": "ship the trace file, or suppress the fallback and log at debug level"
+    },
+    {
+      "id": "RT3-B015",
+      "severity": "P2",
+      "title": "Timezone defaults to UTC",
+      "area": "PRODUCT_UX",
+      "impact": "Logs and any time display are in UTC rather than local time, which is confusing for the target market.",
+      "evidence": [
+        "system.@system[0].timezone='UTC'",
+        "/etc/TZ = UTC"
+      ],
+      "suggested_fix_area": "system defaults: set the intended regional timezone"
+    },
+    {
+      "id": "RT3-B016",
+      "severity": "P2",
+      "title": "No ttyd - no web terminal",
+      "area": "PRODUCT_UX",
+      "impact": "Browsers cannot reach a terminal. Lower impact than missing LuCI, since LuCI is the primary expectation and SSH covers power users.",
+      "evidence": [
+        "no ttyd process",
+        "no /etc/init.d/ttyd"
+      ],
+      "suggested_fix_area": "package selection: install ttyd"
+    },
+    {
+      "id": "RT3-B017",
+      "severity": "P2",
+      "title": "Debug visibility gaps and NAND/training log noise",
+      "area": "SYSTEM",
+      "impact": "Slows future debugging rather than affecting users directly.",
+      "evidence": [
+        "/proc/slabinfo is absent ('cat: can't open /proc/slabinfo: No such file or directory'), so per-cache slab analysis is impossible; only the aggregate Slab figure in /proc/meminfo is available",
+        "'qcom-nandc 79b0000.qpic-nand: failed to enable serial training' and 'Serial training partition not found' at boot (no practical impact: 0 bad PEBs)",
+        "'qca-mdio 88000.mdio/90000.mdio: Could not find phy-reset-gpio' (links still come up)",
+        "'qcom-tsens 4a9000.thermal-sensor: tsens device is not enabled' yet four zones report live values",
+        "coresight-tmc/coresight-stm probe deferrals",
+        "ath11k DT coexistence params absent: qcom,pta_num, qcom,coex_mode, qcom,coex-algo, qcom,bt-active-time, qcom,bt-priority-time, qcom,pta-priority - impact UNASSESSED"
+      ],
+      "suggested_fix_area": "debug config plus DT additions",
+      "note": "Grouped as one polish item; each sub-item is individually harmless."
+    },
+    {
+      "id": "RT3-B018",
+      "severity": "CLOSED",
+      "title": "External QCA8337 never registers: missing phy-reset-gpio on mdio@90000 (LAN jacks dead, WAN RX dead)",
+      "area": "NETWORK",
+      "impact": "Plugging a PC or switch into LAN1, LAN2 or LAN3 produces no link. Those three ports provide no wired connectivity whatsoever.",
+      "evidence": [
+        "LAN1/LAN2/LAN3 each measured with a real cable and live partner: PHY BMSR=0x7949 link_status=0 ANLPAR=0x0000",
+        "12s autoneg settle plus full scan of BOTH MDIO buses (8 addresses each) before each verdict",
+        "eth0/eth1 rx_packets 0->0 across 20-25s windows",
+        "mdio@90000 (external QCA8337 bus) has NO responding PHY during any insertion",
+        "swconfig dev switch1 -> 'Failed to connect to the switch' (never registered)"
+      ],
+      "root_cause": "ROOT CAUSE PROVEN by the OEM control experiment. The OEM DTB declares phy-reset-gpio = <&tlmm 26 0> on mdio@90000; the R1-NET-A DTB omits it. Without it the qca-mdio driver never releases the QCA8337 from reset, so the chip cannot answer MDIO (reads 0xffff), chip_ver_get() cannot identify it, chip_type is never set to CHIP_ISISC, qca_ar8327_gpio_reset() and ssdk_switch_register() never run, and SSDK reports 'no device found'. This kills the LAN PHYs AND leaves the internal switch's CPU-port forwarding unprogrammed, which is why WAN links and transmits but receives nothing.",
+      "probe_e_findings": {
+        "measurement_method": "PHY BMSR ground truth",
+        "swconfig_trustworthy": false
+      },
+      "suggested_fix_area": "Bring up the external QCA8337 (DTS child node + switch_mac_mode + the chip-type deadlock), or document the LAN jacks as non-functional.",
+      "probe_r1neta_findings": {
+        "mdio1_pinmux_active": "YES (verified in /sys/kernel/debug/pinctrl)",
+        "electrical_change": "0x0000 -> 0xffff (bus went from dead to alive-but-empty)",
+        "external_switch_registered": "NO",
+        "mdio90000_responders": "NONE",
+        "leading_hypothesis": "QCA8337 not populated / not powered",
+        "next_step": "physical board verification + scope on MDIO lines"
+      },
+      "status": "CLOSED",
+      "oem_control_evidence": {
+        "oem_mdio90000_responders": "3 (addr 0,1,2 @ 0x004dd036)",
+        "oem_external_switch_registered": "YES (switch1: QCA AR8337, 7 ports)",
+        "oem_chip_version": "0x1302",
+        "oem_gpio26": "out 0 (driven)",
+        "oem_wan_rx": "1867 packets / 302206 bytes / 0 errors",
+        "oem_wan_dhcp": "PASS (192.0.2.2/24 + default route)",
+        "hardware_proven_good": true
+      },
+      "fix": "add phy-reset-gpio = <&tlmm 26 0> to &mdio1 (single-property DTB change)",
+      "fix_status": "FIX BUILT AS R1-NET-B - awaiting device acceptance",
+      "fix_candidate": {
+        "candidate": "r1-net-b.ubi",
+        "sha256": "f1526294f29abd161dd80470f4a29e8b95c137f14e7c03b8e12f38b2ca88dd6f",
+        "delta": "phy-reset-gpio = <&tlmm 26 0> added to &mdio1; ethernet-phy@3 removed",
+        "driver_support_confirmed": "YES - mdio-qca.c qca_phy_reset() reads phy-reset-gpio; assert LOW 100ms then release HIGH 100ms; runs before of_mdiobus_register()",
+        "offline_validation": "PASS"
+      },
+      "r1_net_b_verification": {
+        "external_switch_registered": "YES - switch1: QCA AR8337, 7 ports",
+        "mdio90000_responders": "3 (addr 0,1,2 @ phy_id 0x004dd036)",
+        "chip_version": "0x1302",
+        "ssdk_init": "succeeded",
+        "LAN1": "WORKING (switch1 port2, phy1) - DHCP served, RxFcsErr=0",
+        "LAN2": "WORKING (switch1 port3, phy2) - RxGoodByte 1036735, RxFcsErr=0",
+        "LAN3": "WORKING (switch1 port4, phy3) - RxGoodByte 135088, RxFcsErr=0",
+        "fix": "phy-reset-gpio = <&tlmm 26 0> added to &mdio1 (single-property DTB change)"
+      },
+      "release_blocker": false,
+      "blocking": false,
+      "closed_by": "R1-NET-B",
+      "closed_utc": "2026-09-18",
+      "closure_evidence": "rt3000-close-work/evidence/R1_NET_B_INSTALL_20260918/R1_NET_B_INSTALL_ACCEPTANCE.md",
+      "closure_note": "RESOLVED. R1-NET-B added phy-reset-gpio = <&tlmm 26 0> on mdio@90000; the QCA8337 then registered (chip version 0x1302), the three external PHYs answered on mdio@90000 (phy_id 0x004dd036) and LAN1/LAN2/LAN3 were hardware-accepted. R1-NET-D inherits this."
+    },
+    {
+      "id": "RT3-B019",
+      "severity": "P2",
+      "title": "swconfig enable_eee triggers a kernel WARNING (workqueue __flush_work)",
+      "area": "NETWORK",
+      "impact": "Setting swconfig dev switch0 port N set enable_eee <v> raises a kernel WARNING and a call trace. No panic and no instability observed, but it indicates an SSDK workqueue lifecycle bug.",
+      "evidence": [
+        "WARNING: CPU: 0 PID: 2347 at kernel/workqueue.c:3040 __flush_work+0x21c/0x220",
+        "adpt_mp_port_interface_eee_cfg_set [qca_ssdk] -> qca_ar8327_sw_set_eee [qca_ssdk] -> swconfig_set_attr",
+        "panic=0, no OOM, link and system remained healthy"
+      ],
+      "suggested_fix_area": "SSDK adpt_mp_port_interface_eee_cfg_set workqueue handling"
+    },
+    {
+      "id": "RT3-RB002",
+      "severity": "P0",
+      "status": "HARDWARE_ACCEPTED",
+      "release_blocker": true,
+      "title": "rt3slot uses a fixed UBI image_seq as firmware identity",
+      "area": "FIRMWARE_IDENTITY",
+      "impact": "rt3slot identifies firmware by a fixed UBI image_seq. ubiformat CHANGES image_seq on every legitimate write, so the identity is not stable across a reflash. Any slot decision or comparison built on it can be wrong for a correctly-flashed image.",
+      "evidence": [
+        "rt3slot v2 (tools/rt3slot, 0e6499d4...) keys firmware identity on a fixed UBI image_seq",
+        "ubiformat rewrites image_seq as part of formatting - confirmed across every R1-NET install this project has performed",
+        "the R1-NET-C/B/D provenance work deliberately avoided using image_seq as an identity gate for exactly this reason, and used kernel/rootfs volume content hashes instead"
+      ],
+      "suggested_fix_area": "Replace image_seq with a stable content identity: a FIT/kernel hash, a manifest, or an equivalent content digest. Do NOT simply update the hardcoded image_seq constant.",
+      "fixes_applied": false,
+      "note": "Registered during network bring-up closure. Required before Product R1 ships.",
+      "fix": "stable content identity in package/rt3release; tests/rb002 13 assertions; image_seq dependency removed",
+      "hardware_acceptance": {
+        "date": "2026-09-19",
+        "flashed_kernel_identity": "PASS",
+        "flashed_rootfs_identity": "PASS",
+        "runtime_identity": "PASS_KERNEL_ONLY (honest scope)",
+        "image_seq_used_for_identity": "NO",
+        "image_seq_before": "0x2a967962",
+        "image_seq_after": "0x58c99d30",
+        "offline_suite": "13/13 PASS, IMAGE_SEQ_DEPENDENCY=NONE"
+      }
+    }
+  ],
+  "unproven_not_bugs": [
+    {
+      "item": "NSS offload",
+      "state": "NOT PROVEN",
+      "reason": "no ECM and no traffic environment; no PASS fabricated"
+    },
+    {
+      "item": "WAN DHCP lease",
+      "state": "NOT PROVEN",
+      "reason": "no upstream DHCP server on the bench"
+    },
+    {
+      "item": "LAN2/LAN3 physical mapping",
+      "state": "UNVERIFIED",
+      "reason": "requires a cable-pull test; not inferred from DTS per instruction"
+    },
+    {
+      "item": "MAC stability across boots",
+      "state": "UNVERIFIED",
+      "reason": "requires a two-boot comparison"
+    },
+    {
+      "item": "Reset button",
+      "state": "UNVERIFIED",
+      "reason": "no input device exists in the DTB"
+    },
+    {
+      "item": "Wi-Fi AP operation",
+      "state": "UNVERIFIED",
+      "reason": "radios disabled; none were enabled during baseline"
+    },
+    {
+      "item": "Memory headroom with Wi-Fi + NSS + LuCI/ttyd together",
+      "state": "NOT MEASURED",
+      "reason": "radios down and LuCI/ttyd not installed"
+    },
+    {
+      "item": "jffs2reset / overlay reset",
+      "state": "UNVERIFIED",
+      "reason": "destructive; forbidden this round"
+    },
+    {
+      "item": "Thermal under load",
+      "state": "NOT MEASURED",
+      "reason": "idle only (55-56 C)"
+    },
+    {
+      "item": "DHCP lease to a real LAN client",
+      "state": "NOT MEASURED",
+      "reason": "no client connected"
+    },
+    {
+      "item": "Firewall/NAT forwarding end-to-end",
+      "state": "UNVERIFIED",
+      "reason": "no WAN upstream"
+    }
+  ],
+  "top_3_next_fixes": [
+    {
+      "rank": 1,
+      "bug_ids": [
+        "RT3-B001",
+        "RT3-B007"
+      ],
+      "action": "Enable both radios and give them a secure default",
+      "why": "Single highest user-visible impact: with both radios disabled the device has no wireless at all, and the moment they are enabled they would be open networks. Clearing disabled='1' plus provisioning a WPA2/WPA3 PSK removes the largest functional gap and a security hole together.",
+      "risk": "Low. Config-only change in /etc/config/wireless; no DTS, no bootloader, no partition writes. Requires a memory measurement with radios up (see unproven item) before declaring done."
+    },
+    {
+      "rank": 2,
+      "bug_ids": [
+        "RT3-B002",
+        "RT3-B005"
+      ],
+      "action": "Make WAN actually work - fix the switch0/switch1 naming mismatch, then confirm a DHCP lease and default route",
+      "why": "Without a default route the device is not a router regardless of anything else. The switch naming mismatch is a concrete, reproducible config defect that also prevents the intended LAN/WAN VLAN separation from being enforced, so it is a strong suspect for the WAN jack never reaching the eth0 group.",
+      "risk": "Low-to-moderate. Start with the board.json/UCI switch name; verify with a cable-pull port test and an upstream DHCP server before concluding."
+    },
+    {
+      "rank": 3,
+      "bug_ids": [
+        "RT3-B003",
+        "RT3-B006"
+      ],
+      "action": "Close the unauthenticated root exposure and add a management UI",
+      "why": "The device currently accepts passwordless root SSH from the LAN, which is an active security exposure and easy to fix. LuCI is the other half: without it, the product is unmanageable for a normal user.",
+      "risk": "Low for the password policy. Installing LuCI/ttyd adds packages and needs the memory-headroom measurement first, since MemTotal is only 187 MB with 79 MB available and ~47 MB of unreclaimable Slab at idle."
+    }
+  ],
+  "probe_a_summary": {
+    "session": "RT3000_MACHINE_B_R1_FIX_PROBE_A",
+    "mode": "AUTONOMOUS",
+    "approach": "fully reversible non-persistent runtime changes; measure first; prove the fix",
+    "switch0_fix_proven": "NO_RENAME_ALONE_INSUFFICIENT",
+    "wan_datapath": "BLOCKED_PHY_RX_CORRUPTION",
+    "wan_dhcp": "WAN_ENVIRONMENT_NOT_AVAILABLE",
+    "mac_source": "UBOOT_ENV_ETHADDR_ONLY",
+    "mac_fix_proven": "PARTIAL",
+    "wifi_24g_runtime": "PASS",
+    "wifi_5g_runtime": "PASS",
+    "wifi_160_capable": "YES",
+    "wifi_160_runtime_proven": "YES",
+    "wifi_160_note": "hostapd applied vht_oper_chwidth=2 / he_oper_chwidth=2 with seg0_idx=50 at ch36; AP started at 160 MHz. No client association, so 160 MHz throughput NOT measured.",
+    "mem_available_before_kb": 75572,
+    "mem_available_after_radios_kb": 72332,
+    "mem_delta_kb": -3240,
+    "memory_risk": "LOW",
+    "oom": "NO",
+    "nss_initialized": "YES",
+    "ecm_present": "NO",
+    "nss_offload_proven": "NO",
+    "runtime_changes_reverted": "YES",
+    "no_uci_commit": "YES",
+    "no_overlay_write_by_test": "YES",
+    "selector_unchanged": "1/1",
+    "device_reboot": "0",
+    "device_writes": 0
+  },
+  "confirmed_r1_source_fixes": [
+    {
+      "rank": 1,
+      "fix": "Enable both radios (disabled='0') with a real default SSID",
+      "evidence": "both radios proven working as APs by runtime enable; cost ~3.2 MB",
+      "confidence": "PROVEN"
+    },
+    {
+      "rank": 2,
+      "fix": "Ship a secure wireless default (WPA2/WPA3, not encryption='none')",
+      "evidence": "with encryption='none' both APs are fully open onto the LAN bridge",
+      "confidence": "PROVEN"
+    },
+    {
+      "rank": 3,
+      "fix": "Fix switch/board-data definition - NOT a rename",
+      "evidence": "board.json describes a 6-port switch that never registers; live switch is 3-port switch0; rename made enable_vlan stick but VLAN port map still fails",
+      "confidence": "PROVEN defect, fix direction needs a design choice"
+    },
+    {
+      "rank": 4,
+      "fix": "Investigate and fix port-1 (WAN) RX signal integrity",
+      "evidence": "RxGoodByte=0 with RxFcsErr=25/RxFragment=15 while port 2 shows zero errors",
+      "confidence": "PROVEN defect, root cause upstream of software"
+    },
+    {
+      "rank": 5,
+      "fix": "Add kmod-qca-nss-ecm and wire the NSS offload path",
+      "evidence": "NSS initializes fully but ECM absent; offload unprovable without it",
+      "confidence": "PROVEN missing package"
+    },
+    {
+      "rank": 6,
+      "fix": "Establish a per-unit LAN/Wi-Fi MAC policy",
+      "evidence": "ART byte-identical to generic caldata; ethaddr1 placeholder; SoC serial 0; no DT MAC",
+      "confidence": "PROVEN defect, policy is a design decision"
+    },
+    {
+      "rank": 7,
+      "fix": "Register the second switch instance or remove it from DT",
+      "evidence": "ess-switch1@1 (qca83xx/mdio) parsed then abandoned; switch_*_bmp empty; likely the intended WAN path",
+      "confidence": "PROVEN defect, needs design intent"
+    },
+    {
+      "rank": 8,
+      "fix": "Add the missing MDIO child node and switch_mac_mode for ess-switch1@1, and correct the h3c,rt3000 board.d entry",
+      "evidence": "registration rejected at regi_init[3828] 'no device found'; DT node otherwise complete and correct",
+      "confidence": "PROVEN defect; runtime success not yet tested"
+    }
+  ],
+  "remaining_blockers": [],
+  "probe_b_summary": {
+    "schema": "rt3000-probe-b/v1",
+    "task": "RT3000_MACHINE_B_R1_PROBE_B_SWITCH_AND_MAC",
+    "session_utc": "2026-09-18",
+    "mode": "AUTONOMOUS",
+    "fixes_applied": 0,
+    "build_performed": false,
+    "evidence_dir": "rt3000-close-work/evidence/R1_PROBE_B_SWITCH_AND_MAC_20260918/",
+    "final_result": "EXTERNAL_SWITCH_REGISTRATION_ROOT_CAUSE_FOUND",
+    "phase_a_external_switch_registration": {
+      "qca8337_node_parsed": "YES",
+      "qca8337_registration_attempted": "YES",
+      "qca8337_registration_rejected_at": "regi_init[3828] 'qca-ssdk module init, no device found!'",
+      "reject_condition": "The qca83xx path parses the ess-switch1@1 DT node completely, runs ssdk_plat_init a second time, then finds no probed device to register. Registration never executes because the MDIO-side device probe produced nothing.",
+      "missing_config_or_property": [
+        "no PHY/switch child device node under mdio@90000",
+        "no switch_mac_mode property on ess-switch1@1"
+      ],
+      "log_sequence": [
+        "[ 9.170741] ssdk_switch_device_num_init[1210]:INFO:ess-switch dts node number: 2",
+        "[12.981952] ssdk_switch_register[1862]:INFO:Chip version 0xee",
+        "[13.009158] ssdk_dt_get_switch_node[1015]:INFO:ess-switch DT exist!",
+        "[13.015024] ssdk_dt_parse_access_mode[901]:INFO:switch_access_mode: mdio",
+        "[13.021033] ssdk_dt_parse_mac_mode[301]:INFO:mac mode doesn't exit!",
+        "[13.040557] ssdk_dt_parse_phy_info[611]:INFO:qcom,port_phyinfo DT doesn't exist!",
+        "[13.046886] ssdk_dt_parse_mdio[754]:INFO:mdio DT exist!",
+        "[13.054340] ssdk_dt_parse[1112]:INFO:switch node is qca83xx!",
+        "[13.059234] ssdk_plat_init start",
+        "[13.065431] regi_init[3828]:INFO:qca-ssdk module init, no device found!"
+      ],
+      "ess_switch1_node_properties_measured": {
+        "compatible": "qcom,ess-switch-qca83xx",
+        "device_id": 1,
+        "switch_access_mode": "mdio",
+        "mdio_bus": 13,
+        "mdio_bus_resolves_to": "mdio@90000 (phandle 13 verified)",
+        "reset_gpio": "flag=0x0e gpio=26 active-high",
+        "qca_ar8327_initvals": "present (8 words)",
+        "switch_cpu_bmp": "0x40 (bit 6 = CPU port)",
+        "switch_lan_bmp": "0x1e (bits 1,2,3,4 = LAN ports)",
+        "switch_wan_bmp": "0x00",
+        "switch_mac_mode": "ABSENT",
+        "status": "ABSENT (not disabled - enabled by default)"
+      },
+      "probe_a_correction": "Probe A reported switch_cpu_bmp/switch_lan_bmp/switch_wan_bmp as empty. That was a tooling artifact. Re-read from the live DT they are fully populated and correct: cpu=0x40, lan=0x1e, wan=0x00."
+    },
+    "phase_b_oem_vs_r01": {
+      "oem_external_switch_topology": "ess-switch1 over MDIO, reset_gpio 26, VLANs DISABLED (enable_vlan=0), acting as a port-expander whose CPU port 6t uplinks to eth1. LAN = Linux bridge on eth1. WAN = eth0 direct.",
+      "r01_external_switch_topology": "DT node present but never registered ('no device found'). UCI/board.json instead model a fictitious 6-port VLAN switch named switch1, colliding with the name the OEM reserved for the external chip.",
+      "critical_delta": "switch_mac_mode + MDIO child node missing (blocks registration); plus an R0.1-authored board.d/02_network entry that mis-models the front panel as a 6-port VLAN switch.",
+      "oem_network_config_evidence": {
+        "config_switch_switch0": "enable_vlan=1 (internal QCA MP)",
+        "config_switch_switch1": "reset=1, enable_vlan=0 (external QCA8337 - VLANs OFF)",
+        "config_switch_vlan_lanport1": "device=switch1 vlan=1 ports='6t 2 3 4'",
+        "config_interface_lan": "bridge on eth1, 203.0.113.1",
+        "config_interface_wan": "eth0, proto=dhcp"
+      },
+      "r01_board_d_02_network": {
+        "path": "/etc/board.d/02_network",
+        "h3c_rt3000_entry": "ucidef_add_switch \"switch1\" \"6u@eth1\" \"5u@eth0\" \"2:lan:1\" \"3:lan:2\" \"4:lan:3\" \"1:wan\"",
+        "comment_claims": "RT3000 front panel (frozen G4C1 evidence): LAN1=switch port2, LAN2=port3, LAN3=port4, WAN rides the internal GE PHY path (eth0), CPU=port6",
+        "assessment": "R0.1-authored and incorrect: models the front panel as a 6-port VLAN switch named switch1"
+      }
+    },
+    "phase_c_hw_identification": {
+      "external_switch_hw_proven": "NO",
+      "why_not_proven": [
+        "no MDIO read tool on the device (mdio/phytool/mii-tool/ethtool all absent)",
+        "driver never probed the bus, so no cached chip ID and no ssdk_switch_register for it",
+        "no device node under mdio@90000, so the kernel never enumerated anything there"
+      ],
+      "mdio_buses": [
+        "88000.mdio",
+        "90000.mdio",
+        "fixed-0"
+      ],
+      "mdio_devices_total": [
+        "88000.mdio:07 (phy_id 0x004dd0c0)"
+      ],
+      "mdio90000_children": [],
+      "swconfig_list": "Found: switch0 - QCA MP",
+      "swconfig_switch0": "QCA MP(QCA MP), ports: 3 (cpu @ 0), vlans: 128",
+      "swconfig_switch1": "Failed to connect to the switch",
+      "ess_ssdk_driver": "loaded, bound to no device",
+      "mdio_register_writes": 0
+    },
+    "phase_d_wan_fcs": {
+      "wan_fcs_control_result": "NOT_RETESTED_THIS_ROUND",
+      "reason": "no cable/upstream-port change reported; identical setup would reproduce identical result",
+      "carried_forward": {
+        "port1_link": "up 1000baseT full-duplex",
+        "port1_RxFcsErr": 25,
+        "port1_RxFragment": 15,
+        "port1_RxGoodByte": 0,
+        "eth0_rx_packets": 0,
+        "eth0_tx_packets": 741
+      },
+      "new_hypothesis": "the WAN jack may be wired through the unregistered external QCA8337 rather than switch0 port 1; if so the RX corruption and the registration failure are the SAME defect"
+    },
+    "phase_e_mac_policy": {
+      "oem_mac_policy": "OEM_DERIVATION_RECOVERED",
+      "policy_actually_recovered": "the OEM performs NO runtime derivation - it inherits kernel/BDF defaults",
+      "factory_mac_source": "U-Boot env ethaddr (mtd10 APPSBLENV) = 00:11:22:33:44:55",
+      "lan_mac_rule": "no independent LAN MAC provisioned; kernel falls back to random LAA",
+      "wan_mac_rule": "uses factory ethaddr directly (eth0 == ethaddr verbatim)",
+      "wifi24_mac_rule": "BDF-derived from generic caldata (00:03:7f OUI), not per-unit",
+      "wifi5_mac_rule": "BDF-derived from generic caldata (00:03:7f OUI), not per-unit",
+      "setmac_tool": {
+        "path": "/sbin/setmac (OEM rootfs)",
+        "size_bytes": 3638,
+        "type": "shell script - Qualcomm reference manufacturing tool",
+        "origin": "IPQ806x reference (. /lib/ipq806x.sh; board names DB149/AP148/AP145/STORM)",
+        "algorithm": "md5sum of a unique SEED(boardID) injected at byte offsets 0/2/4 of each 6-byte group; fixed OUI 00:03:7f; writes to 0:ART; BT_OFFSET=64",
+        "callers": [
+          "lib/libmwopenrpc.so",
+          "bin/mainproc",
+          "usr/sbin/Qcmbr",
+          "usr/sbin/qcatestcmd"
+        ],
+        "is_boot_path": false,
+        "explains_art_contents": true,
+        "explains_runtime_macs": false
+      },
+      "decisive_negative_evidence": {
+        "product_ini": "/etc/config/RT3000/product_RT3000.ini",
+        "Config_Support_CfgBr0mac": "no",
+        "Config_Support_Wlan0SameasBr0": "no",
+        "mtd_get_mac_calls_in_boot_path": "none",
+        "macaddr_calls_in_boot_path": "none",
+        "macadd_add_setbit_la_defined_but_uncalled": true
+      },
+      "conclusion": "There is no OEM algorithm to recover because the OEM never derived MACs. It shipped the same defect: only eth0 is correct; LAN and Wi-Fi fall back to kernel/BDF. This is a manufacturing-data gap affecting BOTH firmware generations, not an R0.1 regression.",
+      "proposed_policy_not_implemented": {
+        "base": "factory ethaddr retained as primary Ethernet identity",
+        "others": "deterministic locally-administered MAC derived from factory ethaddr + role domain separator",
+        "requirements": [
+          "stable across reboot",
+          "unique per role",
+          "multicast bit = 0",
+          "local bit = 1"
+        ],
+        "forbidden": [
+          "runtime-random LAA",
+          "fabricated H3C 58:b3:8f globally-administered addresses"
+        ]
+      }
+    },
+    "switch_source_fix_candidate": [
+      "Add the missing MDIO child device node under mdio@90000 for the QCA8337 so the qca83xx driver has a device to probe",
+      "Add switch_mac_mode to ess-switch1@1 (currently absent; parser logs 'mac mode doesn't exit!' three times)",
+      "Correct /etc/board.d/02_network for h3c,rt3000: LAN = Linux bridge on eth1, WAN = eth0 direct, external switch1 = port-expander with enable_vlan=0; stop reusing the name switch1 for the internal switch",
+      "Do NOT simply rename switch1->switch0 (Probe A already disproved this)"
+    ],
+    "remaining_unknown": [
+      "is the QCA8337 physically populated (EXTERNAL_SWITCH_HW_PROVEN=NO)",
+      "does the WAN jack route through the external switch (ties PHASE A to Probe A RX corruption)",
+      "is the random eth1 MAC stable across boots",
+      "what domain separators should the per-role MAC derivation use (product decision)"
+    ],
+    "restoration": {
+      "oem_partition_attach_mode": "read-only (kernel: 'MTD device 15 is write-protected, attach in read-only mode')",
+      "oem_partition_detached": true,
+      "test_mounts_removed": true,
+      "mtd_writes": 0,
+      "uci_commits": 0,
+      "overlay_writes": 0,
+      "selector_mtd2": 1,
+      "selector_mtd3": 1,
+      "device_reboot": 0,
+      "device_writes": 0
+    }
+  },
+  "probe_c_summary": {
+    "schema": "rt3000-probe-c/v1",
+    "task": "RT3000_MACHINE_B_R1_PROBE_C_MDIO_AND_FINAL_BOARD_MODEL",
+    "session_utc": "2026-09-18",
+    "mode": "AUTONOMOUS",
+    "fixes_applied": 0,
+    "build_performed": false,
+    "evidence_dir": "rt3000-close-work/evidence/R1_PROBE_C_MDIO_20260918/",
+    "final_result": "MDIO_READ_PATH_ESTABLISHED_EXTERNAL_SWITCH_ABSENT",
+    "phase_a_userspace_mdio": {
+      "verdict": "UNAVAILABLE",
+      "tools_present": [],
+      "tools_absent": [
+        "mdio",
+        "mdio-tool",
+        "phytool",
+        "mii-tool",
+        "ethtool",
+        "iwpriv",
+        "devmem",
+        "od",
+        "base64"
+      ],
+      "tool_built": "mdioread_min.c (freestanding, no libc, 3028 bytes)",
+      "only_ioctl_in_source": "SIOCGMIIREG",
+      "results": {
+        "eth0": {
+          "SIOCGIFFLAGS": "r=0 flags=0x1043",
+          "SIOCGMIIPHY": "r=-22 EINVAL",
+          "SIOCGMIIREG_scan": "all 32 addresses errno=22 EINVAL"
+        },
+        "eth1": {
+          "SIOCGIFFLAGS": "r=0 flags=0x1043",
+          "SIOCGMIIPHY": "r=-22 EINVAL",
+          "SIOCGMIIREG_scan": "all 32 addresses errno=22 EINVAL"
+        },
+        "br-lan": {
+          "SIOCGMIIREG_scan": "all 32 addresses errno=22 EINVAL"
+        },
+        "lo": {
+          "SIOCGIFFLAGS": "r=0 flags=0x0049",
+          "SIOCGMIIPHY": "r=-95 EOPNOTSUPP"
+        }
+      },
+      "proof_it_is_driver_refusal_not_tool_bug": [
+        "SIOCGIFFLAGS succeeds on the same socket and same ifreq => struct layout and plumbing are correct",
+        "lo returns a DIFFERENT errno (-95 EOPNOTSUPP) than eth0/eth1 (-22 EINVAL) => ioctl is routed per-driver",
+        "eth0/eth1 export no /sys/class/net/*/phydev symlink; both are nss_dp_gmac virtual netdevs with no phylib PHY attached"
+      ],
+      "transfer_note": "device has no route to the jumpbox (ping 203.0.113.19 -> Network unreachable; 203.0.113.0/24 exists only in the jumpbox flash netns). Binary moved over serial in 64-byte octal chunks, sha256 verified."
+    },
+    "phase_b_module": {
+      "verdict": "READ_ONLY_MODULE_USED_SUCCESSFULLY",
+      "kernel_source": "linux-5.4-qsdk-11.5.0.5.tar.xz from SDK dl cache",
+      "toolchain": "arm-openwrt-linux-gcc (OpenWrt GCC 8.4.0 r16847-f8282da11e) - exact device revision",
+      "config_source": "/proc/config.gz from the device (4610 lines)",
+      "uts_release": "5.4.164",
+      "vermagic": "5.4.164 SMP preempt mod_unload ARMv7 p2v8",
+      "vermagic_matches_shipped_module": true,
+      "size_stripped": 5900,
+      "modversions_enabled": false,
+      "module_sig_enabled": false,
+      "undefined_symbols": [
+        "__aeabi_unwind_cpp_pr0",
+        "mdiobus_read",
+        "of_find_node_opts_by_path",
+        "of_mdio_find_bus",
+        "param_ops_charp",
+        "printk",
+        "put_device"
+      ],
+      "all_symbols_exported_on_device": true,
+      "write_safety_proof": "arm-openwrt-linux-nm -u mdioscan.ko | grep mdiobus_write => NO_WRITE_SYMBOLS. Only mdiobus_read is referenced.",
+      "safety_properties": [
+        "calls only mdiobus_read()",
+        "no register write, no PHY reset, no GPIO toggle",
+        "no bus register/unregister, no driver bind/unbind, no device removal",
+        "no MTD access, no state retained after exit",
+        "insmod and rmmod both returned 0"
+      ]
+    },
+    "phase_c_identification": {
+      "external_switch_hw_proven": "NO",
+      "qca8337_identity_confidence": "NONE",
+      "mdio_responding_addrs": [],
+      "positive_control": {
+        "bus": "/soc/mdio@88000",
+        "result": "phy=07 PHY_ID1=0x004d PHY_ID2=0xd0c0 VALID_RESPONSE=YES oui=0x001374 model=0x0c rev=0x00",
+        "summary": "reads_ok=32 valid_devices=1",
+        "meaning": "the method demonstrably works end-to-end"
+      },
+      "target": {
+        "bus": "/soc/mdio@90000",
+        "result": "phy=00..31 all PHY_ID1=0x0000 PHY_ID2=0x0000 VALID_RESPONSE=NO",
+        "summary": "reads_ok=32 valid_devices=0",
+        "data_line_pattern": "0x0000 (not 0xffff)",
+        "meaning": "transactions are issued and clocked but the data line never goes high"
+      },
+      "classification": "BUS_VALID_BUT_NO_DEVICES_RESPOND",
+      "refuted": [
+        "bus access itself failed (reads_ok=32 plus working control)",
+        "wrong PHY address (all 32 tried)"
+      ],
+      "remaining_hypotheses": [
+        "chip present but held in reset (most likely: gpio26 is an undriven input reading low)",
+        "chip present but unpowered on this unit",
+        "chip not populated on this unit"
+      ],
+      "corroborating_hw_state": {
+        "mdio_clock": "gcc_mdio1_ahb_clk clk_rate=100000000 clk_enable_count=1 (bus is clocking)",
+        "gpio26": "in low func0 8mA pull down - UNCLAIMED by any driver",
+        "pin26_mux": "pin 26 (GPIO_26): (MUX UNCLAIMED) (GPIO UNCLAIMED)",
+        "dt_reset_gpio": "ess-switch1@1 reset_gpio = <0x0e 0x1a 0x00> = flag 0x0e, gpio 26, active-high",
+        "interpretation": "the declared reset line is never driven; if active-high semantics hold, the chip is held in reset"
+      },
+      "gpio_toggle_performed": false
+    },
+    "phase_d_final_topology": {
+      "status": "FROZEN_CONDITIONALLY",
+      "internal_switch": "switch0 / IPQ50xx internal QCA MP (3 ports: cpu@0, port1->eth0, port2->eth1)",
+      "external_switch": "switch1 / QCA8337 (DT complete, DOES NOT RESPOND), enable_vlan=0, CPU uplink port 6 tagged, LAN ports 2 3 4",
+      "wan_interface": "eth0",
+      "lan_cpu_interface": "eth1",
+      "lan_external_ports": "2 3 4 with 6t CPU uplink (OEM-evidenced; UNPROVEN at runtime)",
+      "external_switch_vlan_mode": "OEM-compatible, enable_vlan=0",
+      "rejected_model": "R0.1 single 6-port VLAN switch named switch1 (cause of the name collision)",
+      "scope_reduction": "because the external switch does not respond, switch0 carries the entire working datapath today; the R1 switch fix is NOT a prerequisite for basic LAN/WAN function"
+    },
+    "phase_e_mac_policy": {
+      "mac_policy_frozen": "YES",
+      "applied": false,
+      "factory_base_mac": "U-Boot env ethaddr (mtd10 APPSBLENV)",
+      "wan_mac_policy": "factory globally-administered MAC, unchanged",
+      "lan_mac_policy": "deterministic LAA = HASH(factory_mac || \"lan\")",
+      "wifi24_mac_policy": "deterministic LAA = HASH(factory_mac || \"wifi24\")",
+      "wifi5_mac_policy": "deterministic LAA = HASH(factory_mac || \"wifi5\")",
+      "derivation": "mac48 = HASH(factory_mac || role_domain)[low 48 bits]; octet0 = (octet0 | 0x02) & 0xfe",
+      "requirements_met": {
+        "stable_across_reboot": true,
+        "role_unique": true,
+        "deterministic": true,
+        "multicast_bit_zero": true,
+        "local_bit_one": true,
+        "no_invented_h3c_global_mac": true,
+        "no_runtime_random_laa": true
+      },
+      "explicitly_rejected": "sequential factory+1/+2/+3 offsets (would fabricate a run of globally administered vendor addresses)"
+    },
+    "restoration": {
+      "module_unloaded": true,
+      "tool_files_removed": true,
+      "test_dirs_removed": true,
+      "mtd_writes": 0,
+      "selector_writes": 0,
+      "overlay_writes": 0,
+      "uci_commits": 0,
+      "dts_mutations": 0,
+      "mdio_writes": 0,
+      "phy_writes": 0,
+      "gpio_toggles": 0,
+      "reboots": 0,
+      "selector_mtd2": 1,
+      "selector_mtd3": 1,
+      "uptime_monotonic_seconds": 6339,
+      "device_writes": 0
+    },
+    "ready_for_r1_source_integration": "CONDITIONAL",
+    "remaining_unknown": [
+      "whether the QCA8337 is physically populated but held in reset, or simply not populated on this unit",
+      "which address the QCA8337 would answer at (no response at any of 0..31)",
+      "whether the three front-panel LAN jacks are usable at all on this hardware"
+    ],
+    "cheapest_next_experiment": "drive gpio 26 high per reset_gpio semantics, then re-run the identical read-only MDIO scan on mdio@90000"
+  },
+  "probe_d_summary": {
+    "schema": "rt3000-probe-d/v1",
+    "task": "RT3000_MACHINE_B_R1_PROBE_D_EXTERNAL_SWITCH_RESET",
+    "session_utc": "2026-09-18",
+    "mode": "AUTONOMOUS",
+    "fixes_applied": 0,
+    "build_performed": false,
+    "r1_build": false,
+    "evidence_dir": "rt3000-close-work/evidence/R1_PROBE_D_RESET_20260918/",
+    "final_result": "CASE_B_RESET_NOT_THE_CAUSE",
+    "phase_a_reset_semantics": {
+      "status": "PROVEN_FROM_SOURCE",
+      "reset_polarity": "ACTIVE_HIGH_FOR_RELEASE",
+      "reset_assert_level": "LOW (SSDK_GPIO_RESET = 0)",
+      "reset_deassert_level": "HIGH (SSDK_GPIO_RELEASE = 1)",
+      "reset_assert_ms": 200,
+      "post_reset_delay_ms": 10,
+      "reset_sequence_source": "qca-ssdk-NHSS.QSDK.11.5.0.5 src/init/ssdk_init.c::qca_ar8327_gpio_reset()",
+      "constants_source": "include/init/ssdk_plat.h:170-171",
+      "api_semantics_proof": [
+        "SSDK uses the LEGACY integer GPIO API",
+        "gpio_direction_output -> gpiod_direction_output_raw (no ACTIVE_LOW translation)",
+        "gpio_set_value -> gpiod_set_raw_value (no ACTIVE_LOW translation)",
+        "therefore the SSDK constants are RAW ELECTRICAL LEVELS",
+        "DT flag cell 0x0e has OF_GPIO_ACTIVE_LOW (bit0) clear - consistent, and inert for the raw path"
+      ],
+      "confirmed_in_shipped_binary": [
+        "%s[%u]:INFO:Initializing ISISC!!",
+        "%s[%u]:INFO:GPIO%d reset switch done",
+        "%s[%u]:INFO:Initializing ISISC Done!!",
+        "%s[%u]:INFO:switch node is qca83xx!"
+      ],
+      "proven_never_executed": {
+        "evidence": "logread shows 'switch node is qca83xx!' then immediately 'no device found!' with NO 'Initializing ISISC!!' and NO 'GPIO26 reset switch done'"
+      },
+      "root_cause": {
+        "verdict": "CIRCULAR_DEADLOCK",
+        "mechanism": [
+          "chip_ver_get() must read the chip over MDIO to identify it as AR8337 (0x13)",
+          "the chip is held in reset, so it cannot answer",
+          "its version reads invalid, so no QCA_VER_* case matches",
+          "so cfg->chip_type is never set to CHIP_ISISC",
+          "so 'case CHIP_ISISC' never executes",
+          "so qca_ar8327_gpio_reset() is never called",
+          "so the reset is never released"
+        ],
+        "empty_dt_branch": "src/init/ssdk_dts.c:1110-1113 - the 'qcom,ess-switch-qca83xx' branch logs and sets NOTHING",
+        "chip_type_assignment": "src/init/ssdk_init.c:2849-2856 - CHIP_ISISC requires chip_ver == QCA_VER_AR8337",
+        "version_constants": {
+          "QCA_VER_AR8227": "0x02",
+          "QCA_VER_AR8327": "0x12",
+          "QCA_VER_AR8337": "0x13"
+        }
+      }
+    },
+    "phase_b_controlled_reset": {
+      "gpio_reset_executed": "YES",
+      "gpio_numbering_discovery": {
+        "debugfs_label": "gpio26 (pin index within chip)",
+        "gpiochip": "gpiochip0 base=465 ngpio=47 label=1000000.pinctrl",
+        "pinctrl_range": "GPIOS [465-544] PINS [0-79]",
+        "global_gpio": 491,
+        "first_attempt": "requested global 26 -> ret=-517 (-EPROBE_DEFER), aborted safely, pin never driven",
+        "second_attempt": "requested global 491 -> succeeded"
+      },
+      "executed_sequence": [
+        "gpio_request(491, 'mdioreset') -> OK",
+        "gpio_direction_output(491, 0)  // ASSERT low",
+        "msleep(200)",
+        "gpio_set_value(491, 1)         // DEASSERT high",
+        "msleep(10)",
+        "gpio_free(491)"
+      ],
+      "gpio_state_during": "gpio26 : out high func0 8mA pull down",
+      "final_level": "DEASSERTED (high); never left asserted",
+      "module_size": 7796,
+      "module_vermagic": "5.4.164 SMP preempt mod_unload ARMv7 p2v8",
+      "write_primitives": "NONE (symbol table verified)"
+    },
+    "phase_c_mdio_rescan": {
+      "mdio90000_before": {
+        "reads_ok": 32,
+        "valid_devices": 0
+      },
+      "mdio90000_after": {
+        "reads_ok": 32,
+        "valid_devices": 0
+      },
+      "mdio_responding_addrs": [],
+      "control_mdio88000": {
+        "after_reset": "phy=07 PHY_ID1=0x004d PHY_ID2=0xd0c0 VALID_RESPONSE=YES oui=0x001374 model=0x0c rev=0x00",
+        "summary": "reads_ok=32 valid_devices=1",
+        "meaning": "diagnostic method still healthy after the reset; the null result is genuine"
+      }
+    },
+    "phase_d_recovery": {
+      "gpio_restored": "in low func0 8mA pull down (exact original state)",
+      "modules_loaded": 0,
+      "files_removed": true,
+      "mtd_writes": 0,
+      "uci_commits": 0,
+      "overlay_writes": 0,
+      "reboot": 0,
+      "selector_mtd2": 1,
+      "selector_mtd3": 1,
+      "uptime_monotonic_seconds": 7378,
+      "device_writes": 0
+    },
+    "verdict": {
+      "case": "CASE_B",
+      "external_switch_hw_proven": "NO",
+      "reset_init_root_cause_proven": "NO",
+      "board_bom_absence_confidence": "HIGHER",
+      "ready_for_external_switch_r1_fix": "NO",
+      "lan_ports_removed": false,
+      "caveats_keeping_this_short_of_proof": [
+        "only the source-proven polarity was tried; the inverse was NOT brute-forced (forbidden)",
+        "the chip may require a power rail this firmware never enables",
+        "the deadlock is unfixed, so 'silent after manual reset' and 'would work if the driver were fixed' are not fully separable - a chip needing a longer/differently-ordered reset+settle could have been missed"
+      ]
+    },
+    "next_required_test": {
+      "name": "physical RJ45 port-by-port mapping",
+      "reason": "the remaining question is physical, not software; it needs a human to move a cable",
+      "method": [
+        "watch 'swconfig dev switch0 show' per-port link state",
+        "plug a known-good link into each RJ45 jack in turn",
+        "record which switch0 port reports link:up for each physical jack"
+      ],
+      "known_internal_mapping_from_probe_a": {
+        "port0": "CPU",
+        "port1": "eth0 (WAN)",
+        "port2": "eth1 (LAN)"
+      },
+      "outcomes": [
+        "jacks wired to switch0 -> they work; only the model needs fixing",
+        "jacks wired to the external chip -> dead on this unit; document in the R1 model"
+      ]
+    },
+    "explicitly_not_done": [
+      "blind high/low toggling",
+      "reset polarity brute force",
+      "power GPIO guessing",
+      "R1 build",
+      "DTS patch",
+      "DHCP debugging",
+      "NSS testing",
+      "MAC work (policy already frozen)"
+    ]
+  },
+  "probe_e_summary": {
+    "schema": "rt3000-probe-e/v1",
+    "task": "RT3000_MACHINE_B_R1_PROBE_E_PORTMAP",
+    "session_utc": "2026-09-18",
+    "mode": "AUTONOMOUS",
+    "fixes_applied": 0,
+    "build_performed": false,
+    "evidence_dir": "rt3000-close-work/evidence/R1_PROBE_E_PORTMAP_20260918/",
+    "final_result": "PORT_MAP_COMPLETE_LAN_PORTS_DEAD",
+    "measurement_method": {
+      "ground_truth": "PHY BMSR register (bit2 link_status, ANLPAR != 0) via read-only mdiophys.ko",
+      "cross_check": "eth0/eth1 rx_packets over timed windows",
+      "swconfig_trustworthy": false,
+      "why": "swconfig reports the SSDK cached port state, not a live PHY read. On this firmware port 2 kept reporting 'link:up speed:1000baseT full-duplex' with no cable attached, while the PHY registers showed link_status=0 and ANLPAR=0x0000. The cache updates only partially.",
+      "correction_issued": "I initially claimed a cable was still connected; the operator was right and I withdrew it.",
+      "tool": {
+        "name": "mdiophys.ko",
+        "size": 5432,
+        "vermagic": "5.4.164 SMP preempt mod_unload ARMv7 p2v8",
+        "symbols": "only mdiobus_read (no write primitive, symbol-table verified)",
+        "regs_read": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5
+        ]
+      }
+    },
+    "control_all_cables_out": {
+      "phy7_bmsr": "0x7949",
+      "phy7_link_status": 0,
+      "phy7_anlpar": "0x0000",
+      "mdio90000": "no PHY responds at 0..7",
+      "eth0_rx": 0,
+      "eth1_rx": 0
+    },
+    "port_map": {
+      "WAN": {
+        "switch0_port": 1,
+        "linux_iface": "eth0",
+        "phy_link": "LINK",
+        "phy7_bmsr": "0x796d",
+        "link_status": 1,
+        "autoneg_done": 1,
+        "anlpar": "0xcde1",
+        "anlpar_decode": "1000BASE-T full duplex, next-page capable",
+        "swconfig": "port1 link:up speed:1000baseT full-duplex eee100 eee1000",
+        "tx_works": true,
+        "tx_evidence": "eth0 tx 3387->3393 ; port1 TxByte 1152568->1154466",
+        "rx_works": false,
+        "rx_evidence": "eth0 rx_packets never incremented; port1 RxGoodByte=0 RxBroad=0",
+        "dhcp": "udhcpc sending discover x2 -> no lease, failing"
+      },
+      "LAN1": {
+        "phy_link": "NO LINK",
+        "phy7_bmsr": "0x7949",
+        "link_status": 0,
+        "anlpar": "0x0000",
+        "rx": "0 -> 0 over 20s"
+      },
+      "LAN2": {
+        "phy_link": "NO LINK",
+        "phy7_bmsr": "0x7949",
+        "link_status": 0,
+        "anlpar": "0x0000",
+        "rx": "0 -> 0 over 25s"
+      },
+      "LAN3": {
+        "phy_link": "NO LINK",
+        "phy7_bmsr": "0x7949",
+        "link_status": 0,
+        "anlpar": "0x0000",
+        "rx": "0 -> 0 over 20s"
+      },
+      "external_bus_mdio90000": "no PHY responds at any address during any insertion"
+    },
+    "conclusion": {
+      "wired_connectivity_available": "NONE",
+      "detail": "The 3 front-panel LAN jacks bring up no PHY link at all. The WAN jack links at 1 GbE with a real partner but receives zero frames. No RJ45 port provides working Ethernet.",
+      "matches_oem_model": "internal switch0 port1 -> eth0 (WAN); external QCA8337 ports 2,3,4 = the LAN jacks. The external chip never initialises (Probes C/D), so its PHYs never come up.",
+      "root_cause_link": "Same incomplete SSDK initialisation located in Probes B and D (empty qca83xx DT branch + chip-type/reset circular deadlock). For WAN, the switch port is evidently never programmed to forward RX to the CPU port."
+    },
+    "bugs": {
+      "new": [
+        {
+          "id": "RT3-B018",
+          "severity": "P0",
+          "title": "Front-panel LAN jacks bring up no PHY link at all",
+          "impact": "Plugging a PC or switch into LAN1/LAN2/LAN3 produces no link; those ports are dead."
+        }
+      ],
+      "updated": [
+        {
+          "id": "RT3-B002",
+          "severity": "P0",
+          "changed": "reclassified from WAN_ENVIRONMENT_NOT_AVAILABLE to a proven FIRMWARE datapath defect",
+          "evidence": "cable change + real partner (ANLPAR=0xcde1) + successful 1GbE negotiation + working TX, yet RX is exactly zero"
+        }
+      ]
+    },
+    "honest_limitations": [
+      "one cable and one partner used for every insertion; cannot explain the per-jack pattern though",
+      "no swconfig MIB evidence for LAN jacks since they never link; result rests on the PHY register read",
+      "jack labelling is the operator's report; the pattern (one links, three do not) is measured independently",
+      "cannot distinguish 'LAN PHYs on the un-driven external chip' from 'LAN PHYs on an unregistered bus' - both give the same user-visible result"
+    ],
+    "restoration": {
+      "modules_loaded": 0,
+      "files_removed": true,
+      "mtd_writes": 0,
+      "selector_mtd2": 1,
+      "selector_mtd3": 1,
+      "uci_commits": 0,
+      "overlay_writes": 0,
+      "reboots": 0,
+      "uptime_monotonic_seconds": 10501
+    }
+  },
+  "oem_control_summary": {
+    "root_cause_class": "QSDK_SOFTWARE_ADAPTATION",
+    "case": "CASE_A",
+    "missing_property": "phy-reset-gpio = <&tlmm 26 0> on mdio@90000",
+    "hardware": "PROVEN GOOD by OEM control",
+    "board_bom_investigation": "CANCELLED"
+  },
+  "r1_net_b_summary": {
+    "candidate": "r1-net-b.ubi",
+    "sha256": "f1526294f29abd161dd80470f4a29e8b95c137f14e7c03b8e12f38b2ca88dd6f",
+    "rootfs_changed": "NO",
+    "kernel_dtb_changed": "YES",
+    "offline_validation": "PASS",
+    "device_state": "OEM selector 0/0, ready for mtd16 write"
+  },
+  "r1_net_b_install_summary": {
+    "final_result": "R1_NET_B_PARTIAL",
+    "external_switch_registered": "YES",
+    "chain_layers_confirmed": 5,
+    "chain_layers_pending": [
+      "WAN RX (needs cable)",
+      "LAN link (needs cable)"
+    ],
+    "device_state": "R1-NET-B running, selector 1/1, mtd15 intact"
+  },
+  "probe_g_summary": {
+    "final_result": "DECISION_REQUIRED",
+    "oem_side": "complete",
+    "r1_side": "pending slot switch authorization",
+    "root_cause_class": "PENDING PHASE H"
+  },
+  "network_baseline": {
+    "FINAL_NETWORK_BASELINE": "R1-NET-D",
+    "status": "ACCEPTED_HARDWARE_TESTED",
+    "NETWORK_BRINGUP_P0": "CLOSED",
+    "ETHERNET_P0_RESOLVED": "YES",
+    "r1_net_d_ubi_sha256": "ab076d02268ab3f73a4e916f2939b88f2252297843bf8fb065438a39699fd481",
+    "qca_ssdk_ko_sha256": "d493b3bddbdf6c0fb9b1a8ae576d4e47b23881671c8737f4341816a0a20c6497",
+    "patch": "0902-rt3000-r1-net-d-non-force-port-clock.patch",
+    "patch_sha256": "f9e4065ce1569631d520364c9f6547a1312dc8a9f46a277b4ad289627b4c0ca2",
+    "authoritative_root_cause": "WAN = SSDK port 1 / GMAC0 / PHY-managed non-force port. The MP adapter bound ssdk_port_speed_clock_set() to force_port == A_TRUE, so GMAC0's speed clock was never programmed and the RCG stayed on xo / 24 MHz -> 1000BASE-T RX CRC/FCS corruption.",
+    "rejected_hypotheses": [
+      "state-aliasing / NET-C first-apply guard (refuted on hardware)",
+      "missing DTS clocks / clock-names (refuted)",
+      "qcom,link-poll (refuted)",
+      "rx-page-mode (refuted)",
+      "EEE (refuted)",
+      "hardware/BOM/PCB (refuted by OEM same-hardware control)"
+    ],
+    "historical_candidates_not_for_development": [
+      "R1-NET-A",
+      "R1-NET-B",
+      "R1-NET-C",
+      "R1-PROBE-H",
+      "R1-PROBE-I"
+    ]
+  },
+  "open_network_qualifications": [
+    {
+      "id": "NET-QUAL-001",
+      "item": "physical WAN unplug/replug at 1 Gbps",
+      "status": "NOT_TESTED"
+    },
+    {
+      "id": "NET-QUAL-002",
+      "item": "100BASE-T qualification",
+      "status": "NOT_TESTED"
+    },
+    {
+      "id": "NET-QUAL-003",
+      "item": "10BASE-T qualification",
+      "status": "NOT_TESTED"
+    },
+    {
+      "id": "RB001-HW-001",
+      "item": "rt3bcwrite --set dual-copy transaction on real MTD",
+      "status": "NOT_TESTED"
+    },
+    {
+      "id": "RB002-HW-001",
+      "item": "rt3release verify on the running device",
+      "status": "NOT_TESTED"
+    }
+  ],
+  "product_r1": {
+    "baseline": "R1-NET-D",
+    "must_not_fork_from": [
+      "R0.1",
+      "R1-NET-B"
+    ],
+    "release_blockers": [
+      "RT3-RB001",
+      "RT3-RB002"
+    ],
+    "plan": "00-START-HERE/PRODUCT_R1_PLAN.md",
+    "prerelease_1": {
+      "artifact": "openwrt-ipq50xx-arm-h3c_rt3000-squashfs-nand-factory.ubi",
+      "sha256": "162d84ae74528bbee19f46e0079a3c86a4c88b935fd9679a01b83fe63fdedf8c",
+      "size": 11010048,
+      "kernel_volume_sha256": "52d8e38fc4f4bb22403d98231d140507702e26f161cb942c3a0b77afce9c07c7",
+      "rootfs_volume_sha256": "f0d49c448a7f00ec694c90aa5cb54051544395804203fe708b2773d7b8c8b70f",
+      "qca_ssdk_sha256": "d493b3bddbdf6c0fb9b1a8ae576d4e47b23881671c8737f4341816a0a20c6497",
+      "net_d_network_baseline_retained": true,
+      "status": "ACCEPTED_HARDWARE_TESTED",
+      "accepted_utc": "2026-09-19",
+      "final_system": "Product R1 prerelease 1 (Linux 5.4.164)",
+      "selector": "mtd3=1 mtd2=1",
+      "mtd15_intact": true,
+      "network_baseline_pass": true
+    }
+  },
+  "blocker_closure": {
+    "round": "RT3000_MACHINE_B_START_PRODUCT_R1_AND_CLOSE_RELEASE_BLOCKERS",
+    "branch": "product-r1",
+    "baseline": "rt3000-machine-b-r1-net-d",
+    "RT3-RB001": {
+      "status": "HARDWARE_ACCEPTED",
+      "tests": "22/22 PASS",
+      "fail_closed": "YES",
+      "binary_safe": "YES",
+      "hardware_verified": true
+    },
+    "RT3-RB002": {
+      "status": "HARDWARE_ACCEPTED",
+      "tests": "13/13 PASS",
+      "image_seq_dependency": "NONE",
+      "hardware_verified": true
+    },
+    "note": "Both blockers HARDWARE_ACCEPTED on 2026-09-19. Product R1 prerelease 1 is running with selector 1/1; mtd15 rollback anchor intact."
+  }
+}

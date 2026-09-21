@@ -1,0 +1,62 @@
+{
+  "date": "2026-09-21",
+  "status": "paused_by_user_target_not_met",
+  "source_commit": "73c3b3d146c832106b75578a67f35002a881328c",
+  "hardware": "RT3000 Machine-B 256 MiB / IPQ5018 + external QCN6102",
+  "qsdk_radio_target": "QCN6122",
+  "build_command": "make -j8 V=s",
+  "build_exit": 0,
+  "config_sha256": "3b1788b066bfb8ffcd94a4d75377223ebd9bd07511b4f6acd2201b237b1c8641",
+  "additional_source_patches": {
+    "350-ath11k-add-rx-ampdu-aggr-debugfs.patch": "d369bae3c5ff240669f8cbcf98bcf1249dbe8c83d2e052c87ecb3153b8de540c",
+    "604-ath11k-qcn6122-rxdma-ring-2048.patch": "9491503498163220688b9701f253b7d2c55d00f65d1a440c5883aa13d934c5dc"
+  },
+  "fit": {
+    "file": "candidate13-initramfs.itb",
+    "bytes": 9786536,
+    "sha256": "fe4a72af55b63bb90cbc03288ce1fce5629da933159a0603836d4655eef6c00d"
+  },
+  "embedded_bdf_sha256": "085a6cca54714ed8387341869bbf1f75b257198e87bd590ddf58f7d155c772fb",
+  "embedded_ath11k_sha256": "3fbf31ae0b8f68cbeb6b0d17bf2207e8610677e7af2c5a26f7eb08ef6276a846",
+  "runtime": {
+    "root": "tmpfs",
+    "kernel": "5.4.164",
+    "primary_channel": 44,
+    "width_mhz": 160,
+    "center_mhz": 5250,
+    "mem_available_kb_at_stop": 59140,
+    "primary60_executed": false,
+    "rx_aggregation_override_written": false,
+    "persistent_router_writes": false
+  },
+  "acceptance": {
+    "repeated_single_stream_upload_mbps_required": 800,
+    "latest_single_stream_upload_mbps": [
+      760,
+      789
+    ],
+    "four_stream_upload_mbps": 879,
+    "wired_control_mbps": [
+      937,
+      938
+    ],
+    "met": false
+  },
+  "private_evidence_sha256": {
+    "pc-wired-server/pc-server-latest.log": "228bb87a5e7e94d2f3c2ea8a35733312cf198b0d95f003df920ffcc00c9c22bc",
+    "pc-wired-server/rf44-verdict.json": "059c7bf94dfbb7285a882debe17a14f38fd7ac28a9564b6fcce6a0ae88adee83",
+    "pc-wired-server/rf44-counter-deltas.json": "2479a6326bf7bac3ce8c9e7054b78c62dc550f4a1d78a24a7b83fb339289bc14",
+    "pc-wired-server/session-stop-runtime-20260921.log": "ac2cd40e80e2ec5e12f945ac213218edbbb9272b1e8ac7346cd8cc46e2f449dd",
+    "candidate13-wifili-rxdma-ring/fit-audit.txt": "bde88a81a03fdc71407a97b976403503d2aa2d2ea1b1e4201c605256b101bfdc"
+  },
+  "public_evidence_sha256": {
+    "server-results.csv": "1a74d85aff820c10080643cc1479cba96c5cdcd42ada0c7cf0dab800c76887df",
+    "server-selected-redacted.log": "3c3f11a908aa482ce02e5d58a4d4ee208d73bdd437fa68552b18bcd14b35cd88"
+  },
+  "limits": [
+    "Throughput is server-side; P4 does not satisfy P1 goal.",
+    "RF44 improvement is not proven causal by a controlled repeated A/B.",
+    "Diagnostic RAM candidate is not a flash release.",
+    "Build record identifies the tested artifact, not a fresh clean-build reproducibility certification."
+  ]
+}

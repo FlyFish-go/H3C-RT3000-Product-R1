@@ -1,0 +1,40 @@
+From cdfc6c6e54686bd6248d362cd61d08070a6d49a1 Mon Sep 17 00:00:00 2001
+From: hzy <hzyitc@outlook.com>
+Date: Sun, 14 Jul 2024 17:56:54 +0800
+Subject: [PATCH 1/1] net: phy: add motorcomm yt9215 supports
+
+---
+ drivers/net/phy/Kconfig  | 4 ++++
+ drivers/net/phy/Makefile | 1 +
+ 2 files changed, 5 insertions(+)
+
+diff --git a/drivers/net/phy/Kconfig b/drivers/net/phy/Kconfig
+index 72dd62b..f86cc41 100644
+--- a/drivers/net/phy/Kconfig
++++ b/drivers/net/phy/Kconfig
+@@ -329,6 +329,10 @@ config RTL8367B_PHY
+ 
+ endif # RTL8366_SMI
+ 
++config YT9215_PHY
++	tristate "Motorcomm YT9215 switch"
++	select SWCONFIG
++
+ comment "MII PHY device drivers"
+ 
+ config SFP
+diff --git a/drivers/net/phy/Makefile b/drivers/net/phy/Makefile
+index a4d2d84..544633f 100644
+--- a/drivers/net/phy/Makefile
++++ b/drivers/net/phy/Makefile
+@@ -35,6 +35,7 @@ obj-$(CONFIG_RTL8366S_PHY)	+= rtl8366s.o
+ obj-$(CONFIG_RTL8366RB_PHY)	+= rtl8366rb.o
+ obj-$(CONFIG_RTL8367_PHY)	+= rtl8367.o
+ obj-$(CONFIG_RTL8367B_PHY)	+= rtl8367b.o
++obj-$(CONFIG_YT9215_PHY)	+= yt9215.o
+ 
+ obj-$(CONFIG_MDIO_ASPEED)	+= mdio-aspeed.o
+ obj-$(CONFIG_MDIO_BCM_IPROC)	+= mdio-bcm-iproc.o
+-- 
+2.40.1
+

@@ -1,0 +1,74 @@
+#!/bin/sh
+# RT3000 Machine-B — apply the deterministic per-role MAC policy.
+#
+# WAN   keeps the factory ethaddr.
+# LAN / WiFi24 / WiFi5 get role-derived locally-administered unicast MACs.
+#
+# The derivation lives in /lib/rt3000/mac.sh so it can be exercised offline by
+# the test suite.  When the factory MAC is missing or invalid the helper exits
+# nonzero and this hook leaves the kernel defaults in place rather than
+# inventing an identity.
+
+. /lib/functions/uci-defaults.sh
+. /lib/rt3000/mac.sh
+
+board_config_update
+
+board=$(board_name)
+
+case $board in
+	h3c,rt3000)
+		MACMAP=$(rt3000_mac_map) || {
+			logger -t rt3000-mac "factory MAC unusable; leaving kernel defaults"
+			board_config_flush
+			exit 0
+		}
+
+		WAN=$(printf '%s\n' "$MACMAP" | sed -n 's/^wan //p')
+		LAN=$(printf '%s\n' "$MACMAP" | sed -n 's/^lan //p')
+		W24=$(printf '%s\n' "$MACMAP" | sed -n 's/^wifi24 //p')
+		W5=$(printf '%s\n'  "$MACMAP" | sed -n 's/^wifi5 //p')
+
+		# ------------------------------------------------------------------
+		# How these addresses actually reach the live interfaces
+		# ------------------------------------------------------------------
+		# RC1-HW-002: ucidef_set_network_device_mac() writes into a
+		# "network-device" object.  In THIS tree nothing consumes that object:
+		# /bin/config_generate iterates only network, switch, rssimon,
+		# gpioswitch and led, so the derived MACs stayed in board.json and
+		# never became UCI network device entries.  The kernel defaults
+		# therefore survived on eth1/wlan0/wlan1.
+		#
+		# The path config_generate does honour is network.<iface>.macaddr:
+		# generate_network() reads "macaddr" and emits
+		#     network.@device[-1].macaddr='...'
+		# for the interface's device.  ucidef_set_interface_macaddr() is the
+		# sanctioned helper for that, so it is what we use here.  The
+		# network-device call is kept as well so the intent is also visible
+		# to any board.json consumer added later; it is harmless where
+		# nothing reads it.
+		# ------------------------------------------------------------------
+
+		# WAN is the factory address: do not rewrite it, only assert it.
+		[ -n "$WAN" ] && {
+			ucidef_set_interface_macaddr wan "$WAN"
+			ucidef_set_network_device_mac eth0 "$WAN"
+		}
+
+		[ -n "$LAN" ] && {
+			ucidef_set_interface_macaddr lan "$LAN"
+			ucidef_set_network_device_mac eth1 "$LAN"
+			ucidef_set_network_device_mac br-lan "$LAN"
+		}
+
+		# Wi-Fi addresses are applied to the radio interfaces by name.  They
+		# belong to the LAN bridge, so they are attached to the lan interface
+		# as well; the radio device entries keep the per-radio identity.
+		for r in $W24; do ucidef_set_network_device_mac wlan0 "$r"; done
+		for r in $W5;  do ucidef_set_network_device_mac wlan1 "$r"; done
+		;;
+esac
+
+board_config_flush
+
+exit 0

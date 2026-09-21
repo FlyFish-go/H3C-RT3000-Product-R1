@@ -1,0 +1,92 @@
+From: RT3000 Machine-B R1-NET-D <r1netd@local>
+Date: Fri, 19 Sep 2026 01:15:00 +0800
+Subject: [PATCH] mp: program the port speed clock for non-force ports
+
+adpt_mp_port_mac_speed_set() programmed the port's GMAC speed clock only
+inside `if (force_port == A_TRUE)`.  A PHY-managed (non-force) port such as
+the WAN port on this board therefore never had its SGMII speed clock set, so
+gmac0_rx/tx_clk_src stayed on the reset default parent (xo, 24 MHz) and every
+received frame failed CRC.  This was proven on hardware by the R1-PROBE-I
+boot trace: port 1 took branch_clock_set=0 reason=not_force_port while port 2
+(forced) was programmed to 125 MHz on the same boot.
+
+Decouple clock programming from the force-port gate:
+
+  * program the speed clock for ANY port with a valid speed.  The rate is
+    still chosen by the existing vendor switch inside
+    _adpt_mp_port_gcc_speed_clock_set() from the speed value, so the
+    10M/100M/1000M/2500M mapping is unchanged and no rate is hardcoded.
+    Invalid speeds (FAL_SPEED_BUTT and anything unsupported) fall through
+    that switch without programming anything.
+
+  * keep the forced-port-only MAC work (uniphy port clock, MAC clock, port
+    reset) gated on force_port exactly as before - those really are only
+    correct for a fixed-speed link.
+
+  * drop the now-redundant clock call in adpt_mp_port_link_up_change_update().
+    That path previously called the clock setter and then mac_speed_set; once
+    mac_speed_set programs the clock unconditionally, leaving both would
+    program a force port's clock TWICE per speed-change event.
+
+This matches the vendor HPPE behaviour, where the speed clock is programmed
+on a speed change with no force-port gate at all.
+
+---
+--- a/src/adpt/mp/adpt_mp_portctrl.c
++++ b/src/adpt/mp/adpt_mp_portctrl.c
+@@ -513,12 +513,33 @@
+ 	rv = mp_mac_configuration_set(dev_id, gmac_id, &configuration);
+ 	SW_RTN_ON_ERROR(rv);
+ 
++	/*
++	 * Program the port's GMAC speed clock.
++	 *
++	 * This must NOT be gated on PHY_F_FORCE.  A PHY-managed (non-force) port
++	 * such as the WAN port on this board still needs its SGMII speed clock
++	 * set to the negotiated rate; otherwise the GMAC RX/TX clock sources are
++	 * left on their reset default (xo, 24 MHz) and every received frame fails
++	 * CRC.  This mirrors the vendor HPPE behaviour, where the speed clock is
++	 * programmed on a speed change without any force-port gate.
++	 *
++	 * The rate itself is still selected by the vendor switch inside
++	 * _adpt_mp_port_gcc_speed_clock_set() from the speed value - the mapping
++	 * (10M/100M/1000M/2500M) is unchanged.  Invalid speeds (FAL_SPEED_BUTT and
++	 * any other unsupported value) fall through that switch without
++	 * programming anything.
++	 */
++	rv = _adpt_mp_port_gcc_speed_clock_set(dev_id, port_id, speed);
++	SW_RTN_ON_ERROR(rv);
++
++	/*
++	 * The remaining operations are forced-port-specific: they force the
++	 * uniphy/MAC clocks on and reset the port, which is only correct when the
++	 * link speed is fixed rather than PHY-negotiated.
++	 */
+ 	force_port = ssdk_port_feature_get(dev_id, port_id, PHY_F_FORCE);
+ 	/* enable force port configuration */
+ 	if (force_port == A_TRUE) {
+-		rv = _adpt_mp_port_gcc_speed_clock_set(dev_id,
+-			port_id, speed);
+-		SW_RTN_ON_ERROR(rv);
+ 		rv = adpt_mp_gcc_uniphy_port_clock_set(dev_id,
+ 			port_id, A_TRUE);
+ 		SW_RTN_ON_ERROR(rv);
+@@ -994,12 +1015,12 @@
+ 	if ((a_uint32_t)phy_status.speed !=
+ 		priv->port_old_speed[port_id - 1]) {
+ 
+-		/* configure gcc speed clock frequency */
+-		rv = _adpt_mp_port_gcc_speed_clock_set(priv->device_id,
+-			port_id, phy_status.speed);
+-		SW_RTN_ON_ERROR (rv);
+-
+-		/* config mac speed */
++		/*
++		 * config mac speed.  adpt_mp_port_mac_speed_set() now programs the
++		 * gcc speed clock for every valid speed (not only force ports), so
++		 * the clock must NOT be programmed again here - doing so would
++		 * program a force port's clock twice per speed-change event.
++		 */
+ 		rv = adpt_mp_port_mac_speed_set(priv->device_id,
+ 			port_id, phy_status.speed);
+ 		SW_RTN_ON_ERROR (rv);

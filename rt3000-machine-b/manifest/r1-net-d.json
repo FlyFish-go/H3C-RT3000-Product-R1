@@ -1,0 +1,213 @@
+{
+  "schema": "rt3000-machine-b-baseline-manifest/v1",
+  "baseline": "R1-NET-D",
+  "status": "ACCEPTED_HARDWARE_TESTED",
+  "frozen_utc": "2026-09-19",
+  "hardware": {
+    "vendor": "H3C",
+    "model": "Magic RT3000",
+    "machine": "B",
+    "soc": "Qualcomm IPQ5018",
+    "ram_mib": 256,
+    "nand_mib": 128,
+    "nand_part": "GD5F1GQ5REYIG"
+  },
+  "software": {
+    "openwrt_base": "21.02.7",
+    "openwrt_rev": "r16847-f8282da11e",
+    "kernel": "5.4.164",
+    "qsdk": "NHSS.QSDK.11.5.0.5"
+  },
+  "firmware": {
+    "name": "r1-net-d.ubi",
+    "sha256": "ab076d02268ab3f73a4e916f2939b88f2252297843bf8fb065438a39699fd481",
+    "size": 11010048,
+    "note": "Artifact binary lives in the vault, not in Git. Referenced by hash.",
+    "vault_path": "rt3000-close-work/evidence/R1_NET_D_20260919/artifacts/r1-net-d.ubi"
+  },
+  "packaged_module": {
+    "path": "lib/modules/5.4.164/qca-ssdk.ko",
+    "sha256": "d493b3bddbdf6c0fb9b1a8ae576d4e47b23881671c8737f4341816a0a20c6497",
+    "size": 544716,
+    "vermagic": "5.4.164 SMP preempt mod_unload ARMv7 p2v8"
+  },
+  "patches": {
+    "network_fix": {
+      "file": "patches/qca-ssdk/0902-rt3000-r1-net-d-non-force-port-clock.patch",
+      "sha256": "f9e4065ce1569631d520364c9f6547a1312dc8a9f46a277b4ad289627b4c0ca2",
+      "summary": "decouple MP port speed-clock programming from the force-port gate",
+      "changes": [
+        "program the port speed clock for ANY valid speed, not only force ports",
+        "keep the forced-port-only MAC operations (uniphy port clock, MAC clock, port reset) gated on PHY_F_FORCE",
+        "remove the now-duplicate runtime clock call so each port programs exactly once per speed-setup event"
+      ]
+    },
+    "board_integration": {
+      "file": "patches/board/0001-rt3000-machine-b-board-integration.patch",
+      "sha256": "031f1a1d743942d75810883ced5154dad5a1857bf40e5af4e68eba76f7714be6",
+      "summary": "board DTS + product image/network/upgrade integration for Machine-B",
+      "changes": [
+        "MDIO1 pinmux (gpio36 = mdc, gpio37 = mdio)",
+        "phy-reset-gpio = <&tlmm 26 0> on mdio@90000",
+        "PHY children 0/1/2 on mdio1 (no @3)",
+        "ess-switch1 QCA8337 over MDIO",
+        "qcom,port_phyinfo for the AR8337 LAN PHYs",
+        "OEM-like two-switch board model in 02_network",
+        "sysupgrade disabled on h3c,rt3000 (slot workflow only)",
+        "UBI_ROOTFS_NAME / UBI_IMAGE_SEQ image parameters",
+        "rt3bcwrite + rt3slot added to the device package list"
+      ]
+    },
+    "base_sdk_relative": {
+      "file": "package/kernel/qca/qca-ssdk/patches/0201-add-swconfig_leds-support.patch",
+      "note": "base-SDK-relative, unrelated to this fix; unchanged by R1-NET-D"
+    }
+  },
+  "verification": {
+    "kernel_volume_sha256": "52d8e38fc4f4bb22403d98231d140507702e26f161cb942c3a0b77afce9c07c7",
+    "kernel_volume_note": "byte-identical to R1-NET-B (module-only fix)",
+    "inner_dtb_sha256": "09a87dab9b672c73762ba7834367c72909b91922cfe866920807253a86742e54",
+    "ubi_rootfs_volume_sha256": "19dcb9d7bb39f0d1504582efe50c96abeea0a4587079f50c73df8a3cd6c278ac",
+    "net_c_guard_present": false,
+    "trace_instrumentation_present": false
+  },
+  "acceptance": {
+    "ethernet_p0_resolved": true,
+    "boot_r1_net_d": "PASS",
+    "runtime_module_identity_pass": true,
+    "gmac0_rx": {
+      "parent": "P_GEPHY_TX",
+      "rate": 125000000
+    },
+    "gmac0_tx": {
+      "parent": "P_GEPHY_TX",
+      "rate": 125000000
+    },
+    "wan_link": "1000baseT full-duplex",
+    "wan_rx": {
+      "eth0_rx_packets": 717,
+      "eth0_rx_bytes": 75525,
+      "eth0_rx_errors": 0,
+      "eth0_rx_crc_errors": 0,
+      "RxGoodByte": 75397,
+      "RxFcsErr": 0,
+      "RxFragment": 0
+    },
+    "dhcp": "PASS",
+    "wan_address": "192.0.2.2/24",
+    "default_route": "default via 192.0.2.1 dev eth0",
+    "gateway_reachable": true,
+    "internet_reachable": true,
+    "lan_1_2_3": "PASS (hardware-accepted earlier; retained)",
+    "qca8337": "PASS (registered)",
+    "external_switch_registered": true,
+    "evidence": "rt3000-close-work/evidence/R1_NET_D_INSTALL_20260919/"
+  },
+  "qualification_pending": [
+    {
+      "id": "NET-QUAL-001",
+      "item": "physical WAN unplug/replug at 1 Gbps",
+      "status": "NOT_TESTED"
+    },
+    {
+      "id": "NET-QUAL-002",
+      "item": "100BASE-T qualification",
+      "status": "NOT_TESTED"
+    },
+    {
+      "id": "NET-QUAL-003",
+      "item": "10BASE-T qualification",
+      "status": "NOT_TESTED"
+    },
+    {
+      "id": "RB001-HW-001",
+      "item": "rt3bcwrite --set on real MTD (dual-copy transaction)",
+      "status": "NOT_TESTED"
+    },
+    {
+      "id": "RB002-HW-001",
+      "item": "rt3release verify on the running device",
+      "status": "NOT_TESTED"
+    }
+  ],
+  "qualification_claims": {
+    "SPEED_1000_QUALIFIED": true,
+    "SPEED_100_QUALIFIED": false,
+    "SPEED_10_QUALIFIED": false,
+    "note": "Only 1000BASE-T initial bring-up was exercised. 100M and 10M were never tested and are NOT claimed. Physical re-plug was not tested."
+  },
+  "release_blockers": [
+    {
+      "id": "RT3-RB001",
+      "status": "CLOSED_OFFLINE_PENDING_HARDWARE",
+      "title": "packaged rt3bcwrite --set lacks the per-copy sequential verify gate",
+      "closed_by": "package/rt3bcwrite.c per-copy transaction; tests/rb001 (22 assertions)"
+    },
+    {
+      "id": "RT3-RB002",
+      "status": "CLOSED_OFFLINE_PENDING_HARDWARE",
+      "title": "rt3slot uses a fixed UBI image_seq as firmware identity",
+      "closed_by": "package/rt3release content identity; tests/rb002 (13 assertions)"
+    }
+  ],
+  "authoritative_root_cause": {
+    "class": "MISSING_NON_FORCE_PORT_CLOCK_PROGRAMMING",
+    "statement": "Machine-B WAN = SSDK port 1 / GMAC0 / PHY-managed non-force port. The MP adapter bound ssdk_port_speed_clock_set() to `force_port == A_TRUE`, so GMAC0's speed clock was never programmed; the RCG stayed on xo / 24 MHz, and every 1000BASE-T frame failed CRC.",
+    "proven_by": "R1-PROBE-I live trace (rt3000-close-work/evidence/R1_PROBE_I_TRACE_RUN_20260919/)",
+    "rejected_hypotheses": [
+      "state-aliasing / NET-C first-apply guard (refuted on hardware)",
+      "missing DTS clocks / clock-names (refuted)",
+      "qcom,link-poll (refuted)",
+      "rx-page-mode (refuted)",
+      "EEE (refuted)",
+      "hardware / BOM / PCB (refuted by OEM same-hardware control)"
+    ]
+  },
+  "acceptance_criterion": {
+    "clock": "read gmac0_rx_clk_src and gmac0_tx_clk_src parent + effective rate",
+    "forbidden": "do NOT use gephy_gcc_tx enable_count as a pass/fail gate - it is a software shadow clock with no .enable op"
+  },
+  "next_baseline": {
+    "phase": "Product R1",
+    "starts_from": "this commit / tag rt3000-machine-b-r1-net-d",
+    "must_not_fork_from": [
+      "R0.1",
+      "R1-NET-B"
+    ],
+    "historical_only": [
+      "R1-NET-A",
+      "R1-NET-B",
+      "R1-NET-C",
+      "R1-PROBE-H",
+      "R1-PROBE-I"
+    ]
+  },
+  "product_r1": {
+    "branch": "product-r1",
+    "baseline": "rt3000-machine-b-r1-net-d",
+    "prerelease": "product-r1-prerelease-1",
+    "artifact": "openwrt-ipq50xx-arm-h3c_rt3000-squashfs-nand-factory.ubi",
+    "sha256": "162d84ae74528bbee19f46e0079a3c86a4c88b935fd9679a01b83fe63fdedf8c",
+    "size": 11010048,
+    "kernel_volume_sha256": "52d8e38fc4f4bb22403d98231d140507702e26f161cb942c3a0b77afce9c07c7",
+    "rootfs_volume_sha256": "f0d49c448a7f00ec694c90aa5cb54051544395804203fe708b2773d7b8c8b70f",
+    "fit_kernel_sha256": "95254958dadcbe9c5630fd258543874b1a92d66a5bb4791fcbbf60c8839134de",
+    "packaged_qca_ssdk_sha256": "d493b3bddbdf6c0fb9b1a8ae576d4e47b23881671c8737f4341816a0a20c6497",
+    "packaged_qca_ssdk_note": "unchanged from R1-NET-D hardware-accepted build",
+    "net_d_network_baseline_retained": true,
+    "scope": [
+      "fail-closed BOOTCONFIG selector transaction (RB001)",
+      "stable content-derived firmware identity (RB002)",
+      "release manifest in rootfs + external manifest beside the image"
+    ],
+    "not_included": [
+      "LuCI",
+      "Wi-Fi defaults",
+      "MAC policy",
+      "security hardening",
+      "ECM",
+      "LED/buttons"
+    ],
+    "status": "BUILT_OFFLINE_PENDING_HARDWARE_ACCEPTANCE"
+  }
+}

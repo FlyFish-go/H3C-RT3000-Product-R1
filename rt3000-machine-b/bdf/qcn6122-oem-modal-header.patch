@@ -1,0 +1,32 @@
+# RT3000 Machine-B OEM QCN6122 modal/front-end sparse patch.
+#
+# Format: payload_offset  expected_cmcc_hex  replacement_oem_hex
+# Provenance: OEM container c5335da067a77230b6c3f81f6f56f4122069a70c7d5346646801c865637e84d3
+# compared with CMCC payload base 35f512602d6895a6a66cbfec1aade6219fbcfe4d419b66df42952e2374927a25.
+# The BDF checksum word at 0x000a is deliberately excluded and recomputed.
+003a 605e 5052
+0045 09 01
+005b 01 00
+01ed 03 06
+044c 02 05
+045c 00 03
+0598 40ce 80ca
+059c 88cf 60cc
+05a0 d8d6 40ce
+05a4 4ad9 20d0
+05a8 00e1 a0d7
+05ac b0e5 80d9
+05b0 0000 60db
+05b4 0000 40dd
+05b8 0000 20df
+05bd 00 e1
+05c0 0000 e0e2
+05c4 0000 c0e4
+05c8 0000 b0e5
+0618 a6a4a5a4a6a3000000000000 a3a2a1aaaaadaaabacaba6a3
+08b6 010101 000000
+08dd d0 f8
+08e1 d0 f8
+0f5b 2c7fffffff 0050fcf3cf
+0f68 f1 f2
+0f7c 0000 010f

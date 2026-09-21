@@ -1,0 +1,164 @@
+#!/bin/sh
+# RT3000 Machine-B — Wi-Fi first-boot policy, applied by PHYSICAL device path.
+#
+# Why this file exists (and why the old static /etc/config/wireless is gone):
+#
+#   This image used to ship a hand-written /etc/config/wireless that declared
+#   two sections, radio0 (2.4G) and radio1 (5G).  radio0's path was real, but
+#   radio1's path was a GUESS:
+#
+#       option path 'platform/soc/c000000.wifi+1'
+#
+#   No PHY on this board has that path.  The 2.4 GHz PHY is the IPQ5018
+#   integrated radio at platform/soc/c000000.wifi, and the external QCN6102
+#   5 GHz radio is a SEPARATE device-tree node at platform/soc/soc:wifi1@c000000
+#   (the "+1" form is the Redmi AX3000 donor topology, where a second PHY hangs
+#   off the same controller -- not the RT3000's).
+#
+#   mac80211's auto-detect then did the correct thing and the wrong thing:
+#
+#     - detect_mac80211() counts existing radioN sections to choose its start
+#       index, so with radio0+radio1 present it began at devidx=2;
+#     - phy0's derived path matched the shipped radio0, so it was skipped;
+#     - phy1's derived path did NOT match the fabricated radio1 path, so phy1
+#       looked like a brand-new unclaimed radio and became radio2.
+#
+#   Net effect: ONE physical QCN6102 appeared TWICE in LuCI -- as a dead
+#   radio1 (path resolves to nothing, can never bring up) and as the working
+#   radio2.  The phantom also dragged in stock OpenWrt interface defaults,
+#   including 'OpenWrt' SSID with 'encryption none' -- an open network one
+#   toggle away from being broadcast.
+#
+#   The fix is to stop shipping a fabricated path at all.  No static wireless
+#   config is installed, so detect_mac80211() alone creates exactly one section
+#   per real PHY, each carrying its own authoritative, auto-derived path.  This
+#   script then applies the product's policy ON TOP of that, matching radios by
+#   the path the kernel actually reported -- never by radioN index, which is an
+#   artifact of enumeration order and is not stable across hardware revisions.
+#
+# Ordering: uci-defaults scripts run from /etc/init.d/boot AFTER
+# /bin/config_generate, so by the time this runs the wireless file already
+# exists with the detected radios.  The previous revision's note about needing a
+# separate step from board.d still applies, and is why this remains here.
+
+. /lib/rt3000/mac.sh
+
+[ "$(board_name)" = "h3c,rt3000" ] || exit 0
+
+# Physical identity of each radio, as exposed by the kernel under
+# /sys/devices/.  These are the device-tree node paths, not UCI names.
+WIFI24_PATH="platform/soc/c000000.wifi"          # IPQ5018 integrated, 2.4 GHz
+WIFI5_PATH="platform/soc/soc:wifi1@c000000"      # external QCN6102, 5 GHz
+
+# Resolve a section's configured path to the PHY the kernel actually bound.
+# Prints the phy name (phy0, phy1, ...) or nothing when the path matches no
+# live PHY -- i.e. exactly the phantom case this change exists to prevent.
+#
+# The comparison is made on the device-tree node name (the last path element,
+# e.g. "c000000.wifi" or "soc:wifi1@c000000") rather than on the whole sysfs
+# path.  That is deliberate: the directory prefix depends on how /sys is
+# mounted and on host symlink resolution, whereas the node name is the stable
+# identity from which mac80211 itself derives the UCI path.
+phy_for_path() {
+	local want="$1" phy dev node
+
+	want="${want##*/}"
+
+	for phy in /sys/class/ieee80211/*; do
+		[ -e "$phy" ] || continue
+		dev="$(readlink -f "$phy/device" 2>/dev/null)" || continue
+		[ -n "$dev" ] || continue
+		node="${dev##*/}"
+		[ "$node" = "$want" ] && { echo "${phy##*/}"; return 0; }
+	done
+
+	return 1
+}
+
+# Is this wifi-device section the one bound to $1?
+section_is_path() {
+	local section="$1" want="$2" path
+
+	path="$(uci -q get "wireless.$section.path")" || return 1
+	[ -n "$path" ] || return 1
+	# Same node-name comparison as phy_for_path.
+	[ "${path##*/}" = "${want##*/}" ]
+}
+
+# Apply the product policy to whichever section owns the given physical path.
+# Returns nonzero (and changes nothing) when no live radio matches, so a board
+# without that radio simply skips the rule instead of inventing a section.
+apply_radio_policy() {
+	local want="$1" band="$2" ssid="$3" mac="$4" disabled="$5" encryption="$6"
+	local section iface found=0
+
+	phy_for_path "$want" >/dev/null 2>&1 || {
+		logger -t rt3000-wifi "no live PHY at $want; skipping ${band} policy"
+		return 1
+	}
+
+	# Iterate declared wifi-device sections and select by path.
+	for section in $(uci show wireless 2>/dev/null | sed -n "s/^wireless\.\([^.=]*\)=wifi-device$/\1/p"); do
+		section_is_path "$section" "$want" || continue
+		found=1
+
+		uci -q set "wireless.$section.band=$band"
+		uci -q set "wireless.$section.disabled=$disabled"
+
+		# Keep the device-level macaddr as well: it is the value
+		# /lib/wifi/mac80211.sh lookup_phy() uses to re-find the PHY when a
+		# path is absent, so keeping it consistent with the path is correct.
+		# It is NOT what programs the interface -- see the iface block below.
+		[ -n "$mac" ] && uci -q set "wireless.$section.macaddr=$mac"
+
+		# Replace stock interface defaults with the requested per-band policy.
+		# 2.4 GHz is an open debugging AP; 5 GHz remains disabled.
+		for iface in $(uci show wireless 2>/dev/null | sed -n "s/^wireless\.\([^.=]*\)=wifi-iface$/\1/p"); do
+			[ "$(uci -q get "wireless.$iface.device")" = "$section" ] || continue
+
+			uci -q set "wireless.$iface.network=lan"
+			uci -q set "wireless.$iface.mode=ap"
+			uci -q set "wireless.$iface.ssid=$ssid"
+			uci -q set "wireless.$iface.encryption=$encryption"
+			uci -q set "wireless.$iface.key="
+			uci -q set "wireless.$iface.disabled=$disabled"
+
+			# THIS is the setting that actually programs the interface.
+			#
+			# A macaddr on the wifi-device section is only a PHY-lookup
+			# hint in this tree; nothing writes it to hardware.  For
+			# 'mode ap' the address comes from the interface section:
+			# /lib/netifd/wireless/mac80211.sh mac80211_prepare_vif()
+			# reads the iface's macaddr and passes it to
+			# mac80211_hostapd_setup_bss(), which sets the BSS address.
+			# Without it, mac80211_generate_mac() derives an address from
+			# the PHY's ART placeholder and the interface runs as
+			# 00:03:7f:xx:xx:xx -- which is exactly the defect this line
+			# fixes.
+			[ -n "$mac" ] && uci -q set "wireless.$iface.macaddr=$mac"
+		done
+	done
+
+	[ "$found" -eq 1 ] || logger -t rt3000-wifi "no section for $want; nothing to apply"
+	return 0
+}
+
+# A usable factory MAC is required before any identity is written.  When it is
+# unusable the helper fails and we leave the kernel defaults alone rather than
+# inventing an identity -- same fail-closed rule as the wired policy.
+MACMAP=$(rt3000_mac_map) || {
+	logger -t rt3000-wifi "factory MAC unusable; radio policy applied without derived MACs"
+	MACMAP=""
+}
+
+W24=$(printf '%s\n' "$MACMAP" | sed -n 's/^wifi24 //p')
+W5=$(printf '%s\n'  "$MACMAP" | sed -n 's/^wifi5 //p')
+
+# Applied once by uci-defaults during image initialization, including a
+# factory reset. This is not a service that reconfigures a running radio.
+apply_radio_policy "$WIFI24_PATH" "2g" "RT3000"    "$W24" "0" "none"
+apply_radio_policy "$WIFI5_PATH"  "5g" "RT3000-5G" "$W5"  "1" "psk2"
+
+uci -q commit wireless
+
+exit 0

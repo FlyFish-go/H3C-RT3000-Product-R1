@@ -1,0 +1,25 @@
+name: Offline source checks
+
+on:
+  workflow_dispatch:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  offline-tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: MAC derivation and configuration fixtures
+        run: |
+          bash rt3000-machine-b/tests/mac/run_mac_tests.sh
+          bash rt3000-machine-b/tests/mac/run_config_path_tests.sh
+          bash tests/wifi/run_wifi_dup_tests.sh
+      - name: BDF and NSS source gates
+        run: |
+          python3 rt3000-machine-b/tests/wifi5_bdf/run_tests.py
+          sh rt3000-machine-b/tests/candidate10/run_static_checks.sh
+      - name: Device controller unit tests (mock transport only)
+        run: python3 rt3000-machine-b/tests/device_control/run_tests.py

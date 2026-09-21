@@ -1,0 +1,61 @@
+*.o
+.DS_Store
+.*.swp
+/env
+/dl
+/.config
+/.config.old
+/bin
+/build_dir
+/staging_dir
+/tmp
+/logs
+/feeds
+/feeds.conf
+/files
+/overlay
+/package/feeds
+/package/openwrt-packages
+/*.patch
+key-build*
+*.orig
+*.rej
+*~
+.#*
+*#
+.emacs.desktop*
+TAGS*~
+git-src
+.project
+.cproject
+.ccache
+.vscode
+
+# Machine-B repo freeze: never commit transient/backup artifacts
+*.bak
+PRODUCT_INTEGRATION_R0/
+rt3000-machine-b/**/*.ubi
+rt3000-machine-b/**/*.itb
+rt3000-machine-b/**/*.bin
+
+# Product R1 RC1: pinned release binaries and offline test artifacts.
+# Base64 payload of the hardware-accepted qca-ssdk.ko; must never enter Git.
+target/linux/ipq50xx/base-files/lib/rt3000/pin/qca-ssdk.ko.b64
+# Offline test binaries built in-place by the RB001/RB002 suites.
+rt3000-machine-b/tests/rb001/rt3bcwrite_mock
+rt3000-machine-b/tests/rb002/rt3release
+
+# Local agent state, credentials and private measurement material.
+/.codex/
+/AGENTS.md
+/artifacts/
+*.pcap
+*.pcapng
+*.pcapng.gz
+.env
+.env.*
+!.env.example
+__pycache__/
+*.pyc
+# Private OEM diagnostic input; not needed by the active C13 BDF build.
+/rt3000-machine-b/bdf/oem-bdwlan-b90-body.bin

@@ -1,0 +1,29 @@
+From 8e93b67188de59d2b87f9f8dfa576d36de85fe2c Mon Sep 17 00:00:00 2001
+From: hzy <hzyitc@outlook.com>
+Date: Tue, 23 May 2023 21:24:04 +0000
+Subject: [PATCH] netfilter: br_netfilter: Don't invoke iptables by default
+
+---
+ net/bridge/br_netfilter_hooks.c | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/net/bridge/br_netfilter_hooks.c b/net/bridge/br_netfilter_hooks.c
+index fb360da..1286c96 100644
+--- a/net/bridge/br_netfilter_hooks.c
++++ b/net/bridge/br_netfilter_hooks.c
+@@ -1105,9 +1105,9 @@ static struct ctl_table brnf_table[] = {
+ 
+ static inline void br_netfilter_sysctl_default(struct brnf_net *brnf)
+ {
+-	brnf->call_iptables = 1;
+-	brnf->call_ip6tables = 1;
+-	brnf->call_arptables = 1;
++	brnf->call_iptables = 0;
++	brnf->call_ip6tables = 0;
++	brnf->call_arptables = 0;
+ 	brnf->call_ebtables = 0;
+ 	brnf->call_custom = 0;
+ 	brnf->filter_vlan_tagged = 0;
+-- 
+2.25.1
+

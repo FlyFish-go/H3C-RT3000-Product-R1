@@ -1,0 +1,17 @@
+# RT3000 Machine-B — management access policy.
+#
+# SSH is bound to the LAN interface only.  The WAN side never exposes a
+# management listener, and the firewall does not forward WAN traffic to it.
+#
+# There is deliberately no default password and no key material in this file.
+# The root password is unset on a fresh install; the operator must set one
+# through LuCI (System -> Administration) or `passwd` on the console before
+# remote access is meaningful.  See INSTALL.md.
+
+config dropbear
+	option PasswordAuth 'on'
+	option RootPasswordAuth 'on'
+	option Port '22'
+	# LAN-only: bind the LAN address rather than every interface.
+	option Interface 'lan'
+	option GatewayPorts 'off'

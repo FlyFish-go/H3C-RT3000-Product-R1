@@ -1,0 +1,16 @@
+server_test,client,primary_channel,streams,direction,seconds,server_mbps,server_role
+1,RT3000 wired control,,1,upload,10.0,937.0,receiver
+2,RT3000 wired control,,1,upload,10.01,938.0,receiver
+3,iQOO Neo10,36,1,upload,10.01,680.0,receiver
+4,iQOO Neo10,36,1,upload,10.01,649.0,receiver
+5,iQOO Neo10,36,1,download,10.01,689.0,sender
+6,Xiaomi Pad 5 Pro 12.4,36,1,upload,10.01,544.0,receiver
+7,Xiaomi Pad 5 Pro 12.4,36,1,download,10.01,411.0,sender
+8,iQOO Neo10,36,4,upload,10.02,879.0,receiver
+9,iQOO Neo10,36,4,download,10.01,780.0,sender
+10,iQOO Neo10,36,1,upload,10.01,738.0,receiver
+11,iQOO Neo10,36,1,upload,10.01,708.0,receiver
+12,iQOO Neo10,36,1,upload,10.02,721.0,receiver
+13,iQOO Neo10,36,1,upload,10.01,731.0,receiver
+14,iQOO Neo10,44,1,upload,10.01,760.0,receiver
+15,iQOO Neo10,44,1,upload,10.01,789.0,receiver

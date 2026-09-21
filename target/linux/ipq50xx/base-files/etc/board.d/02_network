@@ -1,0 +1,51 @@
+#!/bin/sh
+
+. /lib/functions/uci-defaults.sh
+
+ipq50xx_setup_interfaces()
+{
+	local board="$1"
+	case $board in
+		redmi,ax3000)
+			ucidef_add_switch "switch1" \
+				"6u@eth1" "5u@eth0" \
+				"1:lan:1" "2:lan:2" "3:lan:3" \
+				"4:wan"
+			;;
+		xiaomi,cr881x)
+			ucidef_add_switch "switch0" \
+				"8u@eth1" "4u@eth0" \
+				"0:lan:1" "1:lan:2" "2:lan:3" \
+				"3:wan"
+			;;
+		cmcc,rax3000q)
+			ucidef_add_switch "switch1" \
+				"6u@eth1" "3u@eth0" \
+				"2:lan:1" "4:lan:2" "5:lan:3" \
+				"1:wan"
+			;;
+		h3c,rt3000)
+			# Machine-B two-switch model (Probe B/E evidence).
+			#
+			#   internal switch0 (QCA MP, 3 ports): port1 -> eth0 (WAN jack),
+			#                                      port2 -> eth1 (LAN CPU port)
+			#   external switch1 (QCA8337, MDIO):  port6t CPU uplink -> eth1,
+			#                                      ports 2 3 4 = the LAN jacks
+			#
+			# The external switch is a port-expander with VLANs DISABLED,
+			# matching the OEM /etc/config/network evidence.  The previous
+			# single 6-port VLAN model was disproven by Probes A/B/E.
+			ucidef_set_interfaces_lan_wan "eth1" "eth0"
+			ucidef_add_switch "switch1" \
+				"6u@eth1" \
+				"2:lan:1" "3:lan:2" "4:lan:3"
+			;;
+	esac
+}
+
+board_config_update
+board=$(board_name)
+ipq50xx_setup_interfaces $board
+board_config_flush
+
+exit 0

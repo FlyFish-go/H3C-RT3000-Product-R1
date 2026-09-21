@@ -1,0 +1,226 @@
+# PROJECT_STATE.md — RT3000/QSDK
+
+State categories: **PROVEN** (independently audited evidence), **CURRENT** (latest verified
+working state), **PENDING** (candidate, not yet proven), **SUPERSEDED** (kept for history only).
+
+Machine separation follows `MACHINES.md`. Machine B is primary **only where evidenced**;
+machine-specific facts are never inferred across machines.
+
+---
+
+## CURRENT — network baseline
+
+```
+FINAL_NETWORK_BASELINE = R1-NET-D   (ACCEPTED_HARDWARE_TESTED)
+NETWORK_BRINGUP_P0     = CLOSED
+ETHERNET_P0_RESOLVED   = YES
+NEXT_PHASE             = PRODUCT_R1  (baseline = R1-NET-D)
+```
+
+| Item | State |
+|---|---|
+| Candidate | `r1-net-d.ubi` — `ab076d02268ab3f73a4e916f2939b88f2252297843bf8fb065438a39699fd481` |
+| Packaged `qca-ssdk.ko` | `d493b3bddbdf6c0fb9b1a8ae576d4e47b23881671c8737f4341816a0a20c6497` |
+| Patch | `0902-rt3000-r1-net-d-non-force-port-clock.patch` — `f9e4065ce1569631d520364c9f6547a1312dc8a9f46a277b4ad289627b4c0ca2` |
+| Verification | `00-START-HERE/NETWORK_BRINGUP_CLOSURE.md`, `rt3000-close-work/evidence/R1_NET_D_INSTALL_20260919/` |
+| Device | running R1-NET-D (Linux 5.4.164), selector mtd3=1 mtd2=1, mtd15 intact |
+
+**Read `NETWORK_BRINGUP_CLOSURE.md` first. `R1-NET-D` is the network baseline.**
+
+---
+
+## PROVEN
+
+| Claim | Evidence | Machine |
+|---|---|---|
+| **WAN Ethernet P0 resolved**: GMAC0 RX/TX parent `P_GEPHY_TX` @ 125 MHz; WAN 1000baseT full-duplex; rx_packets>0, rx_errors=0, rx_crc_errors=0, RxFcsErr=0; DHCP + default route + gateway + internet all PASS | `rt3000-close-work/evidence/R1_NET_D_INSTALL_20260919/` | B |
+| **Root cause (WAN)**: MP adapter bound `ssdk_port_speed_clock_set()` to `force_port == A_TRUE`; WAN is a PHY-managed non-force port, so GMAC0's speed clock was never programmed and the RCG stayed at `xo / 24 MHz` | live trace `rt3000-close-work/evidence/R1_PROBE_I_TRACE_RUN_20260919/` | B |
+| External QCA8337 (AR8337) registers and works; LAN1/2/3 hardware-accepted | `R1_NET_B_INSTALL_20260918/`, `R1_NET_D_INSTALL_20260919/` | B |
+| OEM ↔ QSDK dualboot via native `bootipq`; selector flips verified per copy | `evidence/bootipq-native-dualboot-20260915T064835Z/`, selector logs | B |
+| Machine B archive v2 (21/21 members verify) preserved on local+WSL+NAS | `evidence/O13_INDEPENDENT_AUDITOR_REPORT.md` | B |
+| Controlled execution identity versioned via immutable profiles, no CLI override | `profiles/rt3000-machine-b-stage1-v2.json` | A |
+| OEM bootconfig.ko writes **kernel memory only** — no MTD write/erase in its write path | `evidence/bootconfig-write-final-reverse-20260915T122903Z/` | B |
+
+---
+
+## PENDING (Product R1)
+
+| ID | Item | Severity |
+|---|---|---|
+| **RT3-RB001** | packaged `rt3bcwrite --set` lacks the per-copy sequential verify gate (`mtd3 write → verify → mtd2 write → verify`) | P0 release blocker |
+| **RT3-RB002** | `rt3slot` uses a fixed UBI `image_seq` as firmware identity; `ubiformat` changes it, so the identity is unstable | P0 release blocker |
+| NET-QUAL-001 | physical WAN unplug/replug at 1 Gbps | open qualification |
+| NET-QUAL-002 | 100BASE-T qualification | open qualification |
+| NET-QUAL-003 | 10BASE-T qualification | open qualification |
+| — | Wi-Fi defaults + security (radios currently `disabled='1'`), deterministic MAC policy, LuCI, root/dropbear security, ECM/NSS offload | Product R1 scope |
+| — | LED/buttons, long uptime, factory reset, reboot/power-cycle, OEM Web OTA packaging | Product R1 scope |
+| — | NAS mirror of this vault | PENDING_INDEPENDENT_AUDIT |
+
+Full sequencing and the frozen MAC policy: `00-START-HERE/PRODUCT_R1_PLAN.md`.
+
+```
+SPEED_1000_QUALIFIED = YES   (initial bring-up only)
+SPEED_100_QUALIFIED  = NO
+SPEED_10_QUALIFIED   = NO
+```
+
+---
+
+## SUPERSEDED — historical candidates (evidence only)
+
+**Do not continue developing these.** Retained solely for provenance.
+
+| Candidate | Role |
+|---|---|
+| R1-NET-A | MDIO1 pinmux investigation |
+| R1-NET-B | first working external switch; WAN still broken |
+| R1-NET-C | state-aliasing hypothesis — **refuted on hardware** |
+| R1-PROBE-H | static init-path analysis; located the real clock path |
+| R1-PROBE-I | live trace proving the root cause (plus its trace-only build) |
+
+### Rejected root-cause hypotheses — never cite again
+
+state-aliasing / NET-C first-apply guard · missing DTS clocks or `clock-names` · `qcom,link-poll` ·
+`rx-page-mode` · EEE · hardware/BOM/PCB (refuted by the OEM same-hardware control).
+
+### Other superseded items
+
+- `rt3slot` v1 — superseded by v2 (`tools/rt3slot`, `0e6499d4…`).
+- The Machine-C look-alike `rt3000-qsdk11.5-ram-final.itb` — **not** a Machine B artifact.
+- Early selector-persistence panic — resolved; native dualboot works via `bootipq`.
+
+---
+
+## Standing methodology rules
+
+1. **Clock acceptance**: read `gmac0_rx_clk_src` / `gmac0_tx_clk_src` parent + effective rate.
+   **Never** `gephy_gcc_tx enable_count` — it is a shadow clock with no `.enable` op.
+2. **Selector writes**: binary-safe generation only (pre-generated bytes or base64); no multi-layer
+   `printf` escaping. Write → raw readback → structural parse → exact verify, per copy.
+3. **Firmware transfer**: OneCloud LAN/HTTP only; never over TTL.
+4. **Device identity fence**: `192.0.2.1` on the jumpbox main netns is the **JCQ30Pro**, not the
+   RT3000.
+5. **OEM is the golden reference** — run a same-hardware OEM control before concluding hardware fault.
+6. **Rollback anchor**: OEM mtd15 + selector 0; keep intact.
+
+---
+
+## 8. Product R1 — release blocker closure (this round)
+
+Branch `product-r1`, from the immutable tag `rt3000-machine-b-r1-net-d`
+(`ba18b661a46f4b8d5fc1aa806d616bd98b319c81`). The tag itself was not moved,
+rewritten or re-pointed.
+
+### RT3-RB001 — CLOSED_OFFLINE_PENDING_HARDWARE
+
+`package/rt3bcwrite.c` now runs a real per-copy transaction, in order:
+read live erase block -> structural validate -> patch only the 4 selector bytes
+-> prove no other byte moved -> erase/write -> read back whole block ->
+byte-compare -> re-parse structure -> confirm exact selector.
+
+mtd3 is written **first**; mtd2 is touched **only** if mtd3 fully passed. Exit
+codes distinguish refusal from partial write (5/7 = first copy failed, second
+untouched; 6/8 = second copy failed, copies divergent and reported as such).
+
+Binary safety: the selector is materialised only through `put_le32()`. No
+`printf` escapes, no shell quoting, no string literals — the historical ASCII
+`\001` incident cannot recur.
+
+`tests/rb001/run_tests.sh`: **22 assertions, all passing**, `FAIL_CLOSED=YES`.
+Fault injection is compiled out of the shipped binary (verified with
+`nm`/`strings`).
+
+### RT3-RB002 — CLOSED_OFFLINE_PENDING_HARDWARE
+
+`package/rt3release` replaces the fixed `image_seq` with stable content
+identity: SHA-256 over the FIT kernel payload at its **declared** length, and
+over the squashfs rootfs payload, compared against a release manifest.
+`image_seq`, EC counters, VID headers and PEB placement are used nowhere; test
+11 enforces this mechanically by stripping comments and grepping the real code.
+
+`tests/rb002/run_tests.sh`: **13 assertions, all passing**,
+`IMAGE_SEQ_DEPENDENCY=NONE`.
+
+Details: `RB001_FAIL_CLOSED_SELECTOR.md`, `RB002_STABLE_IDENTITY.md`.
+
+### Product R1 prerelease 1
+
+```
+artifact : openwrt-ipq50xx-arm-h3c_rt3000-squashfs-nand-factory.ubi
+sha256   : 162d84ae74528bbee19f46e0079a3c86a4c88b935fd9679a01b83fe63fdedf8c
+size     : 11010048
+kernel vol : 52d8e38fc4f4bb22403d98231d140507702e26f161cb942c3a0b77afce9c07c7  (== R1-NET-D)
+rootfs vol : f0d49c448a7f00ec694c90aa5cb54051544395804203fe708b2773d7b8c8b70f
+qca-ssdk.ko: d493b3bddbdf6c0fb9b1a8ae576d4e47b23881671c8737f4341816a0a20c6497  (== NET-D accepted)
+```
+
+The kernel volume is byte-identical to R1-NET-D and `qca-ssdk.ko` is unchanged,
+so the hardware-accepted NET-D network baseline is retained. Only the rootfs
+changed, and only by the three Product R1 tools plus the release manifest.
+
+Not included, deliberately: LuCI, Wi-Fi defaults, MAC policy, security
+hardening, ECM/NSS, LED/buttons. One variable set per round.
+
+### Hardware acceptance still required
+
+`CLOSED_OFFLINE` means the implementation and its tests pass — **not** that the
+device was exercised. Both blockers need on-hardware confirmation:
+
+| ID | Item |
+|---|---|
+| RB001-HW-001 | `rt3bcwrite --set` dual-copy transaction on real MTD |
+| RB002-HW-001 | `rt3release verify` on the running device |
+
+Neither was performed: `DEVICE_WRITES=0` this round. Do not record either as
+hardware-accepted.
+
+---
+
+## 9. HARDWARE ACCEPTANCE — Product R1 prerelease 1 (2026-09-19)
+
+**FINAL_SYSTEM = Product R1 prerelease 1, selector 1/1, mtd15 intact.**
+
+Full detail: `PRODUCT_R1_PRERELEASE_1_ACCEPTANCE.md`.
+
+### RT3-RB001 = HARDWARE_ACCEPTED / CLOSED
+
+The *packaged* `rt3slot oem` was run on the device and produced:
+
+```
+copy=mtd3 write=PASS verify=PASS     <- emitted BEFORE the mtd2 lines
+copy=mtd2 write=PASS verify=PASS
+RESULT=PASS both copies = 0x00000000
+```
+
+The required ordering was proven directly from the output rather than inferred
+from the final 0/0. Raw post-reads confirmed both selectors, both BOOTCONFIG
+structures, and byte-identical preservation of the OEM blob at `0x880` on
+`mtd2`. OEM booted afterwards (Linux 4.4.60) and mtd15 stayed intact. Combined
+with the offline 22/22 fail-closed suite.
+
+The packaged tool was deliberately NOT used for its own first install — the
+manual binary-safe RMW did that — and was accepted only once Product R1 was up
+and stable.
+
+### RT3-RB002 = HARDWARE_ACCEPTED / CLOSED
+
+Flashed-content identity matched the external manifest on both halves
+(kernel `95254958…`, rootfs `f0d49c44…`). Runtime `rt3release verify` reported
+`KERNEL_MATCH=PASS`, `ROOTFS_VERIFY=UNSUPPORTED_FROM_INSIDE_ROOTFS`,
+`IMAGE_SEQ_DEPENDENCY=NONE`, `RELEASE_IDENTITY_MATCH=PASS_KERNEL_ONLY` — the
+honest scope, not a fake full pass.
+
+Decisive evidence that `image_seq` is not identity: it changed from
+`0x2a967962` to `0x58c99d30` across a flash of byte-identical firmware content.
+A fixed `image_seq` would have misreported; content identity did not.
+
+### Network baseline — no regression
+
+`gmac0_rx_clk_src` and `gmac0_tx_clk_src` both `gephy_gcc_tx` @ `125000000`.
+WAN `1000baseT full-duplex`, `eth0 rx_packets` advancing with
+`rx_errors=0` and `rx_crc_errors=0`, DHCP `192.0.2.2/24`, gateway 0.35 ms,
+internet 9.2 ms, QCA8337 registered, LAN ports 1000baseT, both Wi-Fi bands up.
+
+### Still open — unchanged by this round
+
+`SPEED_100_QUALIFIED=NO`, `SPEED_10_QUALIFIED=NO`, NET-QUAL-001/002/003.
