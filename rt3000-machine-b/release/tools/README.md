@@ -4,6 +4,8 @@
 
 本目录放工具；**固件镜像不存放在源码仓库**。从 [r5 发布附件](https://github.com/FlyFish-go/H3C-RT3000-Product-R1/releases/tag/r5) 下载镜像和 `SHA256SUMS`，先核对校验值，再按教程操作。所有写入步骤仅针对教程已验证的 RT3000 Machine-B。
 
+📦 用户也可直接下载 [Machine-B r5 OEM/QSDK 传输工具 ZIP](https://github.com/FlyFish-go/H3C-RT3000-Product-R1/releases/download/r5/RT3000-Machine-B-r5-OEM-Transfer-Tools.zip)（8,569 字节；SHA-256：`8a0117f63ca7e461a2684b2602a092b09b52eafbf01dc6771ec080758778cb95`）。压缩包含 `rt3bcwrite`、本目录的 Windows 临时文件服务器批处理和中文说明；factory `.ubi` 仍需从 Release 单独下载并核验。
+
 | 发布附件 | 用途 | 验证状态 |
 |---|---|---|
 | `openwrt-ipq50xx-arm-h3c_rt3000-squashfs-nand-factory.ubi` | 从原厂首次安装 | 已按教程实机写入、读回和启动 |

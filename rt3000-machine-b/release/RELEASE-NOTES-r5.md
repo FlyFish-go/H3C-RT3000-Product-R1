@@ -8,6 +8,8 @@
 
 📦 **[直接下载原厂 Telnet 一键工具 ZIP](https://github.com/FlyFish-go/H3C-RT3000-Product-R1/releases/download/r5/RT3000-OEM-Telnet-OneClick-r5-corrected.zip)**（SHA-256：`3a28ef6bd025caee0b58136fedcc530ecf95b63565e2d582592168679d170120`）。解压后按[第一部分教程](01-GET-TELNET.md)操作；ZIP 不包含用户配置备份。
 
+📦 **[直接下载 Machine-B r5 OEM/QSDK 传输工具 ZIP](https://github.com/FlyFish-go/H3C-RT3000-Product-R1/releases/download/r5/RT3000-Machine-B-r5-OEM-Transfer-Tools.zip)**（8,569 字节；SHA-256：`8a0117f63ca7e461a2684b2602a092b09b52eafbf01dc6771ec080758778cb95`）。包含 `rt3bcwrite`、Windows 临时文件服务器批处理和中文说明；factory `.ubi` 镜像需从本页单独下载并核验。
+
 ---
 
 ## 这是什么
@@ -88,6 +90,7 @@ nl80211: NL80211_ATTR_STA_VLAN (... vlan_id=0) failed: -34
 | `openwrt-ipq50xx-arm.manifest` | 4,522 | 包清单 |
 | `SHA256SUMS` | — | 校验值 |
 | [`RT3000-OEM-Telnet-OneClick-r5-corrected.zip`](https://github.com/FlyFish-go/H3C-RT3000-Product-R1/releases/download/r5/RT3000-OEM-Telnet-OneClick-r5-corrected.zip) | 5,263 | Windows 原厂配置一键开启 Telnet 工具；更正说明，不含用户配置 |
+| [`RT3000-Machine-B-r5-OEM-Transfer-Tools.zip`](https://github.com/FlyFish-go/H3C-RT3000-Product-R1/releases/download/r5/RT3000-Machine-B-r5-OEM-Transfer-Tools.zip) | 8,569 | `rt3bcwrite`、Windows 临时文件服务器与中文说明；不含固件及备份 |
 
 ### 校验值
 
@@ -98,6 +101,7 @@ nl80211: NL80211_ATTR_STA_VLAN (... vlan_id=0) failed: -34
 51d17fbd3a93a0e9d20b60003e9467f00cb7bcdc5d69198885a191a3435e1359  openwrt-ipq50xx-arm-h3c_rt3000-squashfs-release.json
 258ae87574d4b0a9bf48b570aebc5d12600e385b025369c73f167727c43d3764  openwrt-ipq50xx-arm.manifest
 3a28ef6bd025caee0b58136fedcc530ecf95b63565e2d582592168679d170120  RT3000-OEM-Telnet-OneClick-r5-corrected.zip
+8a0117f63ca7e461a2684b2602a092b09b52eafbf01dc6771ec080758778cb95  RT3000-Machine-B-r5-OEM-Transfer-Tools.zip
 ```
 
 **下载后请核对**：
@@ -121,13 +125,13 @@ certutil -hashfile openwrt-ipq50xx-arm-h3c_rt3000-squashfs-nand-factory.ubi SHA2
 
 ### 槽位切换工具
 
-**不在附件里，在仓库中**：`rt3000-machine-b/release/tools/rt3bcwrite`
+`rt3bcwrite` 已包含在本页的 **Machine-B r5 OEM/QSDK 传输工具 ZIP** 中，也可从[源码工具目录](tools/)单独获取。文件 SHA-256：
 
 ```
 e23d8634af3fb20a5c383aa22ad2dc65752133ffd91d3715a70df5121d0789f5
 ```
 
-> 原厂固件里没有这个工具，首次安装时需要从电脑传进设备。
+原厂固件中没有这个工具；首次安装时可从工具 ZIP 的文件服务器传到设备。实际安装与切换步骤仍按第二、三部分教程操作。
 
 ---
 
