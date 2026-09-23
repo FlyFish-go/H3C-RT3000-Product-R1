@@ -1,0 +1,43 @@
+From: RT3000 QSDK build <noreply@localhost>
+Date: Tue, 22 Sep 2026 21:45:00 +0800
+Subject: [PATCH] nl80211: only send NL80211_ATTR_VLAN_ID when vlan_id is non-zero
+
+NL80211_ATTR_VLAN_ID has a kernel policy of
+NLA_POLICY_RANGE(NLA_U16, 1, VLAN_N_VID - 2), i.e. the value 0 is
+rejected with -ERANGE ("integer out of range").
+
+i802_set_sta_vlan() unconditionally adds NL80211_ATTR_VLAN_ID whenever the
+driver advertises WPA_DRIVER_FLAGS_VLAN_OFFLOAD, including for the common
+case of vlan_id == 0 ("do not bind to any VLAN"). On drivers that do
+advertise VLAN offload - e.g. ath11k in QSDK, which sets
+NL80211_EXT_FEATURE_VLAN_OFFLOAD - every station association thus sends an
+out-of-range attribute and the whole NL80211_CMD_SET_STATION request is
+rejected atomically:
+
+  nl80211: kernel reports: integer out of range
+  nl80211: NL80211_ATTR_STA_VLAN (addr=.. ifname=.. vlan_id=0) failed: -34
+
+Clients can then authenticate and associate at the 802.11 level but never
+complete the 4-way handshake, and reconnect in a loop.
+
+The other two VLAN-offload call sites in this file already guard the
+attribute with "vlan_id &&", so this simply makes i802_set_sta_vlan()
+consistent with them. With vlan_id == 0 only NL80211_ATTR_STA_VLAN is
+sent, which correctly points the station at the AP interface itself.
+
+Signed-off-by: RT3000 QSDK build <noreply@localhost>
+---
+ src/drivers/driver_nl80211.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -6944,7 +6944,7 @@
+ 	if (!(msg = nl80211_bss_msg(bss, 0, NL80211_CMD_SET_STATION)) ||
+ 	    nla_put(msg, NL80211_ATTR_MAC, ETH_ALEN, addr) ||
+-	    ((drv->capa.flags & WPA_DRIVER_FLAGS_VLAN_OFFLOAD) &&
++	    ((drv->capa.flags & WPA_DRIVER_FLAGS_VLAN_OFFLOAD) && vlan_id &&
+ 	     nla_put_u16(msg, NL80211_ATTR_VLAN_ID, vlan_id)) ||
+ 	    nla_put_u32(msg, NL80211_ATTR_STA_VLAN, if_nametoindex(ifname))) {
+ 		nlmsg_free(msg);
+ 		return -ENOBUFS;

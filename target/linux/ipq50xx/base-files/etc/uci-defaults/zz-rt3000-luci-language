@@ -1,0 +1,16 @@
+#!/bin/sh
+# Run after luci-i18n-* has registered its language aliases.
+. /lib/functions.sh
+
+[ "$(board_name)" = "h3c,rt3000" ] || exit 0
+[ -s /usr/lib/lua/luci/i18n/base.zh-cn.lmo ] || exit 1
+
+# Choose Chinese for a fresh installation; preserve an explicit user choice.
+case "$(uci -q get luci.main.lang)" in
+	""|auto)
+		uci -q set luci.main.lang=zh_cn || exit 1
+		uci -q commit luci || exit 1
+		;;
+esac
+
+exit 0

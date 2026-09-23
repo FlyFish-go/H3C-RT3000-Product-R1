@@ -8,7 +8,7 @@ The long-term goal is support for the **RT3000 / RW3000 / RC3000 / NX30 family**
 
 **Product R1 is the first hardware milestone:** RT3000 Machine B has passed initial basic-function validation, including NAND installation and OEM / QSDK dual-system boot, switching and rollback. Family-wide support remains the roadmap.
 
-**Developer Preview.** Earlier Product R1 builds have NAND and dual-system acceptance records. The latest Candidate 13 was tested through an initramfs RAM boot and is not an accepted flash release. This publication contains source and evidence, not a new firmware binary release.
+**Product R1 r5 Developer Preview.** On the RT3000 Machine-B, r5 has been installed from OEM into NAND, read back and verified, booted, switched in both directions, upgraded with configuration retained, and factory reset. A phone connected to both Wi-Fi bands after the upgrades. Candidate 13 was a separate RAM-boot performance experiment, not the r5 flash image. Download r5 artifacts and checksums from the [r5 Release](https://github.com/FlyFish-go/H3C-RT3000-Product-R1/releases/tag/r5).
 
 ## Support roadmap
 
@@ -62,25 +62,15 @@ Read the [build guide](rt3000-machine-b/docs/BUILD_PUBLIC.md). Kernel, toolchain
 
 ## Installation: OEM firmware to the second slot
 
-**Reserved section — procedure pending.** A verified guide will cover writing Product R1 from the OEM system to the second slot, booting it and retaining OEM rollback. No installation commands or new installable firmware release are supplied here yet.
+The r5 image and commands are **validated only on this project's RT3000 Machine-B**. They are not instructions for RT3000 A/C, RW3000, RC3000 or NX30. Check NAND, partition layout and OEM version before proceeding. Read the [five-part installation guide](rt3000-machine-b/release/INSTALL.md), [r5 release notes](rt3000-machine-b/release/RELEASE-NOTES-r5.md) and `SHA256SUMS` before writing flash.
 
-| Step | Content to be added |
-|---|---|
-| Preparation | Hardware/OEM versions, image verification and tools |
-| Backup and slot identification | Backup scope, second-slot identification and recovery preparation |
-| Write from OEM firmware | Access method, image transfer, write steps and completion checks |
-| Select and boot | Boot selection, first-boot expectations and failure handling |
-| Verify and roll back | Runtime identity, basic checks and returning to OEM |
+The normal installation, readback, dual-system switching, configuration-preserving upgrade and factory reset were walked through again on September 23, 2026. The OEM Telnet configuration import was not repeated in that walk-through; there is earlier hardware evidence and the helper tool was checked offline. Power loss, automatic fallback after a failed QSDK boot, and full U-Boot + TFTP NAND recovery remain untested.
 
-See the reserved [installation guide](rt3000-machine-b/release/INSTALL.md), existing B-machine [recovery records](rt3000-machine-b/release/RECOVERY.md) and [known issues](rt3000-machine-b/release/KNOWN_ISSUES.md). B-machine dual-system validation is already recorded; the user-facing OEM installation guide is still pending and cannot be applied to other variants. Candidate 13 remains a RAM-only diagnostic candidate.
+## r5 default access
 
-## Default access
+The QSDK LAN address is `192.168.10.1`; LuCI is at `http://192.168.10.1/`. SSH listens on the LAN side by default. Set a root password immediately after installation; the fresh image has none.
 
-Default LAN management is `http://192.168.1.1/`. Set a root password on first use. WAN SSH/LuCI access is blocked by default and there is no shared factory password.
-
-**The current source enables a 2.4 GHz debugging AP named `RT3000`, without a password, bridged to LAN.** Configure wireless encryption and a management password before daily use. 5 GHz remains disabled until configured.
-
-This default-policy change applies to fresh initialization / factory reset with a newly built image. It has not been rebuilt or tested on hardware and does not alter the running device. Historical Candidate 13 measurements used 2.4 GHz disabled and do not validate simultaneous dual-band operation under these new defaults.
+Both Wi-Fi bands are enabled with WPA2 by default: `RT3000` (2.4 GHz) and `RT3000-5G` (5 GHz), with the published default key `RTRCRWNX`. Change the key before daily use. These defaults were checked on hardware after r5 installation and factory reset. Earlier RC1/C13 test images used different defaults and do not describe r5.
 
 ## Scope and privacy
 

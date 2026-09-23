@@ -90,6 +90,7 @@ section_is_path() {
 # without that radio simply skips the rule instead of inventing a section.
 apply_radio_policy() {
 	local want="$1" band="$2" ssid="$3" mac="$4" disabled="$5" encryption="$6"
+	local key="$7" htmode="$8"
 	local section iface found=0
 
 	phy_for_path "$want" >/dev/null 2>&1 || {
@@ -105,6 +106,13 @@ apply_radio_policy() {
 		uci -q set "wireless.$section.band=$band"
 		uci -q set "wireless.$section.disabled=$disabled"
 
+		# Channel width.  5 GHz is pinned to HE80 rather than HE160: a 160 MHz
+		# channel on this board must span 36-64, which includes the DFS bands
+		# 52-64, so the AP only comes up after a ~45 s CAC and can be forced
+		# off-channel by radar detection.  HE80 on ch36 stays inside the
+		# non-DFS 36-48 block and starts immediately.
+		[ -n "$htmode" ] && uci -q set "wireless.$section.htmode=$htmode"
+
 		# Keep the device-level macaddr as well: it is the value
 		# /lib/wifi/mac80211.sh lookup_phy() uses to re-find the PHY when a
 		# path is absent, so keeping it consistent with the path is correct.
@@ -112,7 +120,6 @@ apply_radio_policy() {
 		[ -n "$mac" ] && uci -q set "wireless.$section.macaddr=$mac"
 
 		# Replace stock interface defaults with the requested per-band policy.
-		# 2.4 GHz is an open debugging AP; 5 GHz remains disabled.
 		for iface in $(uci show wireless 2>/dev/null | sed -n "s/^wireless\.\([^.=]*\)=wifi-iface$/\1/p"); do
 			[ "$(uci -q get "wireless.$iface.device")" = "$section" ] || continue
 
@@ -120,7 +127,14 @@ apply_radio_policy() {
 			uci -q set "wireless.$iface.mode=ap"
 			uci -q set "wireless.$iface.ssid=$ssid"
 			uci -q set "wireless.$iface.encryption=$encryption"
-			uci -q set "wireless.$iface.key="
+			# A psk2 interface with an empty key cannot be brought up at all:
+			# hostapd reports INVALID_WPA_PSK and the AP silently stays down.
+			# Only write a key when the mode actually uses one.
+			if [ "$encryption" = "none" ]; then
+				uci -q delete "wireless.$iface.key"
+			else
+				[ -n "$key" ] && uci -q set "wireless.$iface.key=$key"
+			fi
 			uci -q set "wireless.$iface.disabled=$disabled"
 
 			# THIS is the setting that actually programs the interface.
@@ -154,10 +168,23 @@ MACMAP=$(rt3000_mac_map) || {
 W24=$(printf '%s\n' "$MACMAP" | sed -n 's/^wifi24 //p')
 W5=$(printf '%s\n'  "$MACMAP" | sed -n 's/^wifi5 //p')
 
+# Default WPA2 passphrase for both bands.  This is a shipped default, not a
+# secret: it is visible in the image and must be changed by the operator for
+# any real deployment.  Keeping it here (rather than open encryption) means a
+# freshly flashed unit is never an open AP.
+RT3_WIFI_KEY="${RT3_WIFI_KEY:-RTRCRWNX}"
+
 # Applied once by uci-defaults during image initialization, including a
 # factory reset. This is not a service that reconfigures a running radio.
-apply_radio_policy "$WIFI24_PATH" "2g" "RT3000"    "$W24" "0" "none"
-apply_radio_policy "$WIFI5_PATH"  "5g" "RT3000-5G" "$W5"  "1" "psk2"
+#
+# Both bands are enabled and secured.  Shipping an open AP by default is not
+# acceptable for a device handed to an end user: anyone in range joins the LAN.
+# 5 GHz uses HE80 (see the htmode note above) so the AP starts without waiting
+# for a DFS channel-availability check.
+#
+# Field order: <phy path> <band> <ssid> <mac> <disabled> <encryption> <key> <htmode>
+apply_radio_policy "$WIFI24_PATH" "2g" "RT3000"    "$W24" "0" "psk2" "$RT3_WIFI_KEY" "HE20"
+apply_radio_policy "$WIFI5_PATH"  "5g" "RT3000-5G" "$W5"  "0" "psk2" "$RT3_WIFI_KEY" "HE80"
 
 uci -q commit wireless
 

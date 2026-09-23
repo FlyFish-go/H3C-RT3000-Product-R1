@@ -108,9 +108,10 @@ define Device/h3c_rt3000
   BLOCKSIZE := 128k
   PAGESIZE := 2048
   DEVICE_DTS_CONFIG := config@mp02.1
-  # G11-P4.6: WiFi bring-up PASSed; factory image enabled but FLASHING
-  # REMAINS GATED on explicit human confirmation (SAFE_TO_FLASH=NO).
-  IMAGES := nand-factory.ubi release.json
+  # Machine-B sysupgrade uses fixed-slot, verified writes.
+  SUPPORTED_DEVICES := h3c,rt3000
+  IMAGES := nand-factory.ubi nand-sysupgrade.bin release.json
+  IMAGE/nand-sysupgrade.bin := rt3000-sysupgrade | append-metadata
   IMAGE/nand-factory.ubi := append-ubi
   IMAGE/release.json := rt3000-release-manifest
   DEVICE_PACKAGES := \
@@ -120,6 +121,13 @@ define Device/h3c_rt3000
 	ipq-wifi-h3c_rt3000 \
 	kmod-qca-nss-ecm-standard \
 	iperf3 \
+	luci \
+	luci-i18n-base-zh-cn \
+	luci-i18n-firewall-zh-cn \
+	luci-i18n-opkg-zh-cn \
+	ttyd \
+	luci-app-ttyd \
+	luci-i18n-ttyd-zh-cn \
 	rt3bcwrite \
 	rt3slot \
 	rt3release
@@ -155,8 +163,27 @@ TARGET_DEVICES += h3c_rt3000
 
 define Build/rt3000-release-manifest
 	$(TOPDIR)/scripts/rt3000-mkmanifest.sh \
-		$(IMAGE_KERNEL) $(IMAGE_ROOTFS) $(@D)/$(DEVICE_NAME)-release.json \
-		"Product R1 RC1" "R1-NET-D"
+		$(IMAGE_KERNEL) $(IMAGE_ROOTFS) $@ \
+		"$(if $(filter h3c_rt3000,$(DEVICE_NAME)),Product R1 Upgrade Preview,Product R1 RC1)" "R1-NET-D"
+	cp $@ $(@D)/$(DEVICE_NAME)-release.json
+endef
+
+define Build/rt3000-sysupgrade
+	python3 $(TOPDIR)/scripts/rt3000-sysupgrade.py $(IMAGE_KERNEL) $(IMAGE_ROOTFS) $@
 endef
 
 $(eval $(call BuildImage))
+
+# rt3release and rt3slot need the running kernel identity inside the rootfs.
+# Use an explicit squashfs prerequisite (not a competing root.% pattern rule)
+# so the FIT exists and the manifest is written before mksquashfs runs.
+ifneq ($(CONFIG_TARGET_DEVICE_ipq50xx_arm_DEVICE_h3c_rt3000),)
+RT3000_ROOTDIR := $(if $(TARGET_PER_DEVICE_ROOTFS),$(KDIR)/target-dir-$(ROOTFS_ID/h3c_rt3000),$(TARGET_DIR))
+RT3000_ROOTFS := $(KDIR)/root.squashfs$(if $(TARGET_PER_DEVICE_ROOTFS),+pkg=$(ROOTFS_ID/h3c_rt3000))
+.PHONY: rt3000-rootfs-identity
+rt3000-rootfs-identity: $(KDIR)/h3c_rt3000-fit-uImage.itb $(if $(TARGET_PER_DEVICE_ROOTFS),target-dir-$(ROOTFS_ID/h3c_rt3000))
+	sh $(TOPDIR)/scripts/rt3000-mkinrootfs-manifest.sh \
+		$(KDIR)/h3c_rt3000-fit-uImage.itb $(RT3000_ROOTDIR) \
+		"Product R1 Upgrade Preview" "R1-NET-D"
+$(RT3000_ROOTFS): rt3000-rootfs-identity
+endif

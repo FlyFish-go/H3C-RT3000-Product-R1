@@ -1,0 +1,42 @@
+#!/bin/sh
+# RT3000 Machine-B - default LAN address.
+#
+# Why this file exists:
+#
+#   OpenWrt's config_generate hardcodes the LAN default to 192.168.1.1 for
+#   every board:
+#
+#       package/base-files/files/bin/config_generate
+#           lan) ipad=${ipaddr:-"192.168.1.1"} ;;
+#
+#   192.168.1.1 is the factory default gateway of most consumer routers, so a
+#   freshly flashed RT3000 collides with the very network it is plugged into.
+#   The symptom is not subtle: the unit answers on br-lan with an address the
+#   upstream router also owns, the WAN DHCP lease lands in the same /24, and
+#   the management UI is unreachable at the address the user expects.
+#
+#   This only shows up on a factory-fresh flash.  The earlier install path set
+#   192.168.10.1 by hand in the RAM system and carried it across with
+#   `sysupgrade -f`, which masked the problem completely.
+#
+#   The OEM firmware's Wi-Fi-side management address is also 192.168.10.1.
+#   In OEM wired bridge mode its address may instead come from upstream DHCP;
+#   the operator must use the QSDK LAN port after switching systems.
+#
+# Ordering: uci-defaults runs after config_generate, so network.lan already
+# exists by the time this executes.
+
+[ "$(board_name)" = "h3c,rt3000" ] || exit 0
+
+# Never touch a LAN address the operator has already changed.  config_generate
+# writes the stock default; anything else is deliberate and must be preserved.
+cur="$(uci -q get network.lan.ipaddr)"
+[ "$cur" = "192.168.1.1" ] || exit 0
+
+uci -q set network.lan.ipaddr='192.168.10.1'
+uci -q set network.lan.netmask='255.255.255.0'
+uci -q commit network
+
+logger -t rt3000-lan "default LAN moved from 192.168.1.1 to 192.168.10.1 (OEM-compatible)"
+
+exit 0

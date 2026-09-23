@@ -1,0 +1,11 @@
+#!/bin/sh
+# Upstream 21.02 user-space packages only; ipq50xx/QSDK has no upstream core feed.
+. /lib/functions.sh
+[ "$(board_name)" = 'h3c,rt3000' ] || exit 0
+file=/etc/opkg/distfeeds.conf
+[ -f "$file" ] || exit 1
+sed -i \
+	-e '\|^src/gz openwrt_core .*targets/ipq50xx/arm/packages$|s|^|# QSDK kernel packages require this project build: |' \
+	-e 's|https\?://downloads.openwrt.org/releases/21.02.7/packages/|https://mirrors.sjtug.sjtu.edu.cn/openwrt/releases/21.02.7/packages/|g' \
+	"$file" || exit 1
+exit 0
