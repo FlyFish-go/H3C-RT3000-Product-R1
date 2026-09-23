@@ -1,12 +1,12 @@
 # Product R1 r5 — Developer Preview
 
-> ⚠️ **实验性预发布。** 请在动手前完整阅读 [已更正的安装教程](https://github.com/FlyFish-go/H3C-RT3000-Product-R1/blob/main/rt3000-machine-b/release/INSTALL.md)。`r5` 标签保留发布当时的源码快照，旧版教程中把 B 机配置头 D009 误写成原厂软件版本；请以此处更正说明和最新教程为准。
+> ⚠️ **实验性预发布。** 请在动手前完整阅读 [已更正的安装教程](INSTALL.md)。`r5` 标签保留发布当时的源码快照，旧版教程中把 B 机配置头 D009 误写成原厂软件版本；请以此处更正说明和最新教程为准。
 >
 > 2026-09-23 已在 RT3000 Machine-B 上按当前教程复走安装、读回、主动双向切换、保留配置升级和恢复出厂。原厂 Telnet 配置导入本轮未重复执行；配套工具已在三份不同配置头的 RT3000 原厂备份上离线复核，输出分别与已有启用版逐字节一致。故障注入、断电和完整 U-Boot + TFTP 救援仍未实测。
 
 **版本勘误**：B 机网页和 `display version` 的软件版本是 `RT3000V100R005`；同一台 B 机导出的配置文件第二行是 `RT3000/RT3000V100D009`。这两个字段用途不同，不能据 D009 将 B 机备份认作另一台设备。另两台样机的配置头字段为 `RT3000V100D012`、`RT3000V100D023`；这些字段也不能直接替代各自网页／CLI 的软件版本。**下述固件镜像仍只在 B 机实测，配置工具的离线兼容结果不扩大镜像适用范围。**
 
-📦 **[直接下载原厂 Telnet 一键工具 ZIP](https://github.com/FlyFish-go/H3C-RT3000-Product-R1/releases/download/r5/RT3000-OEM-Telnet-OneClick-r5-corrected.zip)**（SHA-256：`3a28ef6bd025caee0b58136fedcc530ecf95b63565e2d582592168679d170120`）。解压后按[第一部分教程](https://github.com/FlyFish-go/H3C-RT3000-Product-R1/blob/main/rt3000-machine-b/release/01-GET-TELNET.md)操作；ZIP 不包含用户配置备份。
+📦 **[直接下载原厂 Telnet 一键工具 ZIP](https://github.com/FlyFish-go/H3C-RT3000-Product-R1/releases/download/r5/RT3000-OEM-Telnet-OneClick-r5-corrected.zip)**（SHA-256：`3a28ef6bd025caee0b58136fedcc530ecf95b63565e2d582592168679d170120`）。解压后按[第一部分教程](01-GET-TELNET.md)操作；ZIP 不包含用户配置备份。
 
 ---
 
@@ -133,7 +133,7 @@ e23d8634af3fb20a5c383aa22ad2dc65752133ffd91d3715a70df5121d0789f5
 
 ## 安装
 
-完整步骤见 **[rt3000-machine-b/release/INSTALL.md](https://github.com/FlyFish-go/H3C-RT3000-Product-R1/blob/r5/rt3000-machine-b/release/INSTALL.md)**。
+完整步骤见 **[rt3000-machine-b/release/INSTALL.md](INSTALL.md)**。
 
 概要：
 
@@ -204,7 +204,7 @@ e23d8634af3fb20a5c383aa22ad2dc65752133ffd91d3715a70df5121d0789f5
 
 ## 已知问题
 
-见 **[rt3000-machine-b/release/KNOWN_ISSUES.md](https://github.com/FlyFish-go/H3C-RT3000-Product-R1/blob/r5/rt3000-machine-b/release/KNOWN_ISSUES.md)**。
+见 **[rt3000-machine-b/release/KNOWN_ISSUES.md](KNOWN_ISSUES.md)**。
 
 ---
 
@@ -218,7 +218,7 @@ rt3slot oem --reboot
 
 **这只更新启动选择，不重写、不删除 QSDK**。需要从原厂返回时，先确认原厂正常启动且能进入 shell，再按教程第三部分操作。
 
-详见 [INSTALL.md 第三部分](https://github.com/FlyFish-go/H3C-RT3000-Product-R1/blob/r5/rt3000-machine-b/release/INSTALL.md)。
+详见[第三部分：双向切换](03-SWITCH-SYSTEMS.md)。
 
 ---
 
@@ -230,13 +230,13 @@ rt3slot oem --reboot
 - **实际输出** vs 文档预期
 - 你的**硬件版本**（`cat /proc/mtd` 和 `uname -r` 的输出）
 
-维护者联系方式见 [PUBLICATION.md](https://github.com/FlyFish-go/H3C-RT3000-Product-R1/blob/r5/rt3000-machine-b/docs/PUBLICATION.md)。
+维护者联系方式见 [PUBLICATION.md](../docs/PUBLICATION.md)。
 
 ---
 
 ## 上游与许可证
 
 本项目基于 OpenWrt 21.02.7 与 Qualcomm QSDK 11.5。
-原有上游许可证与署名保留，见 [LICENSES/](https://github.com/FlyFish-go/H3C-RT3000-Product-R1/blob/r5/LICENSES/) 与 [COPYING](https://github.com/FlyFish-go/H3C-RT3000-Product-R1/blob/r5/COPYING)。
+原有上游许可证与署名保留，见 [LICENSES/](../../LICENSES/) 与 [COPYING](../../COPYING)。
 
 > ⚠️ **本发布为实验性 Developer Preview，不提供任何担保。**
