@@ -6,6 +6,8 @@
 
 **版本勘误**：B 机网页和 `display version` 的软件版本是 `RT3000V100R005`；同一台 B 机导出的配置文件第二行是 `RT3000/RT3000V100D009`。这两个字段用途不同，不能据 D009 将 B 机备份认作另一台设备。另两台样机的配置头字段为 `RT3000V100D012`、`RT3000V100D023`；这些字段也不能直接替代各自网页／CLI 的软件版本。**下述固件镜像仍只在 B 机实测，配置工具的离线兼容结果不扩大镜像适用范围。**
 
+📦 **[直接下载原厂 Telnet 一键工具 ZIP](https://github.com/FlyFish-go/H3C-RT3000-Product-R1/releases/download/r5/RT3000-OEM-Telnet-OneClick-r5-corrected.zip)**（SHA-256：`3a28ef6bd025caee0b58136fedcc530ecf95b63565e2d582592168679d170120`）。解压后按[第一部分教程](https://github.com/FlyFish-go/H3C-RT3000-Product-R1/blob/main/rt3000-machine-b/release/01-GET-TELNET.md)操作；ZIP 不包含用户配置备份。
+
 ---
 
 ## 这是什么
