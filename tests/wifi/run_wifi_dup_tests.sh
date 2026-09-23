@@ -8,7 +8,7 @@
 #
 #   1. one physical QCN6102 must not yield two user-visible radio sections
 #   2. the final radio count / identity must be correct
-#   3. 2.4 GHz must be enabled and open; 5 GHz must stay disabled
+#   3. both bands must come up enabled and WPA2-secured, never open
 #   4. WiFi24 MAC must land on the real 2.4 GHz radio
 #   5. WiFi5  MAC must land on the real QCN6102 radio
 #
@@ -248,21 +248,29 @@ chk "T2.2 number of 2g wifi-device sections" "$n24" "1"
 
 # ---------------------------------------------------------------------------
 echo
-echo "[T3] debugging defaults: 2.4 GHz open and enabled, 5 GHz disabled"
+echo "[T3] shipped defaults: both bands enabled and WPA2-secured, never open"
 setup_mock; seed_detected_clean
 # An inherited key must not survive application of fresh-image defaults.
 echo 'default_radio0.key=fixture-old-key' >> "$MOCK_STATE"
 run_script
 chk "T3.1 2.4G radio enabled" "$(state_get radio0.disabled)" "0"
-chk "T3.2 5G radio disabled" "$(state_get radio1.disabled)" "1"
+chk "T3.2 5G radio enabled" "$(state_get radio1.disabled)" "0"
 chk "T3.3 2.4G iface enabled" "$(state_get default_radio0.disabled)" "0"
-chk "T3.4 5G iface disabled" "$(state_get default_radio1.disabled)" "1"
-chk "T3.5 2.4G open authentication" "$(state_get default_radio0.encryption)" "none"
-chk "T3.6 debugging SSID" "$(state_get default_radio0.ssid)" "RT3000"
+chk "T3.4 5G iface enabled" "$(state_get default_radio1.disabled)" "0"
+chk "T3.5 2.4G authentication policy" "$(state_get default_radio0.encryption)" "psk2"
+chk "T3.6 2.4G SSID" "$(state_get default_radio0.ssid)" "RT3000"
 chk "T3.7 5G authentication policy" "$(state_get default_radio1.encryption)" "psk2"
-chk "T3.8 no committed key material" "$(grep -c '\.key=[^ ]' "$MOCK_STATE")" "0"
-chk "T3.9 debugging AP joins LAN" "$(state_get default_radio0.network)" "lan"
-chk "T3.10 debugging interface is an AP" "$(state_get default_radio0.mode)" "ap"
+chk "T3.8 5G SSID" "$(state_get default_radio1.ssid)" "RT3000-5G"
+# The defect this guards: a shipped image must never broadcast an open AP.
+chk "T3.9 no encryption=none survives" "$(grep -c '\.encryption=none$' "$MOCK_STATE")" "0"
+chk "T3.10 no stock OpenWrt SSID survives" "$(grep -c '\.ssid=OpenWrt$' "$MOCK_STATE")" "0"
+chk "T3.11 both bands carry the shipped key" "$(grep -c '\.key=RTRCRWNX$' "$MOCK_STATE")" "2"
+chk "T3.12 inherited fixture key is gone" "$(grep -c 'fixture-old-key' "$MOCK_STATE")" "0"
+chk "T3.13 2.4G AP joins LAN" "$(state_get default_radio0.network)" "lan"
+chk "T3.14 2.4G interface is an AP" "$(state_get default_radio0.mode)" "ap"
+# 5 GHz must stay inside the non-DFS 36-48 block so the AP starts without CAC.
+chk "T3.15 2.4G channel width" "$(state_get radio0.htmode)" "HE20"
+chk "T3.16 5G channel width stays non-DFS" "$(state_get radio1.htmode)" "HE80"
 
 # ---------------------------------------------------------------------------
 echo
@@ -325,9 +333,9 @@ chk "T6.4 2.4G band still asserted by path" "$(state_get radio1.band)" "2g"
 
 chk "T6.5 swapped 2.4G radio enabled" "$(state_get radio1.disabled)" "0"
 chk "T6.6 swapped 2.4G iface enabled" "$(state_get default_radio1.disabled)" "0"
-chk "T6.7 swapped 2.4G iface open" "$(state_get default_radio1.encryption)" "none"
-chk "T6.8 swapped 5G radio disabled" "$(state_get radio0.disabled)" "1"
-chk "T6.9 swapped 5G iface disabled" "$(state_get default_radio0.disabled)" "1"
+chk "T6.7 swapped 2.4G iface secured" "$(state_get default_radio1.encryption)" "psk2"
+chk "T6.8 swapped 5G radio enabled" "$(state_get radio0.disabled)" "0"
+chk "T6.9 swapped 5G iface enabled" "$(state_get default_radio0.disabled)" "0"
 chk "T6.10 swapped 5G iface uses psk2" "$(state_get default_radio0.encryption)" "psk2"
 
 # ---------------------------------------------------------------------------
@@ -340,8 +348,15 @@ STUB
 run_script
 chk "T7.1 no MAC invented on radio0" "$(state_get radio0.macaddr)" ""
 chk "T7.2 no MAC invented on radio1" "$(state_get radio1.macaddr)" ""
-chk "T7.3 debugging policy still applied" "$(state_get radio0.disabled)" "0"
-chk "T7.4 5G remains disabled" "$(state_get radio1.disabled)" "1"
+chk "T7.3 no MAC invented on the 2.4G iface" "$(state_get default_radio0.macaddr)" ""
+chk "T7.4 no MAC invented on the 5G iface" "$(state_get default_radio1.macaddr)" ""
+# A missing factory MAC must not silently downgrade the radio policy: identity
+# is withheld, but both bands still come up enabled and secured.
+chk "T7.5 2.4G policy still applied" "$(state_get radio0.disabled)" "0"
+chk "T7.6 5G policy still applied" "$(state_get radio1.disabled)" "0"
+chk "T7.7 2.4G still secured without a MAC" "$(state_get default_radio0.encryption)" "psk2"
+chk "T7.8 5G still secured without a MAC" "$(state_get default_radio1.encryption)" "psk2"
+chk "T7.9 fail-closed is logged" "$(grep -c 'factory MAC unusable' "$MOCK_LOG")" "1"
 
 # ---------------------------------------------------------------------------
 echo

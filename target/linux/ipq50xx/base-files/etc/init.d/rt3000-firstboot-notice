@@ -34,12 +34,12 @@ cat <<'BANNER'
    reach the LAN can log in as root.
 
    Set a password now:
-     - LuCI:      http://192.168.1.1/  ->  System -> Administration
+     - LuCI:      http://192.168.10.1/  ->  System -> Administration
      - Console:   passwd
 
-   2.4 GHz Wi-Fi: RT3000, enabled without a password for debugging.
-   This open AP joins the LAN.  5 GHz Wi-Fi remains disabled.
-   Set Wi-Fi security in LuCI -> Network -> Wireless before daily use.
+   Wi-Fi: both bands are up and WPA2-secured with the published
+   default key RTRCRWNX -- 2.4 GHz SSID RT3000, 5 GHz SSID RT3000-5G.
+   Change this key in LuCI -> Network -> Wireless before daily use.
 
    WAN management is disabled by default and must stay that way.
   ============================================================
