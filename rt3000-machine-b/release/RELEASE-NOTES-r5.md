@@ -1,8 +1,10 @@
 # Product R1 r5 — Developer Preview
 
-> ⚠️ **实验性预发布。** 请在动手前完整阅读 [`rt3000-machine-b/release/INSTALL.md`](https://github.com/FlyFish-go/H3C-RT3000-Product-R1/blob/r5/rt3000-machine-b/release/INSTALL.md)。
+> ⚠️ **实验性预发布。** 请在动手前完整阅读 [已更正的安装教程](https://github.com/FlyFish-go/H3C-RT3000-Product-R1/blob/main/rt3000-machine-b/release/INSTALL.md)。`r5` 标签保留发布当时的源码快照，旧版教程中把 B 机配置头 D009 误写成原厂软件版本；请以此处更正说明和最新教程为准。
 >
-> 2026-09-23 已在 RT3000 Machine-B 上按当前教程复走安装、读回、主动双向切换、保留配置升级和恢复出厂。原厂 Telnet 配置导入本轮未重复执行（有既往实机记录；配套工具已离线复核）。故障注入、断电和完整 U-Boot + TFTP 救援仍未实测。
+> 2026-09-23 已在 RT3000 Machine-B 上按当前教程复走安装、读回、主动双向切换、保留配置升级和恢复出厂。原厂 Telnet 配置导入本轮未重复执行；配套工具已在三份不同配置头的 RT3000 原厂备份上离线复核，输出分别与已有启用版逐字节一致。故障注入、断电和完整 U-Boot + TFTP 救援仍未实测。
+
+**版本勘误**：B 机网页和 `display version` 的软件版本是 `RT3000V100R005`；同一台 B 机导出的配置文件第二行是 `RT3000/RT3000V100D009`。这两个字段用途不同，不能据 D009 将 B 机备份认作另一台设备。另两台样机的配置头字段为 `RT3000V100D012`、`RT3000V100D023`；这些字段也不能直接替代各自网页／CLI 的软件版本。**下述固件镜像仍只在 B 机实测，配置工具的离线兼容结果不扩大镜像适用范围。**
 
 ---
 
@@ -83,6 +85,7 @@ nl80211: NL80211_ATTR_STA_VLAN (... vlan_id=0) failed: -34
 | `openwrt-ipq50xx-arm-h3c_rt3000-squashfs-release.json` | 398 | 发布身份清单 |
 | `openwrt-ipq50xx-arm.manifest` | 4,522 | 包清单 |
 | `SHA256SUMS` | — | 校验值 |
+| [`RT3000-OEM-Telnet-OneClick-r5-corrected.zip`](https://github.com/FlyFish-go/H3C-RT3000-Product-R1/releases/download/r5/RT3000-OEM-Telnet-OneClick-r5-corrected.zip) | 5,263 | Windows 原厂配置一键开启 Telnet 工具；更正说明，不含用户配置 |
 
 ### 校验值
 
@@ -92,6 +95,7 @@ nl80211: NL80211_ATTR_STA_VLAN (... vlan_id=0) failed: -34
 65a374d29ab533788e2b51e96878ace57c582034a1ce2f8329747cd78a043a31  openwrt-ipq50xx-arm-h3c_rt3000-initramfs-fit-uImage.itb
 51d17fbd3a93a0e9d20b60003e9467f00cb7bcdc5d69198885a191a3435e1359  openwrt-ipq50xx-arm-h3c_rt3000-squashfs-release.json
 258ae87574d4b0a9bf48b570aebc5d12600e385b025369c73f167727c43d3764  openwrt-ipq50xx-arm.manifest
+3a28ef6bd025caee0b58136fedcc530ecf95b63565e2d582592168679d170120  RT3000-OEM-Telnet-OneClick-r5-corrected.zip
 ```
 
 **下载后请核对**：
@@ -148,7 +152,8 @@ e23d8634af3fb20a5c383aa22ad2dc65752133ffd91d3715a70df5121d0789f5
 | 型号 | H3C Magic RT3000 |
 | 硬件平台 | **Machine-B** |
 | NAND | GigaDevice `GD5F1GQ5REYIG`（128 MiB） |
-| 原厂固件 | Chaos Calmer 15.05.1 / Linux 4.4.60，`RT3000V100D009` |
+| 原厂固件 | Chaos Calmer 15.05.1 / Linux 4.4.60；网页／CLI 软件版本 `RT3000V100R005` |
+| 同机导出配置的第二行 | `RT3000/RT3000V100D009`（配置头字段，不是软件版本） |
 | U-Boot | `H3C RT3000 Boot, Version 100`，启动配置 `config@mp02.1` |
 
 > 🔴 **RT3000 存在不同硬件批次。**
