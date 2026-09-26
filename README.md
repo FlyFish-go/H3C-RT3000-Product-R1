@@ -1,6 +1,6 @@
 # H3C Magic RT3000 · Product R1
 
-[English](README_EN.md) · [样机配置](rt3000-machine-b/docs/HARDWARE_SUPPORT.md) · [支持项目](#支持项目) · [测试记录](rt3000-machine-b/docs/WIFI5_SESSION_2026-09-21.md) · [构建说明](rt3000-machine-b/docs/BUILD_PUBLIC.md) · [已知限制](rt3000-machine-b/release/KNOWN_ISSUES.md)
+[English](README_EN.md) · [硬件变体研究](docs/H3C-IPQ50xx-Hardware-Research-v1.0.md) · [样机配置](rt3000-machine-b/docs/HARDWARE_SUPPORT.md) · [支持项目](#支持项目) · [测试记录](rt3000-machine-b/docs/WIFI5_SESSION_2026-09-21.md) · [构建说明](rt3000-machine-b/docs/BUILD_PUBLIC.md) · [已知限制](rt3000-machine-b/release/KNOWN_ISSUES.md)
 
 这是一个**基于 Qualcomm QSDK 11.5、使用 OpenWrt 21.02.7 的设备适配项目**，采用 QSDK 的供应商内核、无线驱动与网络加速栈，**不是 OpenWrt 主线适配项目**。
 
@@ -18,24 +18,24 @@
 |---|---|---|
 | RT3000 · B 机 | **首个实机里程碑：基本功能阶段验证完成** | 完善功能覆盖、稳定性与性能验证 |
 | RT3000 · A 机 | **曾 RAM 启动、Wi-Fi 可开启；未完成逐项验证**。早期修改 APPSEL 后变砖 | 获得可用样机后继续验证 |
-| RT3000 · C 机 | **未通过、暂未支持**：有线交换机适配尚未完成 | 完成交换机适配，再进行整机验收 |
+| RT3000 · C 机 | **RAM-stage / PARTIAL，尚未发布支持**：RTL8367S 三口、LAN bridge、自动 LAN/WAN、DHCP/NAT/Internet 与阶段性无线测试已有记录 | 长稳、双频联合回归、NAND 持久化与恢复验收 |
 | RW3000 | **规划支持，尚未验证** | 核对硬件版本、建立板级配置和实机证据 |
 | RC3000 | **规划支持，尚未验证** | 核对硬件版本、建立板级配置和实机证据 |
 | NX30 | **规划支持，尚未验证** | 核对硬件版本、建立板级配置和实机证据 |
 
-A / B / C 是项目内部的实体样机编号，不是厂商硬件版本号。每一种交换机、NAND 和板级组合都需要单独确认；不会把 B 机的通过结果直接套到其他样机或机型。硬件记录与证据边界见 [样机配置](rt3000-machine-b/docs/HARDWARE_SUPPORT.md)。
+A / B / C 是项目内部的实体样机编号，不是厂商硬件版本号。已确认同名 RT3000 存在多套 SoC / RAM / Switch / NAND / RF 硬件组合；每一种板级组合都需要单独确认，不会把 B 机的通过结果直接套到其他样机或机型。完整证据与边界见 [Hardware Research v1.0](docs/H3C-IPQ50xx-Hardware-Research-v1.0.md) 和 [样机配置](rt3000-machine-b/docs/HARDWARE_SUPPORT.md)。
 
 ## RT3000 A / B / C 样机配置
 
-三台样机的主要配置一致：**Qualcomm IPQ5018 / ARMv7、256 MiB RAM、128 MiB SPI-NAND、集成 2.4 GHz 无线和外置 QCN6102 5 GHz 无线**，均为 1 × WAN + 3 × LAN。差异集中在 NAND 和有线交换机：
+三台样机都属于 Qualcomm IPQ50xx / QCN6102 AX3000 路线，均为 256 MiB RAM、128 MiB SPI-NAND 和 1 × WAN + 3 × LAN；但实物核对已经确认它们在 **SoC、RAM topology、NAND、Ethernet Switch、PCB 与 RF 前端装配**上存在明显差异：
 
-| 样机 | NAND | 有线交换机 | 实机进展 |
-|---|---|---|---|
-| A 机 | Winbond **W25N01GWZEIG** / 128 MiB | Qualcomm **QCA8337** | 曾 RAM 启动，Wi-Fi 可开启，观察期间未出现 kernel panic；未完成逐项功能验证 |
-| B 机 | GigaDevice **GD5F1GQ5REYIG** / 128 MiB | Qualcomm **QCA8337** | 当前主力样机，基本功能、NAND 写入与双系统流程已完成阶段验证 |
-| C 机 | Winbond **W25N01GWZEIG** / 128 MiB，与 A 机相同 | Realtek **RTL8367S** | 有线交换机适配未完成，整机未通过、暂未支持 |
+| 样机 | SoC / RAM | NAND | 有线交换机 | 实机进展 |
+|---|---|---|---|---|
+| A 机 | **IPQ5018** / 独立 Winbond DDR | Winbond **W25N01GWZEIG** / 128 MiB | Qualcomm Atheros **QCA8337-AL3C** | 曾 RAM 启动、Wi-Fi 可开启；未完成逐项功能验证 |
+| B 机 | **IPQ5000** / Integrated 256 MiB DDR3L | GigaDevice **GD5F1GQ5REYIG** / 128 MiB | Qualcomm Atheros **QCA8337-AL3C** | Product R1 r5 基线，基本功能、NAND 写入与双系统流程已阶段验证 |
+| C 机 | **IPQ5018** / 独立 GigaDevice DDR | Winbond **W25N01GWZEIG** / 128 MiB | Realtek **RTL8367S** | RAM-stage 有线/网络服务与阶段性无线测试已有记录，仍未完成持久化与完整长稳 |
 
-A 机 NAND 芯片丝印为 `25N01GWZEIG / 2238 / 6205DS900`。A 机在早期探索中，因我对 **APPSEL 的不成熟修改而变砖**，目前无法继续测试；它并非从未运行过，但当时没有完成逐项验收，当前版本也未在 A 机上重新验证。
+A 机 NAND 芯片丝印为 `25N01GWZEIG / 2238 / 6206DS900`。A 机在早期探索中，因我对 **APPSEL 的不成熟修改而变砖**，目前无法继续测试；它并非从未运行过，但当时没有完成逐项验收，当前版本也未在 A 机上重新验证。
 
 5 GHz 硬件为 **QCN6102**，QSDK 软件目标名为 `QCN6122` / `qcn6122`。软件基础为 QSDK 11.5、Linux 5.4.164、OpenWrt 21.02.7。完整参数、验证范围和记录来源见 [样机配置](rt3000-machine-b/docs/HARDWARE_SUPPORT.md)。
 
