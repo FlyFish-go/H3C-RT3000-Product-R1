@@ -9,6 +9,8 @@
 > 本文以项目已审计的 Canonical Fact Base 为事实入口。内部 A / B / C 是本项目对三台实体 RT3000 的样机编号，**不是 H3C 官方硬件版本号**。  
 > 本文讨论的是硬件识别、适配边界与公开证据，不把任何一台样机的验证结果自动推广到同名设备，也不提供未经验证的通刷结论。
 
+> **图像证据说明：** 本文 A / B / C 图像均来自项目自有 P0 实体样机照片。公开衍生图仅做非生成式的亮度/对比度/锐度、旋转/布局、尺寸压缩与隐私遮挡，不做内容补绘、元件替换或生成式重绘。B/C 全板 ARW 的公开版使用 ARW 文件中相机内嵌的 1616×1080 JPEG 预览进行可读性调整，并不宣称为 RAW 传感器数据的完整显影。原始 JPEG/ARW 继续保留在私有证据档案。外部作者图片默认不在本仓库转载，除非取得明确许可或存在兼容许可。处理说明与公开衍生图哈希见 [P0 图像说明](images/hardware-research-v1/README.md)。
+
 ## 目录
 
 1. 从“一台 RT3000”到“三套硬件”
@@ -46,6 +48,10 @@
 | 5 GHz Radio | QCN6102 | QCN6102 | QCN6102（历史硬件记录） |
 | 外置 5 GHz FEM | **未装配（NX30 对应 FEM 位置为空）** | 正反面照片未见独立 FEM | **2 × 8539SD（KCT8539SD 型号族）** |
 | PCB 可读标识 | `H3C AX3000-D VER.A` | `H3C AX3000 REV:A0` | `AX3000`，revision UNKNOWN |
+
+![A/B/C 三台 RT3000 PCB 正面对照](images/hardware-research-v1/rt3000-abc-board-front-comparison.webp)
+
+*图 1：A / B / C 三台 P0 RT3000 PCB 正面对照。B/C 全板图来自各自 ARW 的相机内嵌预览并做保守可读性调整；可疑设备唯一二维码/标签已遮挡。*
 
 这里最值得注意的并不是“某颗芯片换了料”。
 
@@ -111,6 +117,10 @@ H3C AX3000 REV:A0
 
 B 最值得强调的是 **IPQ5000**。早期项目资料曾把 A/B/C 一并记为 IPQ5018，但 B 的实体顶标已经推翻了这一旧结论。软件中的 `ipq5018` 平台字符串、DTS 名称或兼容路径不能覆盖芯片本体的物理丝印。
 
+![A/B/C SoC 顶标对照](images/hardware-research-v1/rt3000-soc-comparison.webp)
+
+*图 2：SoC 顶标对照：A = IPQ5018，B = IPQ5000，C = IPQ5018。物理顶标优先于旧文档中的平台字符串。*
+
 B 也是当前最成熟的一台：Product R1 r5 的安装、NAND 启动、OEM/QSDK 双系统切换、升级与基本双频网络验证，都绑定在**这台实体 B 和对应镜像**上。它们不能因为另一台机器也叫 RT3000 就自动继承过去。
 
 ## 2.3 C：IPQ5018 + RTL8367S + 两颗 5 GHz FEM
@@ -150,6 +160,10 @@ A: IPQ5018 + discrete DDR + QCA8337-AL3C + Winbond NAND + no external 5G FEM
 B: IPQ5000 + integrated DDR + QCA8337-AL3C + GigaDevice NAND + no external 5G FEM
 C: IPQ5018 + discrete DDR + RTL8367S + Winbond NAND + 2×8539SD 5G FEM
 ```
+
+![A/B/C PCB 背面对照](images/hardware-research-v1/rt3000-abc-board-back-comparison.webp)
+
+*图 3：三台 PCB 背面对照。用于观察板级布局、射频区和器件装配差异；B/C 可能包含设备唯一信息的二维码/标签已遮挡。*
 
 这也是为什么本文后续统一把“商品型号”和“硬件身份”分开处理：**真正决定适配边界的不是外壳上的 RT3000，而是板上的实际器件组合。**
 
@@ -472,6 +486,10 @@ RTL8367S route
   └─ RT3000 C   [P0 hardware + RAM-stage wired validation]
 ```
 
+![QCA8337-AL3C 与 RTL8367S 对照](images/hardware-research-v1/rt3000-switch-comparison.webp)
+
+*图 4：B 机 QCA8337-AL3C 与 C 机 RTL8367S 实物近照。交换机差异是当前最明确的 Ethernet adaptation route 分叉之一。*
+
 这里的“route”不是在宣布整个 H3C 家族只存在两种网络设计，也不是说只要交换机相同就属于同一块板。它只表示：**在当前已经掌握的实体样本里，QCA8337 与 RTL8367S 已经构成两条需要分别验证的 Ethernet 适配路径。**
 
 ## 5.1 QCA8337-AL3C：A / B 的 Qualcomm Switch 路线
@@ -695,6 +713,10 @@ ESMT 版
 | **A** | Winbond `W25N01GWZEIG` | 128 MiB | 2048 B / **64 B OOB** |
 | **B** | GigaDevice `GD5F1GQ5REYIG` | 128 MiB | 2048 B / **128 B OOB** |
 | **C** | Winbond `W25N01GWZEIG` | 128 MiB | 2048 B / **64 B OOB** |
+
+![A/B/C NAND 顶标对照](images/hardware-research-v1/rt3000-nand-comparison.webp)
+
+*图 5：A / B / C NAND 顶标对照。A/C 为 Winbond W25N01GWZEIG，B 为 GigaDevice GD5F1GQ5REYIG；page/OOB 数值仍来自历史运行证据，不由照片本身推出。*
 
 这里要区分证据类型：A / B / C 的 NAND **料号**来自实物照片或顶标确认；page / OOB 数值属于本项目的 **historical runtime evidence**，不是从照片上直接读出来的。
 
@@ -971,8 +993,9 @@ current boot state
 这张表已经足够说明：
 > **“都是 QCN6102”只说明无线主芯片接近，不等于 RF profile 相同。**
 
-<!-- IMAGE TODO: A 与 NX30 对应 5 GHz FEM 区域对照，突出 A 的空焊位置 -->
-<!-- IMAGE TODO: C 的 U32/U33 8539SD 近照与 NX30 KCT8539S 公开拆机位置对照 -->
+![B 机 QCN6102 近照](images/hardware-research-v1/rt3000-b-qcn6102.webp)
+
+*图 6：B 机 QCN6102 近照。本文将“5 GHz radio identity”和“RF/FEM profile”分开记录。*
 
 ## 7.1 `KCT8539S` 与 `8539SD` 不能当成同一个料号
 
@@ -985,6 +1008,10 @@ C 机的实物近照则能直接读到两颗：
 ```
 
 本项目目前将其记录为 **KCT8539SD 型号族**。在没有厂商料号映射或其它一手资料之前，不把 `8539S` 与 `8539SD` 合并成同一个 exact part。
+
+![C 机两颗 8539SD FEM 近照](images/hardware-research-v1/rt3000-c-fem-8539sd-pair.webp)
+
+*图 7：C 机 U32/U33 两颗 `8539SD` 实物近照。这里只记录可见顶标并归入 KCT8539SD 型号族，不从顶标补写未经证明的完整订货后缀。*
 
 这不是文字洁癖，而是因为射频前端适配里，以下差异都可能重要：
 
@@ -1034,6 +1061,10 @@ QCN6102
 ├── RF profile: KCT8539S ×2
 └── RF profile: KCT8539SD-family ×2
 ```
+
+![C 机 5 GHz 射频区域](images/hardware-research-v1/rt3000-c-rf-area.webp)
+
+*图 8：C 机射频区域环境图，用于说明两颗外置 FEM 在板上的实际装配位置；具体 chain、GPIO、控制极性仍需要电路/运行证据，不能只凭外观完成 BDF 映射。*
 
 这也是为什么 B 的无线配置不能因为“同样是 QCN6102”就直接继承给 C，NX30 的射频参数也不能因为 FEM 位置相似就直接套给 C。
 
@@ -1371,9 +1402,11 @@ A / B / C 是本文最强的 P0 实体证据，但如果只看这三台 RT3000�
 
 因此，本轮研究又把 NX30、RC3000、RW3010、RW3000 的公开资料按“**具体样本**”重新整理。这里最重要的纪律是：**外部帖子只证明帖子里那一台机器，不代表整个型号。**
 
+本节采用**原文链接 + 文字归纳**的方式引用外部样本，不把外部作者照片重新上传到本仓库；如后续获得明确转载许可或确认兼容许可证，再单独补充相应图版。
+
 ## 9.1 NX30：公版参考基线，而不是“第四台 RT3000”
 
-经典 NX30 公开拆机样本提供了一套相对完整的参考组合：
+[acwifi 的经典 NX30 拆机原文](https://www.acwifi.net/15584.html)提供了一套相对完整的参考组合；本轮也用[脚本之家转载页](https://www.jb51.net/network/787218.html)作全文交叉核对：
 
 ```text
 SoC / RAM:    IPQ5000 / Integrated 256 MiB DDR3L
@@ -1403,7 +1436,7 @@ NAND:         GD5F1GQ5REYIG
 
 ## 9.2 RW3010：目前最强的 B-like 外部候选
 
-数码之家公开 RW3010 样本的照片可以核对到：
+[yinjiudong 在数码之家发布的 RW3010 拆机样本](https://www.mydigit.cn/thread-369604-1-1.html)照片可以核对到：
 
 ```text
 Model:        H3C Magic RW3010 / China Unicom
@@ -1437,7 +1470,7 @@ NAND:         GigaDevice 5F1GQ5REYIG
 
 RC3000 的公开资料很能说明“Marketing Model 不是 BOM ID”。
 
-早期拆机样本报告过：
+[2022 年公开 RC3000 拆机样本](https://www.163.com/dy/article/GUJDQFNU0512MJDN.html)报告过：
 
 ```text
 IPQ5000
@@ -1449,7 +1482,7 @@ GigaDevice NAND
 
 社区恢复帖又出现过 ESMT `F50D1G41LB` 批次。
 
-更重要的是，2025 年底一条中国电信 RC3000 R009 用户报告给出了另一套明显不同的组合：
+更重要的是，[2025 年底一条中国电信 RC3000 R009 用户报告](https://www.chinadsl.net/thread-181780-1-1.html)给出了另一套明显不同的组合：
 
 ```text
 IPQ5018
@@ -1472,7 +1505,7 @@ Winbond W25N01GW
 
 RW3000 是本项目明确关注的目标之一，但当前高质量可复核的独立拆机材料不足。
 
-社区跨刷资料说明它与 RT/RC/NX30 存在软件关系线索，但这不能替代：
+[2022 年 RC / RT / RW3000 → NX30 社区跨刷记录](https://www.right.com.cn/forum/thread-7753062-1-1.html)说明它与 RT/RC/NX30 存在软件关系线索，但这不能替代：
 
 ```text
 铭牌
