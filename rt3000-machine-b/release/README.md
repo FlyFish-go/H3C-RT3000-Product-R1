@@ -5,11 +5,11 @@ RT3000 test unit designated Machine-B by this project.
 
 | | |
 |---|---|
-| SoC | Qualcomm IPQ5018 |
+| SoC | Qualcomm IPQ5000 |
 | Platform | QSDK 11.5 (NHSS.QSDK.11.5.0.5) |
 | Kernel | Linux 5.4.164 |
 | Userspace | OpenWrt 21.02.7 (r16847-f8282da11e) |
-| RAM / flash | 256 MiB / 128 MiB NAND |
+| RAM / flash | Integrated 256 MiB DDR3L / 128 MiB NAND |
 | Release | **Product R1 r5 — Developer Preview** |
 
 ## What this is

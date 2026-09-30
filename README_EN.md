@@ -25,7 +25,7 @@ A/B/C identify project samples, not vendor revisions. Each board, switch and NAN
 
 ## RT3000 A / B / C hardware
 
-All three samples use **Qualcomm IPQ5018 / ARMv7, 256 MiB RAM, 128 MiB SPI-NAND, integrated 2.4 GHz Wi-Fi and external QCN6102 5 GHz Wi-Fi**, with one WAN and three LAN ports. The differences are:
+All three samples use **Qualcomm IPQ50xx / ARMv7, 256 MiB RAM, 128 MiB SPI-NAND, integrated 2.4 GHz Wi-Fi and external QCN6102 5 GHz Wi-Fi**, with one WAN and three LAN ports. **Machine B uses IPQ5000 with Integrated 256 MiB DDR3L; A and C use IPQ5018 with discrete DDR.** The NAND and Ethernet switch differences are:
 
 | Sample | NAND | Ethernet switch |
 |---|---|---|
@@ -35,7 +35,7 @@ All three samples use **Qualcomm IPQ5018 / ARMv7, 256 MiB RAM, 128 MiB SPI-NAND,
 
 Sample A's chip markings are `25N01GWZEIG / 2238 / 6205DS900`. It could boot from RAM, enable Wi-Fi and run without a kernel panic during observation, but I had not completed detailed functional testing. **An immature APPSEL modification I made during early development subsequently bricked A**, preventing further testing. The current Product R1 / Candidate 13 has not been validated on A. C remains unsupported because Ethernet switch adaptation is incomplete.
 
-This hardware mapping combines project records with my confirmation of the physical samples on September 22, 2026. QSDK represents QCN6102 as `QCN6122` / `qcn6122`. The software baseline is QSDK 11.5, Linux 5.4.164 and OpenWrt 21.02.7. Similar hardware does not establish cross-variant firmware compatibility. See the [detailed hardware records](rt3000-machine-b/docs/HARDWARE_SUPPORT.md).
+This hardware mapping combines project records with my confirmation of the physical samples on September 22, 2026, and the chip-marking and photographic checks on September 26, 2026. QSDK represents QCN6102 as `QCN6122` / `qcn6122`. The software baseline is QSDK 11.5, Linux 5.4.164 and OpenWrt 21.02.7. Similar hardware does not establish cross-variant firmware compatibility. See the [detailed hardware records](rt3000-machine-b/docs/HARDWARE_SUPPORT.md).
 
 ## Progress
 
