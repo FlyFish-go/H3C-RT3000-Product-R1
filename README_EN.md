@@ -16,7 +16,7 @@ The long-term goal is support for the **RT3000 / RW3000 / RC3000 / NX30 family**
 |---|---|
 | RT3000 Machine B | First hardware milestone; basic functions validated within the recorded test scope |
 | RT3000 Machine A | Previously RAM-booted with Wi-Fi enabled and no kernel panic observed; not fully tested; later bricked after an early APPSEL change |
-| RT3000 Machine C | Not passed / unsupported; Ethernet switch adaptation is incomplete |
+| RT3000 Machine C | **RAM-stage / PARTIAL; no released support**. RTL8367S port communication, LAN bridge, automatic LAN/WAN, DHCP/NAT/Internet and staged Wi-Fi tests are recorded; persistence and full regression remain incomplete |
 | RW3000 | Planned; unverified |
 | RC3000 | Planned; unverified |
 | NX30 | Planned; unverified |
@@ -33,7 +33,9 @@ All three samples use **Qualcomm IPQ50xx / ARMv7, 256 MiB RAM, 128 MiB SPI-NAND,
 | B | GigaDevice **GD5F1GQ5REYIG**, 128 MiB | Qualcomm **QCA8337** |
 | C | Winbond **W25N01GWZEIG**, 128 MiB; same model as A | Realtek **RTL8367S** |
 
-Sample A's chip markings are `25N01GWZEIG / 2238 / 6205DS900`. It could boot from RAM, enable Wi-Fi and run without a kernel panic during observation, but I had not completed detailed functional testing. **An immature APPSEL modification I made during early development subsequently bricked A**, preventing further testing. The current Product R1 / Candidate 13 has not been validated on A. C remains unsupported because Ethernet switch adaptation is incomplete.
+Sample A's chip markings are `25N01GWZEIG / 2238 / 6206DS900`, as recorded in the [hardware records](rt3000-machine-b/docs/HARDWARE_SUPPORT.md). It could boot from RAM, enable Wi-Fi and run without a kernel panic during observation, but I had not completed detailed functional testing. **An immature APPSEL modification I made during early development subsequently bricked A**, preventing further testing. The current Product R1 / Candidate 13 has not been validated on A.
+
+Machine C has recorded RAM-stage results for RTL8367S port communication, a software LAN bridge, automatic LAN/WAN, DHCP/NAT/DNS/Internet and staged Wi-Fi tests. **C has no released support**: persistent installation, full simultaneous dual-band regression, long-term stability and installation/recovery paths remain incomplete. **The released r5 firmware remains validated only on Machine B.** See the [hardware research](docs/H3C-IPQ50xx-Hardware-Research-v1.0.md) and [hardware records](rt3000-machine-b/docs/HARDWARE_SUPPORT.md) for sample-specific evidence and limits.
 
 This hardware mapping combines project records with my confirmation of the physical samples on September 22, 2026, and the chip-marking and photographic checks on September 26, 2026. QSDK represents QCN6102 as `QCN6122` / `qcn6122`. The software baseline is QSDK 11.5, Linux 5.4.164 and OpenWrt 21.02.7. Similar hardware does not establish cross-variant firmware compatibility. See the [detailed hardware records](rt3000-machine-b/docs/HARDWARE_SUPPORT.md).
 

@@ -214,6 +214,8 @@ uci get network.lan.ipaddr
 ls /etc/config/ | grep 你之前加的东西
 ```
 
+<a id="34-ssh-主机密钥会变"></a>
+
 ### 3.4 ⚠️ SSH 主机密钥会变
 
 用 `-n` 之后，SSH 会提示：

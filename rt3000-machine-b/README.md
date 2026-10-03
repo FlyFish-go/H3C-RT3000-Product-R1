@@ -2,6 +2,10 @@
 
 [Current project overview](../README.md) · [2026-09-21 Wi-Fi results](docs/WIFI5_SESSION_2026-09-21.md)
 
+> **Current correction and entry points:** Machine B is confirmed as **Qualcomm IPQ5000 with Integrated 256 MiB DDR3L**, as documented in the [hardware records](docs/HARDWARE_SUPPORT.md) and [2026-09-30 r5 hardware correction](release/RELEASE-NOTES-r5.md). The IPQ5018 description below is preserved as an erroneous historical record. The current public repository contains the OpenWrt build tree plus integration changes; the historical “delta only” description does not describe the current export. Start with the [documentation index](docs/README.md), [r5 installation overview](release/INSTALL.md) or [public build guide](docs/BUILD_PUBLIC.md). **Released firmware remains limited to the validated Machine B; r5 is a Developer Preview.**
+
+## Historical R1-NET-D record
+
 This page records the historical R1-NET-D baseline. The repository also contains the OpenWrt build tree and later diagnostic candidates.
 
 **Machine-B reproducibility layer for the H3C Magic RT3000 (IPQ5018) / QSDK 11.5 port.**

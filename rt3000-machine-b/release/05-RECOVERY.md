@@ -157,6 +157,8 @@ rt3slot oem --reboot
 
 ---
 
+<a id="3-第三层救援u-boot-tftp需-ttl-线"></a>
+
 ## 3. 第三层救援：U-Boot + TFTP（需 TTL 线）
 
 > **适用**：**两个系统都起不来**。
