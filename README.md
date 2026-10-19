@@ -1,6 +1,6 @@
 # H3C Magic RT3000 · Product R1
 
-[English](README_EN.md) · [硬件变体研究](docs/H3C-IPQ50xx-Hardware-Research-v1.0.md) · [样机配置](rt3000-machine-b/docs/HARDWARE_SUPPORT.md) · [支持项目](#支持项目) · [测试记录](rt3000-machine-b/docs/WIFI5_SESSION_2026-09-21.md) · [构建说明](rt3000-machine-b/docs/BUILD_PUBLIC.md) · [已知限制](rt3000-machine-b/release/KNOWN_ISSUES.md)
+[English](README_EN.md) · [HW-A/B/C/D 分组及 OEM 证据](docs/HW-ABCD-CLASSIFICATION.md) · [硬件变体研究](docs/H3C-IPQ50xx-Hardware-Research-v1.0.md) · [样机配置](rt3000-machine-b/docs/HARDWARE_SUPPORT.md) · [支持项目](#支持项目) · [测试记录](rt3000-machine-b/docs/WIFI5_SESSION_2026-09-21.md) · [构建说明](rt3000-machine-b/docs/BUILD_PUBLIC.md) · [已知限制](rt3000-machine-b/release/KNOWN_ISSUES.md)
 
 这是一个**基于 Qualcomm QSDK 11.5、使用 OpenWrt 21.02.7 的设备适配项目**，采用 QSDK 的供应商内核、无线驱动与网络加速栈，**不是 OpenWrt 主线适配项目**。
 
@@ -12,18 +12,16 @@
 
 基于 [hzyitc/openwrt-redmi-ax3000](https://github.com/hzyitc/openwrt-redmi-ax3000)，保留 OpenWrt 构建结构、上游版权和许可证。
 
-## 适配路线与当前状态
+## HW-A/B/C/D 分类与 QSDK 11.5 适配进展
 
-| 机型 / 样机 | 当前状态 | 后续工作 |
-|---|---|---|
-| RT3000 · B 机 | **首个实机里程碑：基本功能阶段验证完成** | 完善功能覆盖、稳定性与性能验证 |
-| RT3000 · A 机 | **曾 RAM 启动、Wi-Fi 可开启；未完成逐项验证**。早期修改 APPSEL 后变砖 | 获得可用样机后继续验证 |
-| RT3000 · C 机 | **RAM-stage / PARTIAL，尚未发布支持**：RTL8367S 三口、LAN bridge、自动 LAN/WAN、DHCP/NAT/Internet 与阶段性无线测试已有记录 | 长稳、双频联合回归、NAND 持久化与恢复验收 |
-| RW3000 | **规划支持，尚未验证** | 核对硬件版本、建立板级配置和实机证据 |
-| RC3000 | **规划支持，尚未验证** | 核对硬件版本、建立板级配置和实机证据 |
-| NX30 | **规划支持，尚未验证** | 核对硬件版本、建立板级配置和实机证据 |
+| HW 工程组 | 板级特点 / OEM 代表 machid | U-Boot `v0.1.0-pre.1` | QSDK 11.5 当前证据 |
+|---|---|---|---|
+| [**HW-A**](docs/HW-ABCD-CLASSIFICATION.md#hw-a) | 长板；IPQ5018 / 外置 DDR / QCA8337；`0x08040001` | 独立候选，本轮待实测 | 历史 RAM 启动记录；当前未完成独立 QSDK 验收 |
+| [**HW-B**](docs/HW-ABCD-CLASSIFICATION.md#hw-b) | 短板；IPQ5000 / 集成 DDR / QCA8337；`0x08040000` | 独立候选，本轮待实测 | **RT3000 B Product R1 r5**：已发布开发预览，实机阶段验证 |
+| [**HW-C**](docs/HW-ABCD-CLASSIFICATION.md#hw-c) | 长板；IPQ5018 / 外置 DDR / RTL8367S；`0x08040101` | 独立候选，本轮待实测 | **RT3000 C Native08**：本地持久化与有界功能验证，仍有开放项，未公开发布 |
+| [**HW-D**](docs/HW-ABCD-CLASSIFICATION.md#hw-d) | NX30 型长板；IPQ5000 / 集成 DDR / QCA8337；`0x08040000` | 一台 NX30 指定候选有限实测通过 | D 独立 `build03` 候选已冻结构建产物；**未完成整机验收** |
 
-A / B / C 是项目内部的实体样机编号，不是厂商硬件版本号。已确认同名 RT3000 存在多套 SoC / RAM / Switch / NAND / RF 硬件组合；每一种板级组合都需要单独确认，不会把 B 机的通过结果直接套到其他样机或机型。完整证据与边界见 [Hardware Research v1.0](docs/H3C-IPQ50xx-Hardware-Research-v1.0.md) 和 [样机配置](rt3000-machine-b/docs/HARDWARE_SUPPORT.md)。
+**同一商品型号可能跨不同 HW 组。B/D 的 OEM machid 均可为 `0x08040000`，不能仅凭 machid 刷写。** 详细的 [照片、OEM CDT/APPSBL 和控制 FDT 分组依据](docs/HW-ABCD-CLASSIFICATION.md) 与 [旧版 RT3000 A/B/C 实物研究](docs/H3C-IPQ50xx-Hardware-Research-v1.0.md) 分开保留。当前 r5 发布附件仅供已验证的 RT3000 B 使用；Native08 与 D 的本地成果**不等于新的公开固件下载**。
 
 ## RT3000 A / B / C 样机配置
 
@@ -33,7 +31,7 @@ A / B / C 是项目内部的实体样机编号，不是厂商硬件版本号。�
 |---|---|---|---|---|
 | A 机 | **IPQ5018** / 独立 Winbond DDR | Winbond **W25N01GWZEIG** / 128 MiB | Qualcomm Atheros **QCA8337-AL3C** | 曾 RAM 启动、Wi-Fi 可开启；未完成逐项功能验证 |
 | B 机 | **IPQ5000** / Integrated 256 MiB DDR3L | GigaDevice **GD5F1GQ5REYIG** / 128 MiB | Qualcomm Atheros **QCA8337-AL3C** | Product R1 r5 基线，基本功能、NAND 写入与双系统流程已阶段验证 |
-| C 机 | **IPQ5018** / 独立 GigaDevice DDR | Winbond **W25N01GWZEIG** / 128 MiB | Realtek **RTL8367S** | RAM-stage 有线/网络服务与阶段性无线测试已有记录，仍未完成持久化与完整长稳 |
+| C 机 | **IPQ5018** / 独立 GigaDevice DDR | Winbond **W25N01GWZEIG** / 128 MiB | Realtek **RTL8367S** | Native08 已于 RT3000 C 实机完成非原厂槽原生 NAND 安装、冷启动、配置持久化与有限网络/双频验证；首次 DHCP、速率报告和长稳仍待解决，尚未公开发布 |
 
 A 机 NAND 芯片丝印为 `25N01GWZEIG / 2238 / 6206DS900`。A 机在早期探索中，因我对 **APPSEL 的不成熟修改而变砖**，目前无法继续测试；它并非从未运行过，但当时没有完成逐项验收，当前版本也未在 A 机上重新验证。
 
