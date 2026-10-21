@@ -16,8 +16,10 @@
  *
  * Scope (P2): kernel boot, NAND, ethernet, NSS DP. WiFi nodes are carried
  * at donor-equivalent bring-up level but are not a P2 gate.
- * LEDs are intentionally ABSENT: no verified GPIO map exists (frozen docs
- * list LED10/LED9 as UNRESOLVED). Buttons use OEM-extracted GPIOs.
+ * HW-B RT-B01 follow-up (2026-10-15): RESET is GPIO34, active low;
+ * status red/green are GPIO23/24, active high. See
+ * rt3000-machine-b/docs/HW-B-BOARD-FIXES-20261015.md.
+ * This persistent profile keeps the reviewed high-slot QSDK layout.
  */
 
 /dts-v1/;
@@ -36,14 +38,36 @@
 
 	aliases {
 		serial0 = &blsp1_uart1;
+		led-boot = &led_system_green;
+		led-running = &led_system_green;
+		led-failsafe = &led_system_red;
+		led-upgrade = &led_system_red;
 
 		ethernet0 = &mac0;
 		ethernet1 = &mac1;
 	};
 
 	chosen {
-		bootargs-append = " coherent_pool=2M loglevel=7 mtdparts=qcom_nand.0:0x80000@0(0:SBL1)ro,0x80000@0x80000(0:MIBIB)ro,0x40000@0x100000(0:BOOTCONFIG),0x40000@0x140000(0:BOOTCONFIG1),0x100000@0x180000(0:QSEE)ro,0x100000@0x280000(0:QSEE_1)ro,0x40000@0x380000(0:DEVCFG)ro,0x40000@0x3c0000(0:DEVCFG_1)ro,0x40000@0x400000(0:CDT)ro,0x40000@0x440000(0:CDT_1)ro,0x80000@0x480000(0:APPSBLENV)ro,0x140000@0x500000(0:APPSBL)ro,0x140000@0x640000(0:APPSBL_1)ro,0x100000@0x780000(0:ART)ro,0x80000@0x880000(0:TRAINING)ro,0x2800000@0x900000(oem_rootfs)ro,0x2800000@0x3100000(rootfs),0x600000@0x5900000(pdt_data)ro,0x600000@0x5f00000(pdt_data_1)ro,0x100000@0x6500000(exp)ro,0x1700000@0x6600000(plugin)ro ubi.block=0,1 root=/dev/ubiblock0_1";
+		bootargs-append = " coherent_pool=2M loglevel=7";
+		/* Applied after removing inherited storage selectors; ECC/console stay. */
+		h3c,storage-bootargs = "mtdparts=qcom_nand.0:0x80000@0(0:SBL1)ro,0x80000@0x80000(0:MIBIB)ro,0x40000@0x100000(0:BOOTCONFIG),0x40000@0x140000(0:BOOTCONFIG1),0x100000@0x180000(0:QSEE)ro,0x100000@0x280000(0:QSEE_1)ro,0x40000@0x380000(0:DEVCFG)ro,0x40000@0x3c0000(0:DEVCFG_1)ro,0x40000@0x400000(0:CDT)ro,0x40000@0x440000(0:CDT_1)ro,0x80000@0x480000(0:APPSBLENV)ro,0x140000@0x500000(0:APPSBL)ro,0x140000@0x640000(0:APPSBL_1)ro,0x100000@0x780000(0:ART)ro,0x80000@0x880000(0:TRAINING)ro,0x2800000@0x900000(oem_rootfs)ro,0x2800000@0x3100000(rootfs),0x600000@0x5900000(pdt_data)ro,0x600000@0x5f00000(pdt_data_1)ro,0x100000@0x6500000(exp)ro,0x1700000@0x6600000(plugin)ro ubi.mtd=rootfs ubi.block=0,1 root=/dev/ubiblock0_1 rootfstype=squashfs rootwait";
 		stdout-path = "serial0:115200n8";
+	};
+
+	leds {
+		compatible = "gpio-leds";
+
+		led_system_green: system_green {
+			label = "green:system";
+			gpios = <&tlmm 24 GPIO_ACTIVE_HIGH>;
+			default-state = "on";
+		};
+
+		led_system_red: system_red {
+			label = "red:system";
+			gpios = <&tlmm 23 GPIO_ACTIVE_HIGH>;
+			default-state = "off";
+		};
 	};
 
 	/* RT3000 has 256 MiB DDR3L (OEM truth); state it explicitly so a RAM
@@ -104,7 +128,7 @@
 
 	button_pins: button_pins {
 		button_reset {
-			pins = "gpio27";
+			pins = "gpio34";
 			function = "gpio";
 			drive-strength = <8>;
 			bias-pull-up;
@@ -172,12 +196,10 @@
 			partition@100000 {
 				label = "0:BOOTCONFIG";
 				reg = <0x100000 0x040000>;
-				read-only;
 			};
 			partition@140000 {
 				label = "0:BOOTCONFIG1";
 				reg = <0x140000 0x040000>;
-				read-only;
 			};
 			partition@180000 {
 				label = "0:QSEE";
@@ -235,14 +257,13 @@
 				read-only;
 			};
 			partition@900000 {
-				label = "rootfs";
+				label = "oem_rootfs";
 				reg = <0x900000 0x02800000>;
 				read-only;
 			};
 			partition@3100000 {
-				label = "rootfs_1";
+				label = "rootfs";
 				reg = <0x3100000 0x02800000>;
-				read-only;
 			};
 			partition@5900000 {
 				label = "pdt_data";
@@ -276,7 +297,7 @@
 
 		button_reset {
 			label = "reset";
-			gpios = <&tlmm 27 GPIO_ACTIVE_LOW>;
+			gpios = <&tlmm 34 GPIO_ACTIVE_LOW>;
 			linux,input-type = <EV_KEY>;
 			linux,code = <KEY_RESTART>;
 			debounce-interval = <60>;
