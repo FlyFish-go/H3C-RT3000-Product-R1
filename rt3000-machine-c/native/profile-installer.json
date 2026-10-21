@@ -1,0 +1,146 @@
+{
+  "profile": "Device/h3c_rt3000_rtl8367s_installer_ram",
+  "board_compatible": "h3c,rt3000-rtl8367s",
+  "source_c_dts": "target/linux/ipq50xx/dts/ipq5000-rt3000-rtl8367s.dts",
+  "source_c_dts_sha256": "61b88a1bebbb76fea49cf184491fe63b513a0ae5e8a955be6ae84f2f35f5abe4",
+  "native_dts": "rt3000-machine-c/native/ipq5000-rt3000-rtl8367s-installer.dts",
+  "native_dts_sha256": "cd323021269562bc41d60206b5020a85d5bc597a6b0eedde8b874f535dc5452c",
+  "native_controller_property": "h3c,rt3000-native-nand-safe-config",
+  "diagnostic_property_must_be_absent": "h3c,rt3000-mtd-discovery-read-only",
+  "fit": {
+    "selected_config_required": true,
+    "fit_default_is_not_selection_evidence": true,
+    "config_name_source": "candidate contains this single explicit C config; APPSBL runtime selection still NOT_PROVEN",
+    "must_embed_fdt_compatible": [
+      "h3c,rt3000-rtl8367s"
+    ],
+    "forbidden_fdt_compatible": [
+      "h3c,rt3000-rtl8367s-mtd-discovery"
+    ],
+    "ramdisk": false,
+    "explicit_config_name": "config@mp03.1-c2"
+  },
+  "bootargs": {
+    "console": "ttyMSM0,115200n8",
+    "init": "/init",
+    "panic": "0",
+    "exact_tokens": [
+      "console=ttyMSM0,115200n8",
+      "init=/init",
+      "panic=0"
+    ],
+    "purpose": "RAM-only installer"
+  },
+  "physical": {
+    "inactive_start": 51380224,
+    "inactive_size": 41943040,
+    "inactive_end": 93323264,
+    "protected_root_start": 9437184,
+    "protected_root_size": 41943040,
+    "protected_root_end": 51380224
+  },
+  "geometry": {
+    "page": 2048,
+    "erase": 131072,
+    "peb": 131072,
+    "oob": 64,
+    "ecc_strength": 4,
+    "ecc_step": 512,
+    "vid_offset": 2048,
+    "data_offset": 4096
+  },
+  "write_allowlist": {
+    "physical_ranges": [
+      {
+        "name": "rootfs_1",
+        "offset": 51380224,
+        "size": 41943040
+      },
+      {
+        "name": "BOOTCONFIG",
+        "offset": 1048576,
+        "size": 262144
+      },
+      {
+        "name": "BOOTCONFIG1",
+        "offset": 1310720,
+        "size": 262144
+      }
+    ],
+    "all_other_partitions_read_only": true,
+    "master_mtd_writeability": "must be checked; device-tree read-only children are not a substitute for checking raw master exposure",
+    "installer_profile_separate": "BC copies writable only in installer RAM profile"
+  },
+  "volumes": [
+    {
+      "id": 0,
+      "name": "kernel",
+      "type": "static",
+      "reserved_pebs": 50,
+      "flags": 0
+    },
+    {
+      "id": 1,
+      "name": "wifi_fw",
+      "type": "static",
+      "reserved_pebs": 50,
+      "flags": 0,
+      "preserve": "same-unit reviewed C OEM exact payload"
+    },
+    {
+      "id": 2,
+      "name": "bt_fw",
+      "type": "static",
+      "reserved_pebs": 3,
+      "flags": 0,
+      "preserve": "same-unit reviewed C OEM exact payload"
+    },
+    {
+      "id": 3,
+      "name": "ubi_rootfs",
+      "type": "dynamic",
+      "reserved_pebs": 153,
+      "flags": 0,
+      "content": "SquashFS"
+    },
+    {
+      "id": 4,
+      "name": "rootfs_data",
+      "type": "dynamic",
+      "reserved_pebs": 1,
+      "flags": 1,
+      "content": "empty autoresize overlay volume"
+    }
+  ],
+  "flash_ready": false,
+  "kernel_config_required": {
+    "CONFIG_BLK_DEV_INITRD": "y",
+    "CONFIG_INITRAMFS_SOURCE": "non-empty",
+    "CONFIG_MTD_PARTITIONED_MASTER": "unset",
+    "CONFIG_MTD_UBI": "n",
+    "CONFIG_MTD_UBI_BLOCK": "n",
+    "CONFIG_SQUASHFS": "n",
+    "CONFIG_UBIFS_FS": "n"
+  },
+  "mode": "installer_ram",
+  "image_profile": "Device/h3c_rt3000_rtl8367s_installer_ram",
+  "kernel_embedded_initramfs": true,
+  "initramfs_contract": {
+    "openwrt_config": "CONFIG_TARGET_ROOTFS_INITRAMFS=y",
+    "kernel_config": "CONFIG_BLK_DEV_INITRD=y; CONFIG_INITRAMFS_SOURCE non-empty; UBI/UBIBLOCK/SquashFS/UBIFS disabled to prevent Linux UBI attachment",
+    "fit_ramdisk_node": false,
+    "embedded_cpio_section": ".init.ramfs in vmlinux must be non-empty",
+    "preinit": "generic /init exports INITRAMFS=1; 70_initramfs_test breaks before mount_root; 80_mount_root skips registering do_mount_root when INITRAMFS=1",
+    "rootfs_network": "netifd and /etc/config/network required"
+  },
+  "wireless_probe_only": {
+    "enabled_only_for_installer_ram": true,
+    "qcn6122_bdf_sha256": "432eb4044466712469193973ce337fee68f5c76e0dcee54dd6da1e6c9fd48bb1",
+    "qcn6122_bdf_source": "tools/build_qcn6122_probe_bdf.py --mode c-schema-byte; external reviewed evidence input RT3000_C_INSTALLER_QCN6122_BDF",
+    "c_template_sha256": "935327c086275cfc559db3bd5bec6537f415e81459b32cf8108cedbf8e2af32b",
+    "c_oem_body_sha256": "a2fadde2d7778bc129b15fbb1dd9497332f763501e17e1d0e62c4d00d1df1b6c",
+    "allowed_changes": "only checksum bytes 0x0a..0x0b and legacy antenna-axis gate byte 0x045c",
+    "forbidden_use": "never package the probe into persistent native image or claim production RF calibration",
+    "firmware_comparison": "C OEM wifi_fw SquashFS carries HK2.5.r4-00745 Q6 firmware; HK2.7.0.1-01744 shares only 1 of 25 q6_fw.* files byte-for-byte and is installer RAM debugging input only"
+  }
+}

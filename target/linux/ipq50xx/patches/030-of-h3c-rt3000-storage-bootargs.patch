@@ -1,0 +1,75 @@
+--- a/drivers/of/fdt.c
++++ b/drivers/of/fdt.c
+@@ -29,7 +29,10 @@
+ #include <asm/setup.h>  /* for COMMAND_LINE_SIZE */
+ #include <asm/page.h>
+ 
++#include <linux/ctype.h>
++
+ #include "of_private.h"
++#include "h3c_rt3000_bootargs.h"
+ 
+ /*
+  * of_fdt_limit_memory - limit the number of regions in the /memory node
+@@ -1046,6 +1049,8 @@
+ 	int l;
+ 	const char *p;
+ 	const void *rng_seed;
++	const char *storage = NULL;
++	int storage_len = 0;
+ 
+ 	pr_debug("search \"chosen\", depth: %d, uname: %s\n", depth, uname);
+ 
+@@ -1055,11 +1060,22 @@
+ 
+ 	early_init_dt_check_for_initrd(node);
+ 
++	if (of_flat_dt_is_compatible(of_get_flat_dt_root(), "h3c,rt3000"))
++		storage = of_get_flat_dt_prop(node, "h3c,storage-bootargs", &storage_len);
++
+ 	/* Retrieve command line */
+ 	p = of_get_flat_dt_prop(node, "bootargs", &l);
+-	if (p != NULL && l > 0)
++	if (storage && p) {
++		/* Strip before copying: long OEM mtdparts must not truncate ECC args. */
++		if (l <= 0 || h3c_rt3000_filter_bootargs(data, COMMAND_LINE_SIZE, p, l))
++			panic("HW-B: invalid or oversized inherited bootargs");
++	} else if (p != NULL && l > 0) {
+ 		strlcpy(data, p, min(l, COMMAND_LINE_SIZE));
++	}
+ 	p = of_get_flat_dt_prop(node, "bootargs-append", &l);
++	if (storage && p && (l <= 0 || memchr(p, '\0', l) != p + l - 1 ||
++			    (size_t)l > COMMAND_LINE_SIZE - strlen(data)))
++		panic("HW-B: invalid or oversized bootargs-append");
+ 	if (p != NULL && l > 0)
+ 		strlcat(data, p, min_t(int, strlen(data) + (int)l, COMMAND_LINE_SIZE));
+ 
+@@ -1070,9 +1086,13 @@
+ 	 */
+ #ifdef CONFIG_CMDLINE
+ #if defined(CONFIG_CMDLINE_EXTEND)
++	if (storage && sizeof(CONFIG_CMDLINE) + 1 > COMMAND_LINE_SIZE - strlen(data))
++		panic("HW-B: oversized CONFIG_CMDLINE_EXTEND");
+ 	strlcat(data, " ", COMMAND_LINE_SIZE);
+ 	strlcat(data, CONFIG_CMDLINE, COMMAND_LINE_SIZE);
+ #elif defined(CONFIG_CMDLINE_FORCE)
++	if (storage && sizeof(CONFIG_CMDLINE) > COMMAND_LINE_SIZE)
++		panic("HW-B: oversized CONFIG_CMDLINE_FORCE");
+ 	strlcpy(data, CONFIG_CMDLINE, COMMAND_LINE_SIZE);
+ #else
+ 	/* No arguments from boot loader, use kernel's  cmdl*/
+@@ -1081,6 +1101,14 @@
+ #endif
+ #endif /* CONFIG_CMDLINE */
+ 
++	/* Only HW-B DTs opt in; leave OEM/C/other board command lines alone.
++	 * Do this after CONFIG_CMDLINE handling so stale UBI parameters cannot
++	 * be reintroduced. Keep ECC, console and radio arguments from firmware.
++	 */
++	if (storage && (storage_len <= 0 || h3c_rt3000_storage_bootargs(data,
++				COMMAND_LINE_SIZE, storage, storage_len)))
++		panic("HW-B: invalid or oversized storage bootargs");
++
+ 	pr_debug("Command line is: %s\n", (char*)data);
+ 
+ 	rng_seed = of_get_flat_dt_prop(node, "rng-seed", &l);
