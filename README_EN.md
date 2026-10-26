@@ -8,20 +8,20 @@ The long-term goal is to support the **RT3000 / RW3000 / RC3000 / NX30 families*
 
 **Product R1 is the first hardware milestone on this path:** basic functionality on RT3000 Machine B has passed staged validation, including NAND installation and OEM / QSDK dual-system booting, switching, and rollback. This establishes a foundation for other devices; family-wide support remains a future goal.
 
-The current public release is **Product R1 r5 Developer Preview**. On RT3000 Machine B, r5 was installed into NAND from OEM firmware, read back and verified, booted, switched in both directions, upgraded while retaining configuration, and checked after factory reset. Phones successfully connected to both Wi-Fi bands. The earlier Wi-Fi Candidate 13 was a RAM-boot performance experiment and must not be treated as validation of the r5 flash image. Firmware artifacts and SHA-256 checksums are available in the [r5 Release](https://github.com/FlyFish-go/H3C-RT3000-Product-R1/releases/tag/r5).
+The current public release is **r6 Developer Preview (QSDK 11.5 HW-A/B/C/D)**: one source tree and one config build an image each for HW-A (RW3000), HW-B (RT3000), HW-C (RT3000 RTL8367S) and HW-D (NX30). Each group was tested on one of the project's units: written through the U-Boot rescue page, booted, upgraded in place with configuration kept, and cold-booted five times by power cycling with both Wi-Fi APs up. There is only one unit per group; see the scope and limitations below. Firmware files and SHA-256 checksums are in the [r6 Release](https://github.com/FlyFish-go/H3C-RT3000-Product-R1/releases/tag/r6); the r5 files remain available for the old RT3000 B installation method only.
 
 The project is based on [hzyitc/openwrt-redmi-ax3000](https://github.com/hzyitc/openwrt-redmi-ax3000), retaining the OpenWrt build structure, upstream copyright notices, and licenses.
 
 ## HW-A/B/C/D classification and QSDK 11.5 porting status
 
-| Engineering group | Board characteristics / representative OEM machid | U-Boot `v0.1.0-pre.1` | Current QSDK 11.5 evidence |
+| Engineering group | Board characteristics / representative OEM machid | U-Boot `v0.1.0-pre.5` | QSDK 11.5 r6 |
 |---|---|---|---|
-| [**HW-A**](docs/HW-ABCD-CLASSIFICATION.md#hw-a) | Long board; IPQ5018 / external DDR / QCA8337; `0x08040001` | Separate candidate; hardware testing pending in this round | Historical RAM-boot evidence; no independent QSDK acceptance completed |
-| [**HW-B**](docs/HW-ABCD-CLASSIFICATION.md#hw-b) | Short board; IPQ5000 / integrated DDR / QCA8337; `0x08040000` | Separate candidate; hardware testing pending in this round | **RT3000 B Product R1 r5:** published Developer Preview with staged hardware validation |
-| [**HW-C**](docs/HW-ABCD-CLASSIFICATION.md#hw-c) | Long board; IPQ5018 / external DDR / RTL8367S; `0x08040101` | Separate candidate; hardware testing pending in this round | **RT3000 C Native08:** local persistent installation and bounded functional validation; open issues remain; not publicly released |
-| [**HW-D**](docs/HW-ABCD-CLASSIFICATION.md#hw-d) | NX30-type long board; IPQ5000 / integrated DDR / QCA8337; `0x08040000` | Limited testing passed for one specific NX30 candidate | Separate D `build03` candidate artifacts frozen; **no full-device acceptance** |
+| [**HW-A**](docs/HW-ABCD-CLASSIFICATION.md#hw-a) | Long board; IPQ5018 / external DDR / QCA8337; `0x08040001` | One of 84 candidates; passed on one unit | `h3c_rw3000_hw_a`: passed on one RW3000 |
+| [**HW-B**](docs/HW-ABCD-CLASSIFICATION.md#hw-b) | Short board; IPQ5000 / integrated DDR / QCA8337; `0x08040000` | One of 84 candidates; passed on one unit | `h3c_rt3000`: passed on one RT3000 |
+| [**HW-C**](docs/HW-ABCD-CLASSIFICATION.md#hw-c) | Long board; IPQ5018 / external DDR / RTL8367S; `0x08040101` | One of 84 candidates; passed on one unit | `h3c_rt3000_rtl8367s_native_slot1`: passed on one RT3000 |
+| [**HW-D**](docs/HW-ABCD-CLASSIFICATION.md#hw-d) | NX30-type long board; IPQ5000 / integrated DDR / QCA8337; `0x08040000` | One of 84 candidates; passed on one NX30 | `h3c_nx30_hw_d`: passed on one NX30 |
 
-**The same retail model can contain different engineering hardware groups. Both B and D can use OEM machid `0x08040000`; machid alone is not sufficient to select a flash image.** The [classification evidence from photos, OEM CDT/APPSBL, and control FDTs](docs/HW-ABCD-CLASSIFICATION.md) is documented separately from the [earlier physical RT3000 A/B/C research](docs/H3C-IPQ50xx-Hardware-Research-v1.0.md). The currently released r5 artifacts are only for the validated RT3000 B configuration. Local Native08 and D work **does not imply that additional public firmware downloads are available**.
+**The same retail model can contain different engineering hardware groups. Both B and D can use OEM machid `0x08040000`; machid alone is not sufficient to select a flash image.** The [classification evidence from photos, OEM CDT/APPSBL, and control FDTs](docs/HW-ABCD-CLASSIFICATION.md) is documented separately from the [earlier physical RT3000 A/B/C research](docs/H3C-IPQ50xx-Hardware-Research-v1.0.md). r6 images are per HW group and must match the group U-Boot detects; an image for the wrong group may leave Ethernet, Wi-Fi or booting broken.
 
 ## RT3000 A / B / C sample hardware
 
@@ -72,20 +72,34 @@ git clone https://github.com/FlyFish-go/H3C-RT3000-Product-R1.git
 cd H3C-RT3000-Product-R1
 ```
 
-This repository contains the OpenWrt build system, RT3000 porting sources, and patches. Kernel, toolchain, feeds, and other dependencies must be obtained according to the build rules. Start with the [public source build guide](rt3000-machine-b/docs/BUILD_PUBLIC.md), which documents configuration, dependencies, past build outcomes, and clean-environment reproduction that has not yet been completed.
+This repository contains the OpenWrt build system, RT3000 porting sources, and patches. Kernel, toolchain, feeds, and other dependencies must be obtained according to the build rules. Start with the [public source build guide](rt3000-machine-b/docs/BUILD_PUBLIC.md). r6 images are built from [`configs/h3c-magic.config`](configs/h3c-magic.config): copy it to `.config`, append one device line as described in its header (HW-C needs two more lines), then run `make defconfig && make`.
 
-## Installation: from OEM firmware to the second slot
+## Installation (r6): through the U-Boot rescue page
 
-**Only RT3000 Machine B passed r5 hardware validation.** The image and flashing commands are not applicable to A/C samples or RW3000, RC3000, or NX30. Before proceeding, verify NAND, the partition table, and the OEM firmware version, then read the [full installation guide](rt3000-machine-b/release/INSTALL.md) and [r5 release notes](rt3000-machine-b/release/RELEASE-NOTES-r5.md).
+r6 does not use the r5 OEM-Telnet installation. Install the [H3C-NX30-Uboot](https://github.com/FlyFish-go/H3C-NX30-Uboot) U-Boot **v0.1.0-pre.5** first. Devices still on OEM firmware use the [BootBridge web tool](https://flyfish-go.github.io/H3C-NX30-Uboot/); devices with an older project U-Boot follow that project's pre.5 upgrade notes.
 
-The guide covers five parts: OEM Telnet, installation and readback, switching in both directions, firmware upgrades, and rescue. The documented normal procedure was repeated on Machine B on September 23, 2026. The OEM Telnet configuration import was not repeated in that round, while fault injection, power-loss behavior, and full U-Boot + TFTP rescue were not verified. Complete checksums are available in the release's `SHA256SUMS` attachment.
+| HW group | First write (rescue page) | In-system upgrade |
+|---|---|---|
+| HW-A | `openwrt-ipq50xx-arm-h3c_rw3000_hw_a-squashfs-nand-factory.ubi` | `…-h3c_rw3000_hw_a-squashfs-sysupgrade.bin` |
+| HW-B | `openwrt-ipq50xx-arm-h3c_rt3000-squashfs-nand-factory.ubi` | `…-h3c_rt3000-squashfs-sysupgrade.bin` |
+| HW-C | `openwrt-ipq50xx-arm-h3c_rt3000_rtl8367s_native_slot1-squashfs-nand-factory.ubi` | `…-h3c_rt3000_rtl8367s_native_slot1-squashfs-sysupgrade.bin` |
+| HW-D | `openwrt-ipq50xx-arm-h3c_nx30_hw_d-squashfs-nand-factory.ubi` | `…-h3c_nx30_hw_d-squashfs-sysupgrade.bin` |
 
-## r5 default management and access
+1. Hold Reset while powering on to enter the rescue page; connect the PC to a **LAN** port and open `http://192.168.10.1`.
+2. Back up both system slots under "Flash backup" first.
+3. Under "Firmware update", write the group's `nand-factory.ubi` to the slot that does **not** hold the OEM system. Identify slots by offset (`0x900000` / `0x3100000`).
+4. Set the default boot slot to the slot you just wrote and power-cycle.
+5. Later upgrades: upload `sysupgrade.bin` in LuCI "Backup / Flash Firmware"; configuration can be kept.
 
-- QSDK LAN address: `192.168.10.1`, with LuCI at `http://192.168.10.1/`; SSH binds only to LAN. The OEM system's management address depends on cabling and upstream DHCP.
-- A fresh QSDK installation has no root password. Set one immediately on first login.
-- The 2.4 GHz `RT3000` and 5 GHz `RT3000-5G` access points both use WPA2 by default, with the public default Wi-Fi password `RTRCRWNX`. Change it before everyday use.
-- The r5 defaults above were checked on hardware after a fresh installation, configuration-preserving upgrade, and `sysupgrade -n`. The older RC1 / C13 test images used different defaults and must not be treated as r5.
+QSDK boots from either system slot and also from the 80 MiB single partition created by the U-Boot "Partition table update" page. The single partition erases the OEM system; use it only when the OEM system is no longer needed. The r6 release images were tested in the non-OEM slot; booting from either slot and from the single partition was tested on all four groups with the previous build of the same source.
+
+## r6 default management and access
+
+- LAN address `192.168.10.1`; LuCI at `http://192.168.10.1/`; SSH listens on LAN only.
+- A fresh installation has no root password; set one on first login.
+- 2.4 GHz `OpenWrt` and 5 GHz `OpenWrt-5G` are enabled with WPA2, default key `12345678`, country CN. These are public defaults; change them before regular use.
+- MAC addresses follow the OEM numbering: WAN is the factory address; LAN, 2.4 GHz and 5 GHz are factory +1, +2 and +3. Upgrading from r5 changes these three addresses.
+- Wi-Fi calibration is read from each unit's own ART partition at boot; the images contain no unit's calibration data.
 
 ## Repository layout
 
@@ -100,6 +114,8 @@ The guide covers five parts: OEM Telnet, installation and readback, switching in
 | `rt3000-machine-b/manifest/` | Identity records for tested images and their evidence |
 
 ## Known limitations
+
+r6: each group was tested on one project unit only; other NAND parts and batches are unverified. Wired WAN↔LAN routing is accelerated by NSS/ECM (about 940 Mbps on the bench); bridged traffic between Wi-Fi and wired LAN is forwarded by the CPU and not accelerated. HW-C/HW-D keep the OEM Q6 memory reservation, about 21 MiB more than HW-A/B, leaving about 52 MB available at idle (HW-A/B about 72 MB). 10/100 Mbps, long-running stability and LEDs/buttons are not fully verified.
 
 Comprehensive testing of 10/100 Mbps Ethernet, physical WAN cable reconnection, long-running stability, LEDs/buttons, and C13 simultaneous dual-band operation has not been completed. Recent wired controls and LAN-bridge wireless throughput tests do not qualify all WAN/NAT scenarios. See [KNOWN_ISSUES](rt3000-machine-b/release/KNOWN_ISSUES.md).
 

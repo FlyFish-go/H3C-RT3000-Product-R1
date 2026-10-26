@@ -8,20 +8,20 @@
 
 **Product R1 是这条路线的第一个实机里程碑：RT3000 B 机的基本功能已完成阶段验证，NAND 写入和 OEM / QSDK 双系统启动、切换与回退流程已在该机上验证。** 这为后续机型适配建立了基础；全系支持仍是路线目标。
 
-当前发布为 **Product R1 r5 Developer Preview**。r5 已在 RT3000 B 机从原厂写入 NAND、读回校验、启动、双向切换、保留配置升级及恢复出厂后验证；双频手机连接通过。更早的 Wi-Fi Candidate 13 只属于 RAM 启动性能实验，不能代表 r5 镜像的验收。固件附件与 SHA-256 见 [r5 Release](https://github.com/FlyFish-go/H3C-RT3000-Product-R1/releases/tag/r5)。
+当前发布为 **r6 Developer Preview（QSDK 11.5 HW-A/B/C/D）**：同一套源码和配置为 HW-A（RW3000）、HW-B（RT3000）、HW-C（RT3000 RTL8367S）、HW-D（NX30）各出一个镜像。每组都在项目的一台样机上实测：经 U-Boot 救援页写入、启动、系统内升级保留配置、连续 5 次断电冷启动后双频 AP 正常。每组只有一台样机，测试范围和限制见下文。固件附件与 SHA-256 见 [r6 Release](https://github.com/FlyFish-go/H3C-RT3000-Product-R1/releases/tag/r6)；r5 附件仍保留，只对应 RT3000 B 的旧安装方式。
 
 基于 [hzyitc/openwrt-redmi-ax3000](https://github.com/hzyitc/openwrt-redmi-ax3000)，保留 OpenWrt 构建结构、上游版权和许可证。
 
 ## HW-A/B/C/D 分类与 QSDK 11.5 适配进展
 
-| HW 工程组 | 板级特点 / OEM 代表 machid | U-Boot `v0.1.0-pre.1` | QSDK 11.5 当前证据 |
+| HW 工程组 | 板级特点 / OEM 代表 machid | U-Boot `v0.1.0-pre.5` | QSDK 11.5 r6 |
 |---|---|---|---|
-| [**HW-A**](docs/HW-ABCD-CLASSIFICATION.md#hw-a) | 长板；IPQ5018 / 外置 DDR / QCA8337；`0x08040001` | 独立候选，本轮待实测 | 历史 RAM 启动记录；当前未完成独立 QSDK 验收 |
-| [**HW-B**](docs/HW-ABCD-CLASSIFICATION.md#hw-b) | 短板；IPQ5000 / 集成 DDR / QCA8337；`0x08040000` | 独立候选，本轮待实测 | **RT3000 B Product R1 r5**：已发布开发预览，实机阶段验证 |
-| [**HW-C**](docs/HW-ABCD-CLASSIFICATION.md#hw-c) | 长板；IPQ5018 / 外置 DDR / RTL8367S；`0x08040101` | 独立候选，本轮待实测 | **RT3000 C Native08**：本地持久化与有界功能验证，仍有开放项，未公开发布 |
-| [**HW-D**](docs/HW-ABCD-CLASSIFICATION.md#hw-d) | NX30 型长板；IPQ5000 / 集成 DDR / QCA8337；`0x08040000` | 一台 NX30 指定候选有限实测通过 | D 独立 `build03` 候选已冻结构建产物；**未完成整机验收** |
+| [**HW-A**](docs/HW-ABCD-CLASSIFICATION.md#hw-a) | 长板；IPQ5018 / 外置 DDR / QCA8337；`0x08040001` | 84 候选之一；一台样机实测通过 | `h3c_rw3000_hw_a`：一台 RW3000 实测通过 |
+| [**HW-B**](docs/HW-ABCD-CLASSIFICATION.md#hw-b) | 短板；IPQ5000 / 集成 DDR / QCA8337；`0x08040000` | 84 候选之一；一台样机实测通过 | `h3c_rt3000`：一台 RT3000 实测通过 |
+| [**HW-C**](docs/HW-ABCD-CLASSIFICATION.md#hw-c) | 长板；IPQ5018 / 外置 DDR / RTL8367S；`0x08040101` | 84 候选之一；一台样机实测通过 | `h3c_rt3000_rtl8367s_native_slot1`：一台 RT3000 实测通过 |
+| [**HW-D**](docs/HW-ABCD-CLASSIFICATION.md#hw-d) | NX30 型长板；IPQ5000 / 集成 DDR / QCA8337；`0x08040000` | 84 候选之一；一台 NX30 实测通过 | `h3c_nx30_hw_d`：一台 NX30 实测通过 |
 
-**同一商品型号可能跨不同 HW 组。B/D 的 OEM machid 均可为 `0x08040000`，不能仅凭 machid 刷写。** 详细的 [照片、OEM CDT/APPSBL 和控制 FDT 分组依据](docs/HW-ABCD-CLASSIFICATION.md) 与 [旧版 RT3000 A/B/C 实物研究](docs/H3C-IPQ50xx-Hardware-Research-v1.0.md) 分开保留。当前 r5 发布附件仅供已验证的 RT3000 B 使用；Native08 与 D 的本地成果**不等于新的公开固件下载**。
+**同一商品型号可能跨不同 HW 组。B/D 的 OEM machid 均可为 `0x08040000`，不能仅凭 machid 刷写。** 详细的 [照片、OEM CDT/APPSBL 和控制 FDT 分组依据](docs/HW-ABCD-CLASSIFICATION.md) 与 [旧版 RT3000 A/B/C 实物研究](docs/H3C-IPQ50xx-Hardware-Research-v1.0.md) 分开保留。r6 镜像按 HW 组区分，必须与 U-Boot 识别出的组一致；用错组的镜像，网口、无线或启动都可能不正常。
 
 ## RT3000 A / B / C 样机配置
 
@@ -72,20 +72,34 @@ git clone https://github.com/FlyFish-go/H3C-RT3000-Product-R1.git
 cd H3C-RT3000-Product-R1
 ```
 
-仓库包含 OpenWrt 构建系统、RT3000 适配源码及补丁；内核、工具链和 feeds 等依赖需要按构建规则获取。先阅读 [公开源码构建说明](rt3000-machine-b/docs/BUILD_PUBLIC.md)，其中列出配置、依赖、历史构建结果和尚未完成的全新环境复现验证。
+仓库包含 OpenWrt 构建系统、RT3000 适配源码及补丁；内核、工具链和 feeds 等依赖需要按构建规则获取。先阅读 [公开源码构建说明](rt3000-machine-b/docs/BUILD_PUBLIC.md)。r6 镜像用 [`configs/h3c-magic.config`](configs/h3c-magic.config) 构建：复制为 `.config`，按文件头说明追加一行机型（HW-C 另加两行），再执行 `make defconfig && make`。
 
-## 安装：从原厂系统进入第二槽位
+## 安装（r6）：通过 U-Boot 救援页
 
-**仅 RT3000 B 机通过 r5 实机验证。** A/C 样机和 RW3000、RC3000、NX30 不适用本镜像或刷写命令。开始前请先核对 NAND、分区表和原厂版本，阅读 [完整安装教程](rt3000-machine-b/release/INSTALL.md) 与 [r5 发布说明](rt3000-machine-b/release/RELEASE-NOTES-r5.md)。
+r6 不使用 r5 的原厂 Telnet 安装流程，需要先装好 [H3C-NX30-Uboot](https://github.com/FlyFish-go/H3C-NX30-Uboot) 的 U-Boot **v0.1.0-pre.5**。还在原厂系统的设备，用 [BootBridge 网页版](https://flyfish-go.github.io/H3C-NX30-Uboot/) 安装；已装旧版 U-Boot 的，按该项目的 pre.5 说明升级。
 
-教程分为原厂 Telnet、安装与读回、双向切换、固件升级和救援五部分。2026-09-23 已按当前教程在 B 机复走正常路径；原厂 Telnet 配置导入本轮未重复执行，故障注入、断电和完整 U-Boot + TFTP 救援未验证。完整校验值见 Release 附件 `SHA256SUMS`。
+| HW 组 | 首次写入（救援页） | 系统内升级 |
+|---|---|---|
+| HW-A | `openwrt-ipq50xx-arm-h3c_rw3000_hw_a-squashfs-nand-factory.ubi` | `…-h3c_rw3000_hw_a-squashfs-sysupgrade.bin` |
+| HW-B | `openwrt-ipq50xx-arm-h3c_rt3000-squashfs-nand-factory.ubi` | `…-h3c_rt3000-squashfs-sysupgrade.bin` |
+| HW-C | `openwrt-ipq50xx-arm-h3c_rt3000_rtl8367s_native_slot1-squashfs-nand-factory.ubi` | `…-h3c_rt3000_rtl8367s_native_slot1-squashfs-sysupgrade.bin` |
+| HW-D | `openwrt-ipq50xx-arm-h3c_nx30_hw_d-squashfs-nand-factory.ubi` | `…-h3c_nx30_hw_d-squashfs-sysupgrade.bin` |
 
-## r5 默认管理方式
+1. 断电后按住 Reset 再通电，进入救援页；电脑用网线接 **LAN** 口，打开 `http://192.168.10.1`。
+2. 在「闪存备份」先备份两个系统槽。
+3. 在「固件更新」把对应组的 `nand-factory.ubi` 写入**不是原厂系统所在**的那个槽。两个槽以偏移（`0x900000` / `0x3100000`）为准。
+4. 把默认启动槽设为刚写入的槽，断电重启。
+5. 以后升级在 LuCI「备份/升级」上传 `sysupgrade.bin`，可保留配置。
 
-- QSDK LAN 地址 `192.168.10.1`，LuCI 为 `http://192.168.10.1/`；SSH 仅绑定 LAN。原厂系统的管理地址取决于接线和上游 DHCP。
-- 新装 QSDK 没有 root 密码，首次登录请立即设置。
-- 2.4 GHz `RT3000` 与 5 GHz `RT3000-5G` 默认均启用 WPA2，默认 Wi-Fi 密码 `RTRCRWNX`。这是公开默认值，日常使用前应更换。
-- 上述 r5 默认值在重新安装、保留配置升级和 `sysupgrade -n` 后均有实机验证；旧 RC1 / C13 测试镜像的默认值不同，不应套用。
+QSDK 可从任一系统槽启动，也能用于 U-Boot「分区表更新」生成的 80 MiB 大分区。大分区会抹掉原厂系统，只在确定不再需要原厂系统时使用。r6 正式镜像本轮在非原厂槽实测；任一槽和大分区启动由同一源码的前一轮构建在四组样机上实测。
+
+## r6 默认管理方式
+
+- LAN 地址 `192.168.10.1`，LuCI 为 `http://192.168.10.1/`；SSH 仅绑定 LAN。
+- 新装系统没有 root 密码，首次登录请立即设置。
+- 2.4 GHz `OpenWrt` 与 5 GHz `OpenWrt-5G` 默认启用 WPA2，默认密码 `12345678`，国家码 CN。这是公开默认值，日常使用前应更换。
+- MAC 地址与原厂编号一致：WAN 为出厂地址，LAN、2.4 GHz、5 GHz 依次为出厂地址 +1、+2、+3。从 r5 升级会改变这三个地址。
+- 无线校准数据在开机时从本机 ART 分区读取，镜像中不含任何一台设备的校准数据。
 
 ## 目录
 
@@ -100,6 +114,8 @@ cd H3C-RT3000-Product-R1
 | `rt3000-machine-b/manifest/` | 已测试镜像与证据的身份记录 |
 
 ## 已知限制
+
+r6：每组只在项目的一台样机上实测，其他 NAND 型号和批次未验证。有线 WAN↔LAN 路由经 NSS/ECM 加速，台架实测约 940 Mbps；LAN 内无线与有线之间的桥接流量由 CPU 转发，未加速。HW-C/HW-D 沿用原厂的 Q6 内存预留，比 HW-A/B 多约 21 MiB，空闲可用内存约 52 MB（HW-A/B 约 72 MB）。10/100 Mbps、长时间运行、LED/按键尚未完整验证。
 
 当前没有完成 10/100 Mbps 以太网、WAN 物理拔插、长时间运行、LED/按键及 C13 双频并发等完整验证。最新有线控制和 LAN bridge 无线测速不等同于 WAN/NAT 所有场景的验收。详见 [KNOWN_ISSUES](rt3000-machine-b/release/KNOWN_ISSUES.md)。
 
