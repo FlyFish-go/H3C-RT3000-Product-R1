@@ -33,10 +33,10 @@ RT3000 这一系列用的是高通 IPQ50xx（IPQ5018 / IPQ5000）+ QCN6102。本
 
 | 主板 | 商品型号 | 芯片 / 交换机 | r6 镜像 | 实机测试 |
 |---|---|---|---|:---:|
-| **HW-A** | RW3000 / RC3000 | IPQ5018 · QCA8337 | `h3c_rw3000_hw_a` | ✅ RW3000 |
-| **HW-B** | RT3000 | IPQ5000 · QCA8337 | `h3c_rt3000` | ✅ RT3000 |
-| **HW-C** | RT3000 | IPQ5018 · RTL8367S | `h3c_rt3000_rtl8367s_native_slot1` | ✅ RT3000 |
-| **HW-D** | NX30 / RX3000 | IPQ5000 · QCA8337 | `h3c_nx30_hw_d` | ✅ NX30 |
+| **HW-A** | RW3000 / RC3000 | IPQ5018 · QCA8337 | `H3C-Magic-r6-HW-A-*` | ✅ RW3000 |
+| **HW-B** | RT3000 | IPQ5000 · QCA8337 | `H3C-Magic-r6-HW-B-*` | ✅ RT3000 |
+| **HW-C** | RT3000 | IPQ5018 · RTL8367S | `H3C-Magic-r6-HW-C-*` | ✅ RT3000 |
+| **HW-D** | NX30 / RX3000 | IPQ5000 · QCA8337 | `H3C-Magic-r6-HW-D-*` | ✅ NX30 |
 
 同一商品型号可能用不同主板（RT3000 有 HW-B 和 HW-C 两种），**请按 U-Boot 救援页显示的「硬件系列」选镜像，不要按型号或 machid 猜**。用错组的镜像，网口、无线或启动都可能不正常。分组依据见 [HW-A/B/C/D 分类](docs/HW-ABCD-CLASSIFICATION.md)。
 
@@ -59,10 +59,10 @@ r6 正式镜像，每种主板一台样机。iperf3 4 流，客户端为 MT7921�
 
 | 主板 | 首次写入（救援页） | 系统内升级（LuCI） |
 |---|---|---|
-| HW-A | `openwrt-ipq50xx-arm-h3c_rw3000_hw_a-squashfs-nand-factory.ubi` | `…-h3c_rw3000_hw_a-squashfs-sysupgrade.bin` |
-| HW-B | `openwrt-ipq50xx-arm-h3c_rt3000-squashfs-nand-factory.ubi` | `…-h3c_rt3000-squashfs-sysupgrade.bin` |
-| HW-C | `openwrt-ipq50xx-arm-h3c_rt3000_rtl8367s_native_slot1-squashfs-nand-factory.ubi` | `…-h3c_rt3000_rtl8367s_native_slot1-squashfs-sysupgrade.bin` |
-| HW-D | `openwrt-ipq50xx-arm-h3c_nx30_hw_d-squashfs-nand-factory.ubi` | `…-h3c_nx30_hw_d-squashfs-sysupgrade.bin` |
+| HW-A | `H3C-Magic-r6-HW-A-nand-factory.ubi` | `H3C-Magic-r6-HW-A-sysupgrade.bin` |
+| HW-B | `H3C-Magic-r6-HW-B-nand-factory.ubi` | `H3C-Magic-r6-HW-B-sysupgrade.bin` |
+| HW-C | `H3C-Magic-r6-HW-C-nand-factory.ubi` | `H3C-Magic-r6-HW-C-sysupgrade.bin` |
+| HW-D | `H3C-Magic-r6-HW-D-nand-factory.ubi` | `H3C-Magic-r6-HW-D-sysupgrade.bin` |
 
 1. 断电后按住 Reset 再通电，进入救援页；电脑用网线接 **LAN** 口，打开 `http://192.168.10.1`。
 2. 在「闪存备份」先备份两个系统槽。

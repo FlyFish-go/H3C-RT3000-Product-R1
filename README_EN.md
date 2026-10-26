@@ -32,10 +32,10 @@ These routers use Qualcomm IPQ50xx (IPQ5018 / IPQ5000) with a QCN6102 5 GHz radi
 
 | Board | Retail model | SoC / switch | r6 image | Tested |
 |---|---|---|---|:---:|
-| **HW-A** | RW3000 / RC3000 | IPQ5018 · QCA8337 | `h3c_rw3000_hw_a` | ✅ RW3000 |
-| **HW-B** | RT3000 | IPQ5000 · QCA8337 | `h3c_rt3000` | ✅ RT3000 |
-| **HW-C** | RT3000 | IPQ5018 · RTL8367S | `h3c_rt3000_rtl8367s_native_slot1` | ✅ RT3000 |
-| **HW-D** | NX30 / RX3000 | IPQ5000 · QCA8337 | `h3c_nx30_hw_d` | ✅ NX30 |
+| **HW-A** | RW3000 / RC3000 | IPQ5018 · QCA8337 | `H3C-Magic-r6-HW-A-*` | ✅ RW3000 |
+| **HW-B** | RT3000 | IPQ5000 · QCA8337 | `H3C-Magic-r6-HW-B-*` | ✅ RT3000 |
+| **HW-C** | RT3000 | IPQ5018 · RTL8367S | `H3C-Magic-r6-HW-C-*` | ✅ RT3000 |
+| **HW-D** | NX30 / RX3000 | IPQ5000 · QCA8337 | `H3C-Magic-r6-HW-D-*` | ✅ NX30 |
 
 One retail model can use different boards (the RT3000 exists as HW-B and HW-C). **Pick the image for the "Hardware Family" shown on the U-Boot rescue page, not by model name or machid.** The wrong image can break Ethernet, Wi-Fi or booting. See the [HW-A/B/C/D classification](docs/HW-ABCD-CLASSIFICATION.md).
 
@@ -58,10 +58,10 @@ Wireless numbers are limited by the test client (2×2, HE80), not the router. An
 
 | Board | First install (rescue page) | Upgrade (LuCI) |
 |---|---|---|
-| HW-A | `openwrt-ipq50xx-arm-h3c_rw3000_hw_a-squashfs-nand-factory.ubi` | `…-h3c_rw3000_hw_a-squashfs-sysupgrade.bin` |
-| HW-B | `openwrt-ipq50xx-arm-h3c_rt3000-squashfs-nand-factory.ubi` | `…-h3c_rt3000-squashfs-sysupgrade.bin` |
-| HW-C | `openwrt-ipq50xx-arm-h3c_rt3000_rtl8367s_native_slot1-squashfs-nand-factory.ubi` | `…-h3c_rt3000_rtl8367s_native_slot1-squashfs-sysupgrade.bin` |
-| HW-D | `openwrt-ipq50xx-arm-h3c_nx30_hw_d-squashfs-nand-factory.ubi` | `…-h3c_nx30_hw_d-squashfs-sysupgrade.bin` |
+| HW-A | `H3C-Magic-r6-HW-A-nand-factory.ubi` | `H3C-Magic-r6-HW-A-sysupgrade.bin` |
+| HW-B | `H3C-Magic-r6-HW-B-nand-factory.ubi` | `H3C-Magic-r6-HW-B-sysupgrade.bin` |
+| HW-C | `H3C-Magic-r6-HW-C-nand-factory.ubi` | `H3C-Magic-r6-HW-C-sysupgrade.bin` |
+| HW-D | `H3C-Magic-r6-HW-D-nand-factory.ubi` | `H3C-Magic-r6-HW-D-sysupgrade.bin` |
 
 1. Power off, hold Reset, power on to enter the rescue page; connect to a **LAN** port and open `http://192.168.10.1`.
 2. Back up both system slots under "Flash Backup".
