@@ -1,6 +1,9 @@
-# NEXT AGENT HANDOFF — RT3000 Machine-B
+# Historical handoff — RT3000 Machine-B, R1-NET-D to Product R1
 
-**Read this first, then `PROJECT_STATE.md`, then `NETWORK_BRINGUP_CLOSURE.md`.**
+> **Superseded.** This file records an earlier phase and its device state and
+> open blockers are historical. For the current release scope, read the
+> [project overview](../../README.md) and [r5 release notes](../release/RELEASE-NOTES-r5.md).
+> Do not follow the task list below as current instructions.
 
 ---
 

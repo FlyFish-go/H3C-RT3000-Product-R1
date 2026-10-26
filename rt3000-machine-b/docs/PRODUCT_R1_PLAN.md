@@ -1,5 +1,9 @@
 # PRODUCT R1 PLAN — RT3000 Machine-B
 
+> **Historical plan.** The blockers and “next phase” below describe the earlier
+> Product R1 planning stage; do not treat them as current status. Start with the
+> [project overview](../../README.md) and [r5 release notes](../release/RELEASE-NOTES-r5.md).
+
 ```
 NEXT_PHASE = PRODUCT_R1
 BASELINE   = R1-NET-D (ACCEPTED_HARDWARE_TESTED)

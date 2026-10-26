@@ -1,5 +1,10 @@
 # PROJECT_STATE.md — RT3000/QSDK
 
+> **Historical snapshot.** “CURRENT” below means current at the earlier R1-NET-D
+> baseline, not the present project or device. For the current release scope,
+> read the [project overview](../../README.md) and
+> [r5 release notes](../release/RELEASE-NOTES-r5.md).
+
 State categories: **PROVEN** (independently audited evidence), **CURRENT** (latest verified
 working state), **PENDING** (candidate, not yet proven), **SUPERSEDED** (kept for history only).
 

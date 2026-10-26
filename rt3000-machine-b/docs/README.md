@@ -2,6 +2,9 @@
 
 [项目首页](../../README.md) · [English overview](../../README_EN.md)
 
+> The documents indexed below preserve earlier baselines and should not be
+> used as current status without checking their dates and later evidence.
+
 当前发布为 **Product R1 r5 Developer Preview**，发布固件仍只在本项目的 **RT3000 B 机（IPQ5000 / 集成 256 MiB DDR3L）**验证。C 机已有 RAM-stage 阶段结果，但尚未发布支持；A/C 与其他机型不能套用 B 机的刷写命令。各文档保留原有路径，按以下入口阅读。
 
 ## r5：安装、使用与恢复边界
