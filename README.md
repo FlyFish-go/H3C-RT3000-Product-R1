@@ -19,6 +19,17 @@
 
 </div>
 
+<table>
+<tr>
+<td width="50%"><img src="docs/images/luci-overview.png" alt="NX30（HW-D）运行 r6 的 LuCI 状态页"></td>
+<td width="50%"><img src="https://raw.githubusercontent.com/FlyFish-go/H3C-NX30-Uboot/main/docs/images/rescue-overview.png" alt="U-Boot 救援页：双系统启动"></td>
+</tr>
+<tr>
+<td align="center">NX30（HW-D）运行 r6：OpenWrt 21.02.7 · Linux 5.4 · 双频 802.11ax</td>
+<td align="center">配套 U-Boot 救援页：原厂与 QSDK 两个系统一键切换</td>
+</tr>
+</table>
+
 ## 为什么是 QSDK
 
 RT3000 这一系列用的是高通 IPQ50xx（IPQ5018 / IPQ5000）+ QCN6102。本项目用高通官方 SDK 的供应商内核、无线驱动和 NSS 网络加速栈，而不是 OpenWrt 主线：
@@ -38,9 +49,16 @@ RT3000 这一系列用的是高通 IPQ50xx（IPQ5018 / IPQ5000）+ QCN6102。本
 | **HW-C** | RT3000 | IPQ5018 · RTL8367S | `H3C-Magic-r6-HW-C-*` | ✅ RT3000 |
 | **HW-D** | NX30 / RX3000 | IPQ5000 · QCA8337 | `H3C-Magic-r6-HW-D-*` | ✅ NX30 |
 
+<p align="center"><img src="docs/images/hardware-research-v1/rt3000-abc-board-front-comparison.webp" alt="三台 RT3000 的主板对比" width="90%"><br><sub>三台都是 RT3000，拆开后是三种主板：IPQ5018 + QCA8337（HW-A）、IPQ5000 + QCA8337（HW-B）、IPQ5018 + RTL8367S（HW-C）</sub></p>
+
 同一商品型号可能用不同主板（RT3000 有 HW-B 和 HW-C 两种），**请按 U-Boot 救援页显示的「硬件系列」选镜像，不要按型号或 machid 猜**。用错组的镜像，网口、无线或启动都可能不正常。分组依据见 [HW-A/B/C/D 分类](docs/HW-ABCD-CLASSIFICATION.md)。
 
 ## 性能
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/r6-throughput-dark.png">
+  <img src="docs/images/r6-throughput-light.png" alt="r6 实测吞吐：四种主板的 5 GHz、2.4 GHz 和有线 NAT 上下行速率">
+</picture>
 
 r6 正式镜像，每种主板一台样机。iperf3 4 流，客户端为 MT7921（Wi-Fi 6，2×2，近距离）；有线 NAT 为 LAN → 路由器 NAT → WAN。单位 Mbps，上行 / 下行：
 

@@ -18,6 +18,17 @@ All four board variants running on real hardware · NSS-offloaded wired NAT at ~
 
 </div>
 
+<table>
+<tr>
+<td width="50%"><img src="docs/images/luci-overview.png" alt="LuCI status page of r6 on an NX30 (HW-D)"></td>
+<td width="50%"><img src="https://raw.githubusercontent.com/FlyFish-go/H3C-NX30-Uboot/main/docs/images/rescue-overview.png" alt="U-Boot rescue page: dual boot"></td>
+</tr>
+<tr>
+<td align="center">r6 on an NX30 (HW-D): OpenWrt 21.02.7 · Linux 5.4 · dual-band 802.11ax</td>
+<td align="center">Companion U-Boot rescue page: switch between stock and QSDK</td>
+</tr>
+</table>
+
 ## Why QSDK
 
 These routers use Qualcomm IPQ50xx (IPQ5018 / IPQ5000) with a QCN6102 5 GHz radio. This project uses the vendor kernel, wireless drivers and NSS acceleration stack from Qualcomm's SDK rather than mainline OpenWrt:
@@ -37,9 +48,16 @@ These routers use Qualcomm IPQ50xx (IPQ5018 / IPQ5000) with a QCN6102 5 GHz radi
 | **HW-C** | RT3000 | IPQ5018 · RTL8367S | `H3C-Magic-r6-HW-C-*` | ✅ RT3000 |
 | **HW-D** | NX30 / RX3000 | IPQ5000 · QCA8337 | `H3C-Magic-r6-HW-D-*` | ✅ NX30 |
 
+<p align="center"><img src="docs/images/hardware-research-v1/rt3000-abc-board-front-comparison.webp" alt="Board comparison of three RT3000 units" width="90%"><br><sub>Three RT3000 units, three different boards: IPQ5018 + QCA8337 (HW-A), IPQ5000 + QCA8337 (HW-B), IPQ5018 + RTL8367S (HW-C)</sub></p>
+
 One retail model can use different boards (the RT3000 exists as HW-B and HW-C). **Pick the image for the "Hardware Family" shown on the U-Boot rescue page, not by model name or machid.** The wrong image can break Ethernet, Wi-Fi or booting. See the [HW-A/B/C/D classification](docs/HW-ABCD-CLASSIFICATION.md).
 
 ## Performance
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/r6-throughput-dark.png">
+  <img src="docs/images/r6-throughput-light.png" alt="r6 measured throughput: 5 GHz, 2.4 GHz and wired NAT, upload and download, on four boards">
+</picture>
 
 r6 release images, one unit per board. iperf3 with 4 streams, MT7921 client (Wi-Fi 6, 2×2, close range); wired NAT is LAN → router NAT → WAN. Mbps, upload / download:
 
