@@ -1,0 +1,18 @@
+--- a/drivers/remoteproc/qcom_q6v5_mpd.c
++++ b/drivers/remoteproc/qcom_q6v5_mpd.c
+@@ -640,6 +640,15 @@
+ 	qcom_q6v5_prepare(&wcss->q6);
+ 
+ 	if (wcss->need_mem_protection) {
++		/*
++		 * HW-D loads the authenticated image into write-combined reserved
++		 * memory. Drain prior stores before asking the secure monitor to
++		 * authenticate and start that image.
++		 */
++		if (of_machine_is_compatible("h3c,nx30-hw-d") &&
++		    of_machine_is_compatible("qcom,ipq5018-mp02.1"))
++			wmb();
++
+ 		ret = qcom_scm_pas_auth_and_reset(MPD_WCNSS_PAS_ID, debug_wcss,
+ 					wcss->reset_cmd_id);
+ 		if (ret) {

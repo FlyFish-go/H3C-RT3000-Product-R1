@@ -1,0 +1,538 @@
+--- a/drivers/net/wireless/ath/ath11k/dp_rx.c
++++ b/drivers/net/wireless/ath/ath11k/dp_rx.c
+@@ -758,10 +758,17 @@
+ /* Review-only helper proposal for frozen RT3000-C 618 dp_rx.c. */
+ #ifdef CPTCFG_ATH11K_RT3000_MON_OWNER_DIAG
+ #define ATH11K_QCN6122_RX_ID_QUOTA_CONTROL 4
++#define ATH11K_QCN6122_RX_ID_QUOTA_BW3 4
+ #define ATH11K_QCN6122_RX_ID_QUOTA_ISSUE 16
+-#define ATH11K_QCN6122_RX_ID_MAX_REO_OBSERVATIONS 4096
++#define ATH11K_QCN6122_RX_ID_MAX_REO_OBSERVATIONS 262144
++#define ATH11K_QCN6122_RX_ID_RAW_LOG_LEN 512
+ #define ATH11K_QCN6122_RX_ID_MAX_PENDING_REO_LOGS \
+-	(ATH11K_QCN6122_RX_ID_QUOTA_ISSUE + ATH11K_QCN6122_RX_ID_QUOTA_CONTROL)
++	(ATH11K_QCN6122_RX_ID_QUOTA_ISSUE + \
++	 ATH11K_QCN6122_RX_ID_QUOTA_BW3 + \
++	 ATH11K_QCN6122_RX_ID_QUOTA_CONTROL)
++#define ATH11K_QCN6122_RX_ID_MAX_PENDING_RAW_LOGS \
++	(ATH11K_QCN6122_RX_ID_QUOTA_BW3 + \
++	 ATH11K_QCN6122_RX_ID_QUOTA_CONTROL)
+ #define ATH11K_QCN6122_RX_ID_LOG_LEN 896
+ #define ATH11K_QCN6122_RX_ID_WINDOW (30 * HZ)
+ #define ATH11K_QCN6122_RX_ID_ROLE_MSDU_END BIT(0)
+@@ -776,14 +783,22 @@
+ 	ATH11K_QCN6122_RX_ID_PROCESS,
+ };
+ 
++enum ath11k_qcn6122_rx_id_sample {
++	ATH11K_QCN6122_RX_ID_SAMPLE_ISSUE,
++	ATH11K_QCN6122_RX_ID_SAMPLE_BW3,
++	ATH11K_QCN6122_RX_ID_SAMPLE_CONTROL,
++};
++
+ struct ath11k_qcn6122_rx_id_snapshot {
+ 	u32 tags[5];
+ 	u16 tag_ids[5];
+ 	u32 info3;
++	u32 attention_info1;
+ 	u8 software_role_match_mask;
+ 	bool geometry_valid;
+ 	bool bounds_valid;
+ 	bool info3_valid;
++	bool attention_info1_valid;
+ 	bool msdu_done_valid;
+ 	bool msdu_done;
+ };
+@@ -797,25 +812,37 @@
+ static bool ath11k_qcn6122_rx_id_stop_pending;
+ static const char *ath11k_qcn6122_rx_id_stop_reason;
+ static int ath11k_qcn6122_rx_id_stop_reo_issue;
++static int ath11k_qcn6122_rx_id_stop_reo_bw3;
+ static int ath11k_qcn6122_rx_id_stop_reo_control;
+ static int ath11k_qcn6122_rx_id_stop_process_issue;
++static int ath11k_qcn6122_rx_id_stop_process_bw3;
+ static int ath11k_qcn6122_rx_id_stop_process_control;
+ static u64 ath11k_qcn6122_rx_id_stop_host_rx_ns;
+ static char ath11k_qcn6122_rx_id_pending_reo_logs[
+ 	ATH11K_QCN6122_RX_ID_MAX_PENDING_REO_LOGS][ATH11K_QCN6122_RX_ID_LOG_LEN];
++static char ath11k_qcn6122_rx_id_pending_raw_logs[
++	ATH11K_QCN6122_RX_ID_MAX_PENDING_RAW_LOGS][ATH11K_QCN6122_RX_ID_RAW_LOG_LEN];
+ static u8 ath11k_qcn6122_rx_id_pending_head;
+ static u8 ath11k_qcn6122_rx_id_pending_count;
++static u8 ath11k_qcn6122_rx_id_pending_raw_head;
++static u8 ath11k_qcn6122_rx_id_pending_raw_count;
+ static atomic_t ath11k_qcn6122_rx_id_reo_issue =
+ 	ATOMIC_INIT(ATH11K_QCN6122_RX_ID_QUOTA_ISSUE);
+ static atomic_t ath11k_qcn6122_rx_id_reo_control =
+ 	ATOMIC_INIT(ATH11K_QCN6122_RX_ID_QUOTA_CONTROL);
++static atomic_t ath11k_qcn6122_rx_id_reo_bw3 =
++	ATOMIC_INIT(ATH11K_QCN6122_RX_ID_QUOTA_BW3);
+ static atomic_t ath11k_qcn6122_rx_id_process_issue =
+ 	ATOMIC_INIT(ATH11K_QCN6122_RX_ID_QUOTA_ISSUE);
+ static atomic_t ath11k_qcn6122_rx_id_process_control =
+ 	ATOMIC_INIT(ATH11K_QCN6122_RX_ID_QUOTA_CONTROL);
++static atomic_t ath11k_qcn6122_rx_id_process_bw3 =
++	ATOMIC_INIT(ATH11K_QCN6122_RX_ID_QUOTA_BW3);
+ static atomic_t ath11k_qcn6122_rx_id_reo_issue_total = ATOMIC_INIT(0);
++static atomic_t ath11k_qcn6122_rx_id_reo_bw3_total = ATOMIC_INIT(0);
+ static atomic_t ath11k_qcn6122_rx_id_reo_control_total = ATOMIC_INIT(0);
+ static atomic_t ath11k_qcn6122_rx_id_process_issue_total = ATOMIC_INIT(0);
++static atomic_t ath11k_qcn6122_rx_id_process_bw3_total = ATOMIC_INIT(0);
+ static atomic_t ath11k_qcn6122_rx_id_process_control_total = ATOMIC_INIT(0);
+ 
+ static void ath11k_qcn6122_rx_id_diag_stop(const char *reason)
+@@ -831,10 +858,14 @@
+ 		ath11k_qcn6122_rx_id_stop_host_rx_ns = ktime_get_ns();
+ 		ath11k_qcn6122_rx_id_stop_reo_issue =
+ 			atomic_read(&ath11k_qcn6122_rx_id_reo_issue_total);
++		ath11k_qcn6122_rx_id_stop_reo_bw3 =
++			atomic_read(&ath11k_qcn6122_rx_id_reo_bw3_total);
+ 		ath11k_qcn6122_rx_id_stop_reo_control =
+ 			atomic_read(&ath11k_qcn6122_rx_id_reo_control_total);
+ 		ath11k_qcn6122_rx_id_stop_process_issue =
+ 			atomic_read(&ath11k_qcn6122_rx_id_process_issue_total);
++		ath11k_qcn6122_rx_id_stop_process_bw3 =
++			atomic_read(&ath11k_qcn6122_rx_id_process_bw3_total);
+ 		ath11k_qcn6122_rx_id_stop_process_control =
+ 			atomic_read(&ath11k_qcn6122_rx_id_process_control_total);
+ 		ath11k_qcn6122_rx_id_stop_pending = true;
+@@ -846,7 +877,8 @@
+ {
+ 	unsigned long flags;
+ 	const char *reason = NULL;
+-	int reo_issue, reo_control, process_issue, process_control;
++	int reo_issue, reo_bw3, reo_control;
++	int process_issue, process_bw3, process_control;
+ 	u64 host_rx_ns = 0;
+ 
+ 	spin_lock_irqsave(&ath11k_qcn6122_rx_id_diag_lock, flags);
+@@ -854,24 +886,89 @@
+ 		ath11k_qcn6122_rx_id_stop_pending = false;
+ 		reason = ath11k_qcn6122_rx_id_stop_reason;
+ 		reo_issue = ath11k_qcn6122_rx_id_stop_reo_issue;
++		reo_bw3 = ath11k_qcn6122_rx_id_stop_reo_bw3;
+ 		reo_control = ath11k_qcn6122_rx_id_stop_reo_control;
+ 		process_issue = ath11k_qcn6122_rx_id_stop_process_issue;
++		process_bw3 = ath11k_qcn6122_rx_id_stop_process_bw3;
+ 		process_control = ath11k_qcn6122_rx_id_stop_process_control;
+ 		host_rx_ns = ath11k_qcn6122_rx_id_stop_host_rx_ns;
+ 	}
+ 	spin_unlock_irqrestore(&ath11k_qcn6122_rx_id_diag_lock, flags);
+ 	if (reason)
+ 		dev_info(ab->dev,
+-			 "qcn6122-rx-identity stage=stop reason=%s host_rx_ns=%llu reo_issue=%d reo_control=%d process_issue=%d process_control=%d\n",
+-			 reason, (unsigned long long)host_rx_ns, reo_issue, reo_control,
+-			 process_issue, process_control);
+-}
+-
+-static void ath11k_qcn6122_rx_id_diag_queue_reo(const char *fmt, ...)
+-{
++			 "qcn6122-rx-identity stage=stop reason=%s host_rx_ns=%llu reo_true_issue=%d reo_bw3_probe=%d reo_control=%d process_true_issue=%d process_bw3_probe=%d process_control=%d\n",
++			 reason, (unsigned long long)host_rx_ns, reo_issue, reo_bw3,
++			 reo_control, process_issue, process_bw3, process_control);
++}
++
++static bool ath11k_qcn6122_rx_id_diag_make_raw_msdu_start(
++		struct ath11k_base *ab, struct sk_buff *skb,
++		const struct ath11k_qcn6122_rx_id_snapshot *snap, u64 host_rx_ns,
++		char *raw, size_t raw_len)
++{
++	struct hal_rx_desc_qcn9074 *desc;
++	__le32 words[9];
++	unsigned long data, end;
++	u32 tag;
++	int len;
++
++	if (!ab || !skb || !snap || !raw ||
++	    ab->hw_params.hw_rev != ATH11K_HW_QCN6122 ||
++	    ab->hw_params.hal_desc_sz != sizeof(*desc) ||
++	    !snap->geometry_valid || !snap->bounds_valid ||
++	    !snap->info3_valid ||
++	    !(snap->software_role_match_mask &
++	      ATH11K_QCN6122_RX_ID_ROLE_MSDU_START) ||
++	    sizeof(desc->msdu_start) != sizeof(words))
++		return false;
++
++	data = (unsigned long)skb->data;
++	end = (unsigned long)skb_end_pointer(skb);
++	if (end < data || end - data < sizeof(*desc))
++		return false;
++	desc = (struct hal_rx_desc_qcn9074 *)skb->data;
++	tag = le32_to_cpu(desc->msdu_start_tag);
++	if (FIELD_GET(HAL_TLV_HDR_TAG, tag) != HAL_RX_MSDU_START ||
++	    FIELD_GET(HAL_TLV_HDR_LEN, tag) != sizeof(words))
++		return false;
++
++	memcpy(words, &desc->msdu_start, sizeof(words));
++	len = scnprintf(raw, raw_len,
++		 "qcn6122-rx-identity stage=reo-msdu-start mac=%u host_rx_ns=%llu msdu_start_ppdu=%u tag_id=%u tag_raw=0x%08x tag_len=%u tag_offset=%u start_offset=%u raw_len=%u attention_role_required=%u attention_info1_valid=%u attention_info1=0x%08x first_mpdu=%u w0=%08x w1=%08x w2=%08x w3=%08x w4=%08x w5=%08x w6=%08x w7=%08x w8=%08x\n",
++		 ATH11K_SKB_RXCB(skb)->mac_id,
++		 (unsigned long long)host_rx_ns,
++		 le16_to_cpu(desc->msdu_start.phy_ppdu_id),
++		 (u32)FIELD_GET(HAL_TLV_HDR_TAG, tag), tag,
++		 (u32)FIELD_GET(HAL_TLV_HDR_LEN, tag),
++		 (u32)offsetof(struct hal_rx_desc_qcn9074, msdu_start_tag),
++		 (u32)offsetof(struct hal_rx_desc_qcn9074, msdu_start),
++		 (u32)sizeof(words),
++		 !ATH11K_SKB_RXCB(skb)->is_continuation,
++		 snap->attention_info1_valid,
++		 snap->attention_info1,
++		 snap->attention_info1_valid &&
++		 !!(snap->attention_info1 & RX_ATTENTION_INFO1_FIRST_MPDU),
++		 le32_to_cpu(words[0]), le32_to_cpu(words[1]),
++		 le32_to_cpu(words[2]), le32_to_cpu(words[3]), le32_to_cpu(words[4]),
++		 le32_to_cpu(words[5]), le32_to_cpu(words[6]), le32_to_cpu(words[7]),
++		 le32_to_cpu(words[8]));
++	return len > 0 && len < raw_len - 1;
++}
++
++static __printf(6, 7) void ath11k_qcn6122_rx_id_diag_queue_reo(
++		struct ath11k_base *ab, struct sk_buff *skb,
++		const struct ath11k_qcn6122_rx_id_snapshot *snap,
++		u64 host_rx_ns, bool raw_sample, const char *fmt, ...)
++{
++	char raw[ATH11K_QCN6122_RX_ID_RAW_LOG_LEN] = {};
+ 	va_list args;
+ 	unsigned long flags;
+ 	u8 index;
++
++	if (raw_sample &&
++	    !ath11k_qcn6122_rx_id_diag_make_raw_msdu_start(
++		    ab, skb, snap, host_rx_ns, raw, sizeof(raw)))
++		raw[0] = 0;
+ 
+ 	spin_lock_irqsave(&ath11k_qcn6122_rx_id_diag_lock, flags);
+ 	if (ath11k_qcn6122_rx_id_pending_count <
+@@ -884,6 +981,16 @@
+ 			 ATH11K_QCN6122_RX_ID_LOG_LEN, fmt, args);
+ 		va_end(args);
+ 		ath11k_qcn6122_rx_id_pending_count++;
++		if (raw[0] &&
++		    ath11k_qcn6122_rx_id_pending_raw_count <
++		    ATH11K_QCN6122_RX_ID_MAX_PENDING_RAW_LOGS) {
++			index = (ath11k_qcn6122_rx_id_pending_raw_head +
++				 ath11k_qcn6122_rx_id_pending_raw_count) %
++				ATH11K_QCN6122_RX_ID_MAX_PENDING_RAW_LOGS;
++			strscpy(ath11k_qcn6122_rx_id_pending_raw_logs[index], raw,
++				ATH11K_QCN6122_RX_ID_RAW_LOG_LEN);
++			ath11k_qcn6122_rx_id_pending_raw_count++;
++		}
+ 	}
+ 	spin_unlock_irqrestore(&ath11k_qcn6122_rx_id_diag_lock, flags);
+ }
+@@ -896,19 +1003,32 @@
+ 
+ 	for (;;) {
+ 		spin_lock_irqsave(&ath11k_qcn6122_rx_id_diag_lock, flags);
+-		if (!ath11k_qcn6122_rx_id_pending_count) {
++		if (ath11k_qcn6122_rx_id_pending_count) {
++			head = ath11k_qcn6122_rx_id_pending_head;
++			strscpy(log, ath11k_qcn6122_rx_id_pending_reo_logs[head],
++				sizeof(log));
++			ath11k_qcn6122_rx_id_pending_head =
++				(head + 1) % ATH11K_QCN6122_RX_ID_MAX_PENDING_REO_LOGS;
++			ath11k_qcn6122_rx_id_pending_count--;
+ 			spin_unlock_irqrestore(&ath11k_qcn6122_rx_id_diag_lock,
+ 					       flags);
+-			break;
+-		}
+-		head = ath11k_qcn6122_rx_id_pending_head;
+-		strscpy(log, ath11k_qcn6122_rx_id_pending_reo_logs[head],
+-			sizeof(log));
+-		ath11k_qcn6122_rx_id_pending_head =
+-			(head + 1) % ATH11K_QCN6122_RX_ID_MAX_PENDING_REO_LOGS;
+-		ath11k_qcn6122_rx_id_pending_count--;
++			dev_info(ab->dev, "%s", log);
++			continue;
++		}
++		if (ath11k_qcn6122_rx_id_pending_raw_count) {
++			head = ath11k_qcn6122_rx_id_pending_raw_head;
++			strscpy(log, ath11k_qcn6122_rx_id_pending_raw_logs[head],
++				sizeof(log));
++			ath11k_qcn6122_rx_id_pending_raw_head =
++				(head + 1) % ATH11K_QCN6122_RX_ID_MAX_PENDING_RAW_LOGS;
++			ath11k_qcn6122_rx_id_pending_raw_count--;
++			spin_unlock_irqrestore(&ath11k_qcn6122_rx_id_diag_lock,
++					       flags);
++			dev_info(ab->dev, "%s", log);
++			continue;
++		}
+ 		spin_unlock_irqrestore(&ath11k_qcn6122_rx_id_diag_lock, flags);
+-		dev_info(ab->dev, "%s", log);
++		break;
+ 	}
+ }
+ 
+@@ -932,17 +1052,25 @@
+ 			ath11k_qcn6122_rx_id_stop_pending = false;
+ 			ath11k_qcn6122_rx_id_pending_head = 0;
+ 			ath11k_qcn6122_rx_id_pending_count = 0;
++			ath11k_qcn6122_rx_id_pending_raw_head = 0;
++			ath11k_qcn6122_rx_id_pending_raw_count = 0;
+ 			atomic_set(&ath11k_qcn6122_rx_id_reo_issue,
+ 				   ATH11K_QCN6122_RX_ID_QUOTA_ISSUE);
+ 			atomic_set(&ath11k_qcn6122_rx_id_reo_control,
+ 				   ATH11K_QCN6122_RX_ID_QUOTA_CONTROL);
++			atomic_set(&ath11k_qcn6122_rx_id_reo_bw3,
++				   ATH11K_QCN6122_RX_ID_QUOTA_BW3);
+ 			atomic_set(&ath11k_qcn6122_rx_id_process_issue,
+ 				   ATH11K_QCN6122_RX_ID_QUOTA_ISSUE);
+ 			atomic_set(&ath11k_qcn6122_rx_id_process_control,
+ 				   ATH11K_QCN6122_RX_ID_QUOTA_CONTROL);
++			atomic_set(&ath11k_qcn6122_rx_id_process_bw3,
++				   ATH11K_QCN6122_RX_ID_QUOTA_BW3);
+ 			atomic_set(&ath11k_qcn6122_rx_id_reo_issue_total, 0);
++			atomic_set(&ath11k_qcn6122_rx_id_reo_bw3_total, 0);
+ 			atomic_set(&ath11k_qcn6122_rx_id_reo_control_total, 0);
+ 			atomic_set(&ath11k_qcn6122_rx_id_process_issue_total, 0);
++			atomic_set(&ath11k_qcn6122_rx_id_process_bw3_total, 0);
+ 			atomic_set(&ath11k_qcn6122_rx_id_process_control_total, 0);
+ 			WRITE_ONCE(ath11k_qcn6122_rx_id_deadline, jiffies +
+ 				   ATH11K_QCN6122_RX_ID_WINDOW);
+@@ -1005,7 +1133,7 @@
+ 
+ static bool ath11k_qcn6122_rx_id_diag_take(
+ 		struct ath11k_base *ab, enum ath11k_qcn6122_rx_id_stage stage,
+-		bool issue)
++		enum ath11k_qcn6122_rx_id_sample sample)
+ {
+ 	atomic_t *left, *total;
+ 	int remaining;
+@@ -1013,15 +1141,25 @@
+ 	if (!ath11k_qcn6122_rx_id_diag_target(ab))
+ 		return false;
+ 	if (stage == ATH11K_QCN6122_RX_ID_REO) {
+-		left = issue ? &ath11k_qcn6122_rx_id_reo_issue :
+-			       &ath11k_qcn6122_rx_id_reo_control;
+-		total = issue ? &ath11k_qcn6122_rx_id_reo_issue_total :
+-				 &ath11k_qcn6122_rx_id_reo_control_total;
++		if (sample == ATH11K_QCN6122_RX_ID_SAMPLE_ISSUE) {
++			left = &ath11k_qcn6122_rx_id_reo_issue;
++			total = &ath11k_qcn6122_rx_id_reo_issue_total;
++		} else if (sample == ATH11K_QCN6122_RX_ID_SAMPLE_BW3) {
++			left = &ath11k_qcn6122_rx_id_reo_bw3;
++			total = &ath11k_qcn6122_rx_id_reo_bw3_total;
++		} else {
++			left = &ath11k_qcn6122_rx_id_reo_control;
++			total = &ath11k_qcn6122_rx_id_reo_control_total;
++		}
++	} else if (sample == ATH11K_QCN6122_RX_ID_SAMPLE_ISSUE) {
++		left = &ath11k_qcn6122_rx_id_process_issue;
++		total = &ath11k_qcn6122_rx_id_process_issue_total;
++	} else if (sample == ATH11K_QCN6122_RX_ID_SAMPLE_BW3) {
++		left = &ath11k_qcn6122_rx_id_process_bw3;
++		total = &ath11k_qcn6122_rx_id_process_bw3_total;
+ 	} else {
+-		left = issue ? &ath11k_qcn6122_rx_id_process_issue :
+-			       &ath11k_qcn6122_rx_id_process_control;
+-		total = issue ? &ath11k_qcn6122_rx_id_process_issue_total :
+-				 &ath11k_qcn6122_rx_id_process_control_total;
++		left = &ath11k_qcn6122_rx_id_process_control;
++		total = &ath11k_qcn6122_rx_id_process_control_total;
+ 	}
+ 	remaining = atomic_dec_if_positive(left);
+ 	if (remaining >= 0)
+@@ -1074,7 +1212,10 @@
+ 	if (snap->software_role_match_mask & ATH11K_QCN6122_RX_ID_ROLE_ATTENTION) {
+ 		attention = ath11k_dp_rx_get_attention(ab,
+ 							 (struct hal_rx_desc *)skb->data);
+-		if (attention) {
++		if (attention &&
++		    FIELD_GET(HAL_TLV_HDR_LEN, snap->tags[1]) == sizeof(*attention)) {
++			snap->attention_info1 = le32_to_cpu(attention->info1);
++			snap->attention_info1_valid = true;
+ 			snap->msdu_done = ath11k_dp_rx_h_attn_msdu_done(attention);
+ 			snap->msdu_done_valid = true;
+ 		}
+@@ -4277,6 +4418,7 @@
+ 	struct ath11k_qcn6122_rx_id_snapshot qcn_first_snap = {};
+ 	struct ath11k_qcn6122_rx_id_snapshot qcn_last_snap = {};
+ 	bool qcn_id_diag = false, qcn_process_layout_issue = false;
++	bool qcn_process_ppdu_valid = false;
+ 	bool qcn_first_software_expected_roles_match = false;
+ 	bool qcn_last_software_expected_roles_match = false;
+ 	bool qcn_first_is_first = false, qcn_last_is_last = false;
+@@ -4295,6 +4437,21 @@
+ 
+ 	last_buf = ath11k_dp_rx_get_msdu_last_buf(msdu_list, msdu);
+ 	if (!last_buf) {
++#ifdef CPTCFG_ATH11K_RT3000_MON_OWNER_DIAG
++		if (ath11k_qcn6122_rx_id_diag_take(
++				ab, ATH11K_QCN6122_RX_ID_PROCESS,
++				ATH11K_QCN6122_RX_ID_SAMPLE_ISSUE)) {
++			struct ath11k_skb_rxcb *first_cb = ATH11K_SKB_RXCB(msdu);
++
++			dev_info(ab->dev,
++				 "qcn6122-rx-identity stage=process-pre host_rx_ns=%llu reason=no-last-buffer mac=%u first=%u continuation=%u first_dma=%pad cookie=0x%x seq=%u peer=%u\n",
++				 (unsigned long long)ktime_get_ns(), first_cb->mac_id,
++				 first_cb->is_first_msdu, first_cb->is_continuation,
++				 &first_cb->paddr, first_cb->cookie,
++				 first_cb->seq_no, first_cb->peer_id);
++		}
++		ath11k_qcn6122_rx_id_diag_emit_stop(ab);
++#endif
+ 		ath11k_warn(ab,
+ 			    "No valid Rx buffer to access Atten/MSDU_END/MPDU_END tlvs\n");
+ 		ret = -EIO;
+@@ -4328,7 +4485,11 @@
+ 		qcn_last_software_expected_roles_match = !qcn_last_req ||
+ 			((qcn_last_snap.software_role_match_mask & qcn_last_req) ==
+ 			 qcn_last_req);
+-		if (qcn_first_snap.info3_valid)
++		qcn_process_ppdu_valid = qcn_first_is_first &&
++			qcn_first_snap.geometry_valid && qcn_first_snap.bounds_valid &&
++			(qcn_first_snap.software_role_match_mask &
++			 ATH11K_QCN6122_RX_ID_ROLE_MPDU_START);
++		if (qcn_process_ppdu_valid)
+ 			qcn_process_ppdu = ath11k_dp_rxdesc_get_ppduid(ab, rx_desc);
+ 		qcn_process_layout_issue = !qcn_first_snap.geometry_valid ||
+ 			!qcn_first_snap.bounds_valid || !qcn_last_snap.geometry_valid ||
+@@ -4338,12 +4499,12 @@
+ 			 (!qcn_last_snap.msdu_done_valid || !qcn_last_snap.msdu_done));
+ 		if (qcn_process_layout_issue &&
+ 		    ath11k_qcn6122_rx_id_diag_take(ab,
+-				ATH11K_QCN6122_RX_ID_PROCESS, true))
++				ATH11K_QCN6122_RX_ID_PROCESS,
++				ATH11K_QCN6122_RX_ID_SAMPLE_ISSUE))
+ 			dev_info(ab->dev,
+-				 "qcn6122-rx-identity stage=process-pre mac=%u ppdu=%u host_rx_ns=%llu layout_issue=1 first=%u last=%u continuation=%u first_geometry=%u first_bounds=%u first_req=0x%x first_software_expected_roles_match=%u first_match=0x%x first_ids=%u,%u,%u,%u,%u last=%u last_continuation=%u last_geometry=%u last_bounds=%u last_req=0x%x last_software_expected_roles_match=%u last_match=0x%x last_ids=%u,%u,%u,%u,%u msdu_done_valid=%u msdu_done=%u info3_valid=%u info3=0x%08x\n",
+-				 first_cb->mac_id,
+-				 qcn_first_snap.info3_valid ?
+-				 ath11k_dp_rxdesc_get_ppduid(ab, rx_desc) : 0,
++				 "qcn6122-rx-identity stage=process-pre mac=%u ppdu_valid=%u ppdu=%u host_rx_ns=%llu layout_issue=1 first=%u last=%u continuation=%u first_geometry=%u first_bounds=%u first_req=0x%x first_software_expected_roles_match=%u first_match=0x%x first_ids=%u,%u,%u,%u,%u last=%u last_continuation=%u last_geometry=%u last_bounds=%u last_req=0x%x last_software_expected_roles_match=%u last_match=0x%x last_ids=%u,%u,%u,%u,%u msdu_done_valid=%u msdu_done=%u info3_valid=%u info3=0x%08x\n",
++				 first_cb->mac_id, qcn_process_ppdu_valid,
++				 qcn_process_ppdu,
+ 				 (unsigned long long)ktime_get_ns(),
+ 				 first_cb->is_first_msdu, last_cb->is_last_msdu,
+ 				 first_cb->is_continuation, qcn_first_snap.geometry_valid,
+@@ -4509,34 +4670,34 @@
+ 	ath11k_dp_rx_h_ppdu(ar, rx_desc, rx_status);
+ 	ath11k_qcn6122_rx_bw_trace_emit(ar, &bw_trace, rx_status);
+ #ifdef CPTCFG_ATH11K_RT3000_MON_OWNER_DIAG
+-	if (qcn_id_diag && qcn_first_snap.info3_valid &&
+-	    FIELD_GET(RX_MSDU_START_INFO3_PKT_TYPE, qcn_first_snap.info3) ==
+-		    RX_MSDU_START_PKT_TYPE_11AC) {
++	if (qcn_id_diag && qcn_first_snap.geometry_valid &&
++	    qcn_first_snap.bounds_valid && qcn_first_snap.info3_valid &&
++	    !qcn_process_layout_issue) {
++		u8 pkt_type = FIELD_GET(RX_MSDU_START_INFO3_PKT_TYPE,
++					qcn_first_snap.info3);
+ 		u8 raw_bw = FIELD_GET(RX_MSDU_START_INFO3_RECV_BW,
+ 				      qcn_first_snap.info3);
+-		bool qcn_bw3_probe = raw_bw == RX_MSDU_START_RECV_BW_160MHZ;
+-		bool qcn_normal_control = raw_bw < RX_MSDU_START_RECV_BW_160MHZ &&
+-			!qcn_process_layout_issue;
+-
+-		if (((qcn_process_layout_issue || qcn_bw3_probe) &&
+-		     ath11k_qcn6122_rx_id_diag_take(ab,
+-				ATH11K_QCN6122_RX_ID_PROCESS, true)) ||
+-		    (qcn_normal_control &&
+-		     ath11k_qcn6122_rx_id_diag_take(ab,
+-				ATH11K_QCN6122_RX_ID_PROCESS, false)))
++		bool qcn_bw3_probe =
++			pkt_type == RX_MSDU_START_PKT_TYPE_11AC &&
++			raw_bw == RX_MSDU_START_RECV_BW_160MHZ;
++		enum ath11k_qcn6122_rx_id_sample sample =
++			qcn_bw3_probe ? ATH11K_QCN6122_RX_ID_SAMPLE_BW3 :
++			ATH11K_QCN6122_RX_ID_SAMPLE_CONTROL;
++
++		if (ath11k_qcn6122_rx_id_diag_take(ab,
++				ATH11K_QCN6122_RX_ID_PROCESS, sample))
+ 			dev_info(ab->dev,
+-				 "qcn6122-rx-identity stage=process-post mac=%u ppdu=%u host_rx_ns=%llu layout_issue=%u bw3_probe=%u info3=0x%08x raw_bw=%u status_bw=%u status_mcs=%u status_nss=%u first=%u last=%u continuation=%u first_software_expected_roles_match=%u last_software_expected_roles_match=%u last_msdu_done_valid=%u last_msdu_done=%u\n",
+-				 rxcb->mac_id, qcn_process_ppdu,
+-				 (unsigned long long)ktime_get_ns(),
+-				 qcn_process_layout_issue, qcn_bw3_probe,
+-				 qcn_first_snap.info3, raw_bw, rx_status->bw,
++				 "qcn6122-rx-identity stage=process-post sample=%s mac=%u ppdu_valid=%u ppdu=%u host_rx_ns=%llu bw3_probe=%u info3=0x%08x pkt_type=%u raw_bw=%u status_bw=%u status_mcs=%u status_nss=%u first=%u last=%u continuation=%u first_software_expected_roles_match=%u last_software_expected_roles_match=%u last_msdu_done_valid=%u last_msdu_done=%u\n",
++				 qcn_bw3_probe ? "bw3-probe" : "control",
++				 rxcb->mac_id, qcn_process_ppdu_valid, qcn_process_ppdu,
++				 (unsigned long long)ktime_get_ns(), qcn_bw3_probe,
++				 qcn_first_snap.info3, pkt_type, raw_bw, rx_status->bw,
+ 				 rx_status->rate_idx, rx_status->nss,
+-				 qcn_first_is_first,
+-				 qcn_last_is_last,
++				 qcn_first_is_first, qcn_last_is_last,
+ 				 qcn_is_continuation,
+-				 qcn_first_software_expected_roles_match, qcn_last_software_expected_roles_match,
+-				 qcn_last_snap.msdu_done_valid,
+-				 qcn_last_snap.msdu_done);
++				 qcn_first_software_expected_roles_match,
++				 qcn_last_software_expected_roles_match,
++				 qcn_last_snap.msdu_done_valid, qcn_last_snap.msdu_done);
+ 	}
+ 	ath11k_qcn6122_rx_id_diag_emit_stop(ab);
+ #endif
+@@ -4759,8 +4920,10 @@
+ 							       &diag_reo_cookie,
+ 							       &diag_reo_rbm);
+ 				if (ath11k_qcn6122_rx_id_diag_take(ab,
+-						ATH11K_QCN6122_RX_ID_REO, true))
++						ATH11K_QCN6122_RX_ID_REO,
++						ATH11K_QCN6122_RX_ID_SAMPLE_ISSUE))
+ 					ath11k_qcn6122_rx_id_diag_queue_reo(
++						 ab, NULL, NULL, 0, false,
+ 						 "qcn6122-rx-identity stage=reo host_rx_ns=%llu idr_found=0 identity_issue=1 ring=%u loop=%u reo_dma=%pad reo_cookie=0x%x rbm=%u pdev=%u buf_id=%u\n",
+ 						 (unsigned long long)ktime_get_ns(), ring_id,
+ 						 (u32)FIELD_GET(HAL_REO_DEST_RING_INFO2_LOOPING_COUNT,
+@@ -4829,7 +4992,9 @@
+ 			u8 qcn_reo_rbm, qcn_requested;
+ 			bool qcn_addr_match, qcn_cookie_match, qcn_identity_issue;
+ 			bool qcn_software_expected_roles_checked, qcn_software_expected_roles_match, qcn_layout_issue;
+-			bool qcn_vht, qcn_bw3_probe, qcn_event;
++			bool qcn_vht, qcn_bw3_probe, qcn_event, qcn_control;
++			bool qcn_ppdu_valid;
++			const char *qcn_sample;
+ 
+ 			ath11k_hal_rx_buf_addr_info_get(&desc->buf_addr_info,
+ 						       &qcn_reo_paddr,
+@@ -4856,16 +5021,32 @@
+ 			qcn_bw3_probe = qcn_vht &&
+ 				FIELD_GET(RX_MSDU_START_INFO3_RECV_BW,
+ 					 qcn_snap.info3) == RX_MSDU_START_RECV_BW_160MHZ;
+-			qcn_event = qcn_identity_issue || qcn_layout_issue ||
+-				qcn_bw3_probe;
++			qcn_event = qcn_identity_issue || qcn_layout_issue;
++			qcn_control = !qcn_event && qcn_snap.geometry_valid &&
++				qcn_snap.bounds_valid && qcn_snap.info3_valid &&
++				!qcn_bw3_probe;
++			qcn_ppdu_valid = rxcb->is_first_msdu &&
++				qcn_snap.geometry_valid && qcn_snap.bounds_valid &&
++				(qcn_snap.software_role_match_mask &
++				 ATH11K_QCN6122_RX_ID_ROLE_MPDU_START);
++			qcn_sample = qcn_event ? "issue" :
++				qcn_bw3_probe ? "bw3-probe" : "control";
+ 			if ((qcn_event && ath11k_qcn6122_rx_id_diag_take(ab,
+-					ATH11K_QCN6122_RX_ID_REO, true)) ||
+-			    (!qcn_event && qcn_vht &&
++					ATH11K_QCN6122_RX_ID_REO,
++					ATH11K_QCN6122_RX_ID_SAMPLE_ISSUE)) ||
++			    (!qcn_event && qcn_bw3_probe &&
+ 			     ath11k_qcn6122_rx_id_diag_take(ab,
+-					ATH11K_QCN6122_RX_ID_REO, false)))
++					ATH11K_QCN6122_RX_ID_REO,
++					ATH11K_QCN6122_RX_ID_SAMPLE_BW3)) ||
++			    (qcn_control &&
++			     ath11k_qcn6122_rx_id_diag_take(ab,
++					ATH11K_QCN6122_RX_ID_REO,
++					ATH11K_QCN6122_RX_ID_SAMPLE_CONTROL)))
+ 				ath11k_qcn6122_rx_id_diag_queue_reo(
+-					 "qcn6122-rx-identity stage=reo host_rx_ns=%llu ring=%u loop=%u mac=%u idr_found=1 reo_dma=%pad cb_dma=%pad addr_match=%u reo_cookie=0x%x cb_cookie=0x%x cookie_match=%u rbm=%u pdev=%u buf_id=%u first=%u last=%u continuation=%u identity_issue=%u layout_issue=%u bw3_probe=%u geometry=%u bounds=%u software_expected_roles_requested=0x%x software_expected_roles_checked=%u software_expected_roles_match=%u software_expected_role_mask=0x%x tag_ids=%u,%u,%u,%u,%u tags=%08x,%08x,%08x,%08x,%08x msdu_done_valid=%u msdu_done=%u info3_valid=%u info3=0x%08x ppdu=%u\n",
+-					 (unsigned long long)ktime_get_ns(), ring_id,
++					 ab, msdu, &qcn_snap, ktime_get_ns(),
++					 !qcn_event && (qcn_bw3_probe || qcn_control),
++					 "qcn6122-rx-identity stage=reo sample=%s host_rx_ns=%llu ring=%u loop=%u mac=%u idr_found=1 reo_dma=%pad cb_dma=%pad addr_match=%u reo_cookie=0x%x cb_cookie=0x%x cookie_match=%u rbm=%u pdev=%u buf_id=%u first=%u last=%u continuation=%u identity_issue=%u layout_issue=%u bw3_probe=%u geometry=%u bounds=%u software_expected_roles_requested=0x%x software_expected_roles_checked=%u software_expected_roles_match=%u software_expected_role_mask=0x%x tag_ids=%u,%u,%u,%u,%u tags=%08x,%08x,%08x,%08x,%08x msdu_done_valid=%u msdu_done=%u info3_valid=%u info3=0x%08x ppdu_valid=%u ppdu=%u\n",
++					 qcn_sample, (unsigned long long)ktime_get_ns(), ring_id,
+ 					 (u32)FIELD_GET(HAL_REO_DEST_RING_INFO2_LOOPING_COUNT,
+ 							le32_to_cpu(desc->info2)),
+ 					 mac_id, &qcn_reo_paddr, &rxcb->paddr,
+@@ -4888,7 +5069,8 @@
+ 					 qcn_snap.tags[3], qcn_snap.tags[4],
+ 					 qcn_snap.msdu_done_valid, qcn_snap.msdu_done,
+ 					 qcn_snap.info3_valid, qcn_snap.info3,
+-					 qcn_vht ? ath11k_dp_rxdesc_get_ppduid(ab,
++					 qcn_ppdu_valid,
++					 qcn_ppdu_valid ? ath11k_dp_rxdesc_get_ppduid(ab,
+ 						(struct hal_rx_desc *)msdu->data) : 0);
+ 		}
+ 		if (ath11k_ipq5018_rx_layout_diag_target(ab)) {

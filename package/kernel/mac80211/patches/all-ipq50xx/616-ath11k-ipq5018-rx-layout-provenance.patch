@@ -1,0 +1,281 @@
+--- a/drivers/net/wireless/ath/ath11k/dp_rx.c
++++ b/drivers/net/wireless/ath/ath11k/dp_rx.c
+@@ -206,6 +206,127 @@
+ 	rx_ring->mon_owner_seq = 0;
+ }
+ 
++
++#ifdef CPTCFG_ATH11K_RT3000_MON_OWNER_DIAG
++/* Bounded, default-off C machine RX descriptor observation. */
++static bool ath11k_ipq5018_rx_layout_diag_enable;
++module_param_named(ipq5018_rx_layout_diag, ath11k_ipq5018_rx_layout_diag_enable,
++		   bool, 0600);
++MODULE_PARM_DESC(ipq5018_rx_layout_diag,
++		 "C RT3000 IPQ5018 bounded RX layout diagnostic");
++static atomic_t ath11k_ipq5018_rx_layout_ring_bad = ATOMIC_INIT(16);
++static atomic_t ath11k_ipq5018_rx_layout_ring_ok = ATOMIC_INIT(4);
++static atomic_t ath11k_ipq5018_rx_layout_process_bad = ATOMIC_INIT(16);
++static atomic_t ath11k_ipq5018_rx_layout_process_ok = ATOMIC_INIT(4);
++
++#define ATH11K_RX_LAYOUT_TAG_MSDU_END	BIT(0)
++#define ATH11K_RX_LAYOUT_TAG_ATTENTION	BIT(1)
++#define ATH11K_RX_LAYOUT_TAG_MSDU_START	BIT(2)
++#define ATH11K_RX_LAYOUT_TAG_MPDU_START	BIT(3)
++#define ATH11K_RX_LAYOUT_TAG_MPDU_END	BIT(4)
++#define ATH11K_RX_LAYOUT_TAG_ALL	GENMASK(4, 0)
++
++struct ath11k_rx_layout_snapshot {
++	u32 data_off;
++	u32 tail_off;
++	u32 end_off;
++	u32 len;
++	u32 tags[5];
++	u16 tag_ids[5];
++	u8 tag_match_mask;
++	bool geometry_valid;
++	bool bounds_valid;
++};
++
++static bool ath11k_ipq5018_rx_layout_diag_target(struct ath11k_base *ab)
++{
++	return READ_ONCE(ath11k_ipq5018_rx_layout_diag_enable) && ab &&
++	       ab->hw_params.hw_rev == ATH11K_HW_IPQ5018 &&
++	       of_machine_is_compatible("h3c,rt3000-rtl8367s");
++}
++
++static bool ath11k_rx_layout_take(atomic_t *left)
++{
++	int old = atomic_read(left);
++
++	while (old > 0) {
++		if (atomic_cmpxchg(left, old, old - 1) == old)
++			return true;
++		old = atomic_read(left);
++	}
++	return false;
++}
++
++static u8 ath11k_ipq5018_rx_layout_requested_mask(bool first, bool last,
++						   bool first_msdu,
++						   bool last_msdu)
++{
++	u8 requested = 0;
++
++	if (first)
++		requested |= ATH11K_RX_LAYOUT_TAG_MSDU_START;
++	if (last)
++		requested |= ATH11K_RX_LAYOUT_TAG_MSDU_END |
++			     ATH11K_RX_LAYOUT_TAG_ATTENTION;
++	if (first && first_msdu)
++		requested |= ATH11K_RX_LAYOUT_TAG_MPDU_START;
++	if (last && last_msdu)
++		requested |= ATH11K_RX_LAYOUT_TAG_MPDU_END;
++
++	return requested;
++}
++
++static void ath11k_ipq5018_rx_layout_snapshot(struct ath11k_base *ab,
++					      struct sk_buff *skb,
++					      struct ath11k_rx_layout_snapshot *snap)
++{
++	struct hal_rx_desc_qcn9074 *qdesc;
++	unsigned long head, data, tail, end;
++	static const u16 expected[5] = {
++		HAL_RX_MSDU_END, HAL_RX_ATTENTION, HAL_RX_MSDU_START,
++		HAL_RX_MPDU_START, HAL_RX_MPDU_END,
++	};
++	int i;
++
++	memset(snap, 0, sizeof(*snap));
++	if (!ab || ab->hw_params.hw_rev != ATH11K_HW_IPQ5018 || !skb)
++		return;
++	head = (unsigned long)skb->head;
++	data = (unsigned long)skb->data;
++	tail = (unsigned long)skb_tail_pointer(skb);
++	end = (unsigned long)skb_end_pointer(skb);
++	if (end < head || data < head || data > end || tail < data || tail > end)
++		return;
++	snap->geometry_valid = true;
++	snap->data_off = data - head;
++	snap->tail_off = tail - head;
++	snap->end_off = end - head;
++	snap->len = skb->len;
++	qdesc = (struct hal_rx_desc_qcn9074 *)skb->data;
++	if (ab->hw_params.hal_desc_sz != sizeof(*qdesc) ||
++	    sizeof(*qdesc) > end - data)
++		return;
++	snap->bounds_valid = true;
++	snap->tags[0] = le32_to_cpu(qdesc->msdu_end_tag);
++	snap->tags[1] = le32_to_cpu(qdesc->rx_attn_tag);
++	snap->tags[2] = le32_to_cpu(qdesc->msdu_start_tag);
++	snap->tags[3] = le32_to_cpu(qdesc->mpdu_start_tag);
++	snap->tags[4] = le32_to_cpu(qdesc->mpdu_end_tag);
++	for (i = 0; i < ARRAY_SIZE(expected); i++) {
++		snap->tag_ids[i] = (u16)FIELD_GET(HAL_TLV_HDR_TAG, snap->tags[i]);
++		if (snap->tag_ids[i] == expected[i])
++			snap->tag_match_mask |= BIT(i);
++	}
++}
++
++static bool ath11k_ipq5018_rx_layout_tags_valid(
++		const struct ath11k_rx_layout_snapshot *snap, u8 requested)
++{
++	return snap->bounds_valid && requested &&
++	       (snap->tag_match_mask & requested) == requested;
++}
++#endif /* CPTCFG_ATH11K_RT3000_MON_OWNER_DIAG */
++
+ static bool ath11k_qcn6122_rx_bw_trace_enable;
+ module_param_named(qcn6122_rx_bw_trace, ath11k_qcn6122_rx_bw_trace_enable,
+ 		   bool, 0600);
+@@ -3819,6 +3940,85 @@
+ 	rx_desc = (struct hal_rx_desc *)msdu->data;
+ 	lrx_desc = (struct hal_rx_desc *)last_buf->data;
+ 	rx_attention = ath11k_dp_rx_get_attention(ab, lrx_desc);
++#ifdef CPTCFG_ATH11K_RT3000_MON_OWNER_DIAG
++	if (ath11k_ipq5018_rx_layout_diag_target(ab)) {
++		struct ath11k_rx_layout_snapshot first_snap, last_snap;
++		struct hal_rx_desc_qcn9074 *qdesc;
++		u8 first_req, last_req, pkt_type = 0, mcs = 0;
++		u32 info3 = 0;
++		bool first_tags_valid, last_tags_valid;
++		bool info3_readable = false;
++		bool msdu_done, issue;
++
++		ath11k_ipq5018_rx_layout_snapshot(ab, msdu, &first_snap);
++		ath11k_ipq5018_rx_layout_snapshot(ab, last_buf, &last_snap);
++		first_req = ath11k_ipq5018_rx_layout_requested_mask(
++			true, msdu == last_buf,
++			ATH11K_SKB_RXCB(msdu)->is_first_msdu,
++			ATH11K_SKB_RXCB(last_buf)->is_last_msdu);
++		last_req = msdu == last_buf ? first_req :
++			ath11k_ipq5018_rx_layout_requested_mask(
++				false, true, ATH11K_SKB_RXCB(msdu)->is_first_msdu,
++				ATH11K_SKB_RXCB(last_buf)->is_last_msdu);
++		first_tags_valid = ath11k_ipq5018_rx_layout_tags_valid(
++						&first_snap, first_req);
++		last_tags_valid = ath11k_ipq5018_rx_layout_tags_valid(
++						&last_snap, last_req);
++		if (first_snap.bounds_valid &&
++		    (first_snap.tag_match_mask & ATH11K_RX_LAYOUT_TAG_MSDU_START)) {
++			qdesc = (struct hal_rx_desc_qcn9074 *)msdu->data;
++			info3 = le32_to_cpu(qdesc->msdu_start.info3);
++			pkt_type = FIELD_GET(RX_MSDU_START_INFO3_PKT_TYPE, info3);
++			mcs = FIELD_GET(RX_MSDU_START_INFO3_RATE_MCS, info3);
++			info3_readable = true;
++		}
++		msdu_done = last_snap.bounds_valid &&
++			ath11k_dp_rx_h_attn_msdu_done(rx_attention);
++		issue = !msdu_done || !first_snap.geometry_valid ||
++			!first_snap.bounds_valid || !last_snap.geometry_valid ||
++			!last_snap.bounds_valid || (first_req && !first_tags_valid) ||
++			(last_req && !last_tags_valid) ||
++			(pkt_type == RX_MSDU_START_PKT_TYPE_11AC && mcs > 9);
++		if (ath11k_rx_layout_take(issue ?
++				&ath11k_ipq5018_rx_layout_process_bad :
++				&ath11k_ipq5018_rx_layout_process_ok)) {
++			struct ath11k_skb_rxcb *layout_cb = ATH11K_SKB_RXCB(msdu);
++
++			dev_warn(ab->dev,
++				 "rx-layout stage=process first_dma=%pad last_dma=%pad mac=%u cookie=0x%x pdev=%u buf_id=%u seq=%u peer=%u first_cont=%u last_cont=%u first_msdu=%u last_msdu=%u first_frag=%u last_frag=%u first_unmapped=%u last_unmapped=%u msdu_done=%u first_req=0x%x first_tags_valid=%u first_geometry=%u first_bounds=%u first_match=0x%x first_ids=%u,%u,%u,%u,%u first_tags=%08x,%08x,%08x,%08x,%08x first_data_off=%u first_tail_off=%u first_end_off=%u first_len=%u last_req=0x%x last_tags_valid=%u last_geometry=%u last_bounds=%u last_match=0x%x last_ids=%u,%u,%u,%u,%u last_tags=%08x,%08x,%08x,%08x,%08x last_data_off=%u last_tail_off=%u last_end_off=%u last_len=%u info3_readable=%u info3_start_tag_match=%u info3=0x%08x pkt_type=%u mcs=%u\n",
++				 &layout_cb->paddr, &ATH11K_SKB_RXCB(last_buf)->paddr,
++				 layout_cb->mac_id, layout_cb->cookie,
++				 (u32)FIELD_GET(DP_RXDMA_BUF_COOKIE_PDEV_ID, layout_cb->cookie),
++				 (u32)FIELD_GET(DP_RXDMA_BUF_COOKIE_BUF_ID, layout_cb->cookie),
++				 layout_cb->seq_no, layout_cb->peer_id,
++				 ATH11K_SKB_RXCB(msdu)->is_continuation,
++				 ATH11K_SKB_RXCB(last_buf)->is_continuation,
++				 ATH11K_SKB_RXCB(msdu)->is_first_msdu,
++				 ATH11K_SKB_RXCB(last_buf)->is_last_msdu,
++				 ATH11K_SKB_RXCB(msdu)->is_frag,
++				 ATH11K_SKB_RXCB(last_buf)->is_frag,
++				 ATH11K_SKB_RXCB(msdu)->unmapped,
++				 ATH11K_SKB_RXCB(last_buf)->unmapped, msdu_done,
++				 first_req, first_tags_valid, first_snap.geometry_valid,
++				 first_snap.bounds_valid, first_snap.tag_match_mask,
++				 first_snap.tag_ids[0], first_snap.tag_ids[1],
++				 first_snap.tag_ids[2], first_snap.tag_ids[3],
++				 first_snap.tag_ids[4], first_snap.tags[0], first_snap.tags[1],
++				 first_snap.tags[2], first_snap.tags[3], first_snap.tags[4],
++				 first_snap.data_off, first_snap.tail_off, first_snap.end_off,
++				 first_snap.len, last_req, last_tags_valid,
++				 last_snap.geometry_valid, last_snap.bounds_valid,
++				 last_snap.tag_match_mask, last_snap.tag_ids[0],
++				 last_snap.tag_ids[1], last_snap.tag_ids[2], last_snap.tag_ids[3],
++				 last_snap.tag_ids[4], last_snap.tags[0], last_snap.tags[1],
++				 last_snap.tags[2], last_snap.tags[3], last_snap.tags[4],
++				 last_snap.data_off, last_snap.tail_off, last_snap.end_off,
++				 last_snap.len, info3_readable,
++				 !!(first_snap.tag_match_mask & ATH11K_RX_LAYOUT_TAG_MSDU_START),
++				 info3, pkt_type, mcs);
++		}
++	}
++#endif
+ 	if (!ath11k_dp_rx_h_attn_msdu_done(rx_attention)) {
+ 		ath11k_rx_warning_diag_msdu_done(ab, msdu, last_buf, rx_desc,
+ 						 lrx_desc, rx_attention);
+@@ -4023,6 +4223,12 @@
+ 	int buf_id, mac_id;
+ 	struct ath11k *ar;
+ 	struct hal_reo_dest_ring *desc;
++#ifdef CPTCFG_ATH11K_RT3000_MON_OWNER_DIAG
++	dma_addr_t reo_paddr;
++	u32 reo_cookie;
++	u8 reo_rbm;
++	struct ath11k_rx_layout_snapshot layout_snap;
++#endif
+ 	enum hal_reo_dest_ring_push_reason push_reason;
+ 	u32 *rx_buf_id[MAX_RADIOS];
+ 	u32 cookie;
+@@ -4135,6 +4341,51 @@
+ 		}
+ 
+ 		rxcb->mac_id = mac_id;
++#ifdef CPTCFG_ATH11K_RT3000_MON_OWNER_DIAG
++		if (ath11k_ipq5018_rx_layout_diag_target(ab)) {
++			u8 requested;
++			bool addr_match, cookie_match, tags_valid, bad;
++			atomic_t *quota;
++
++			ath11k_hal_rx_buf_addr_info_get(&desc->buf_addr_info,
++						       &reo_paddr, &reo_cookie, &reo_rbm);
++			ath11k_ipq5018_rx_layout_snapshot(ab, msdu, &layout_snap);
++			requested = rxcb->is_continuation ? 0 :
++				ath11k_ipq5018_rx_layout_requested_mask(
++					false, true, false, rxcb->is_last_msdu);
++			addr_match = reo_paddr == rxcb->paddr;
++			cookie_match = reo_cookie == rxcb->cookie;
++			tags_valid = ath11k_ipq5018_rx_layout_tags_valid(&layout_snap,
++								 requested);
++			bad = !addr_match || !cookie_match ||
++			      !layout_snap.geometry_valid ||
++			      !layout_snap.bounds_valid || (requested && !tags_valid);
++			quota = bad ? &ath11k_ipq5018_rx_layout_ring_bad :
++				       &ath11k_ipq5018_rx_layout_ring_ok;
++
++			if (ath11k_rx_layout_take(quota))
++				dev_warn(ab->dev,
++					 "rx-layout stage=reo reo_dma=%pad cb_dma=%pad cb_cookie=0x%x ring=%u push_reason=%u loop=%u mac=%u cookie=0x%x pdev=%u buf_id=%u addr_match=%u cookie_match=%u continuation=%u first_msdu=%u last_msdu=%u seq=%u unmapped=%u rbm=%u requested=0x%x tags_valid=%u geometry_valid=%u bounds_valid=%u match=0x%x ids=%u,%u,%u,%u,%u tags=%08x,%08x,%08x,%08x,%08x data_off=%u tail_off=%u end_off=%u len=%u\n",
++					 &reo_paddr, &rxcb->paddr, rxcb->cookie, ring_id, (u32)push_reason,
++					 (u32)FIELD_GET(HAL_REO_DEST_RING_INFO2_LOOPING_COUNT,
++							 le32_to_cpu(desc->info2)), mac_id,
++					 reo_cookie,
++					 (u32)FIELD_GET(DP_RXDMA_BUF_COOKIE_PDEV_ID, reo_cookie),
++					 (u32)FIELD_GET(DP_RXDMA_BUF_COOKIE_BUF_ID, reo_cookie),
++					 addr_match, cookie_match, rxcb->is_continuation,
++					 rxcb->is_first_msdu, rxcb->is_last_msdu, rxcb->seq_no,
++					 rxcb->unmapped, reo_rbm, requested, tags_valid,
++					 layout_snap.geometry_valid, layout_snap.bounds_valid,
++					 layout_snap.tag_match_mask, layout_snap.tag_ids[0],
++					 layout_snap.tag_ids[1], layout_snap.tag_ids[2],
++					 layout_snap.tag_ids[3], layout_snap.tag_ids[4],
++					 layout_snap.tags[0], layout_snap.tags[1],
++					 layout_snap.tags[2], layout_snap.tags[3],
++					 layout_snap.tags[4], layout_snap.data_off,
++					 layout_snap.tail_off, layout_snap.end_off,
++					 layout_snap.len);
++		}
++#endif
+ 		__skb_queue_tail(&msdu_list[mac_id], msdu);
+ 
+ 		if (!rxcb->is_continuation) {

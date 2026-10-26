@@ -6,6 +6,7 @@ use metadata;
 use Getopt::Long;
 
 my %board;
+my %subconfig_depends;
 
 sub version_to_num($) {
 	my $str = shift;
@@ -157,6 +158,7 @@ sub mconf_depends {
 	foreach my $depend (@depends) {
 		my $m = "depends on";
 		my $flags = "";
+		my $multi_vdep = 0;
 		$depend =~ s/^([@\+]+)// and $flags = $1;
 		my $condition = $parent_condition;
 
@@ -174,6 +176,7 @@ sub mconf_depends {
 			}
 			$depend = $2;
 		}
+		my $dependency_condition = $condition;
 		if ($flags =~ /\+/) {
 			my $vdep = $vpackage{$depend};
 			if ($vdep) {
@@ -191,8 +194,10 @@ sub mconf_depends {
 				$depend = shift @vdeps;
 
 				if (@vdeps > 1) {
+					$multi_vdep = 1;
 					$condition = ($condition ? "$condition && " : '') . join("&&", map { "PACKAGE_$_<PACKAGE_$pkgname" } @vdeps);
 				} elsif (@vdeps > 0) {
+					$multi_vdep = 1;
 					$condition = ($condition ? "$condition && " : '') . "PACKAGE_${vdeps[0]}<PACKAGE_$pkgname";
 				}
 			}
@@ -201,7 +206,10 @@ sub mconf_depends {
 			# thus if FOO depends on other config options, these dependencies
 			# will not be checked. To fix this, we simply emit all of FOO's
 			# depends here as well.
-			$package{$depend} and push @t_depends, [ $package{$depend}->{depends}, $condition ];
+			# Keep a virtual-provider ordering condition out of that provider's
+			# transitive dependencies, while retaining conditions parsed above.
+			# Related proposal: OpenWrt PR #21239 (unmerged at this change).
+			$package{$depend} and push @t_depends, [ $package{$depend}->{depends}, ($multi_vdep ? $dependency_condition : $condition) ];
 
 			$m = "select";
 			next if $only_dep;
@@ -217,6 +225,13 @@ sub mconf_depends {
 		}
 
 		if ($condition) {
+			my $package_config = $package{$pkgname}->{config} || "";
+			# A package's nested option cannot constrain its parent symbol. Put
+			# its conditional transitive dependency on the option itself instead.
+			if ($m eq "depends on" && $package_config =~ /^[ \t]*config[ \t]+\Q$condition\E[ \t]*$/m) {
+				$subconfig_depends{$condition}{$depend} = 1;
+				next;
+			}
 			if ($m =~ /select/) {
 				next if $depend eq $condition;
 				$depend = "$depend if $condition";
@@ -318,6 +333,7 @@ sub print_package_config_category($) {
 					print "\t\tdefault $default\n";
 				}
 			}
+			%subconfig_depends = ();
 			print mconf_depends($pkg->{name}, $pkg->{depends}, 0);
 			print mconf_depends($pkg->{name}, $pkg->{mdepends}, 0);
 			print mconf_conflicts($pkg->{name}, $pkg->{conflicts});
@@ -325,7 +341,14 @@ sub print_package_config_category($) {
 			print $pkg->{description};
 			print "\n";
 
-			$pkg->{config} and print $pkg->{config}."\n";
+			if ($pkg->{config}) {
+				my $config = $pkg->{config};
+				foreach my $option (sort keys %subconfig_depends) {
+					my $dependencies = join("", map { "\t\t\tdepends on $_\n" } sort keys %{$subconfig_depends{$option}});
+					$config =~ s/^([ \t]*config[ \t]+\Q$option\E[ \t]*\n)/$1$dependencies/m or die "Cannot attach dependency to package config option $option\n";
+				}
+				print $config . "\n";
+			}
 		}
 		if ($menu ne 'undef') {
 			print "endmenu\n";

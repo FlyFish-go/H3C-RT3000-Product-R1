@@ -1,0 +1,562 @@
+--- a/drivers/net/wireless/ath/ath11k/Kconfig
++++ b/drivers/net/wireless/ath/ath11k/Kconfig
+@@ -39,6 +39,17 @@
+ 	help
+ 	  This module adds support for PCIE bus
+ 
++config ATH11K_RT3000_MON_OWNER_DIAG
++	bool "RT3000 ath11k monitor-status owner diagnostics"
++	depends on ATH11K
++	default n
++	help
++	  Keep bounded per-buffer ownership and lifecycle history for ath11k
++	  monitor-status RX rings. Intended for opt-in RT3000 C diagnostics.
++	  Uses 444 KiB per 512-entry status ring on 32-bit ARM (two C radios: 888 KiB).
++	  History is per buffer, is frozen at first mismatch, and emits
++	  history only when a DMA metadata mismatch is detected.
++
+ config ATH11K_DEBUG
+ 	bool "QCA ath11k debugging"
+ 	depends on ATH11K
+--- a/local-symbols
++++ b/local-symbols
+@@ -149,6 +149,7 @@
+ ATH11K_MEM_PROFILE_1G=
+ ATH11K_DEBUG=
+ ATH11K_DEBUGFS=
++ATH11K_RT3000_MON_OWNER_DIAG=
+ ATH11K_TRACING=
+ ATH11K_THERMAL=
+ ATH11K_SPECTRAL=
+--- a/drivers/net/wireless/ath/ath11k/dp.h
++++ b/drivers/net/wireless/ath/ath11k/dp.h
+@@ -71,12 +71,80 @@
+ 	u8 cached;
+ };
+ 
++#ifdef CPTCFG_ATH11K_RT3000_MON_OWNER_DIAG
++#define ATH11K_MON_OWNER_HISTORY_SIZE 8
++
++enum ath11k_mon_owner_state {
++	ATH11K_MON_OWNER_EMPTY,
++	ATH11K_MON_OWNER_IDR_ALLOC,
++	ATH11K_MON_OWNER_CB_READY,
++	ATH11K_MON_OWNER_PUBLISHED,
++	ATH11K_MON_OWNER_REAP_LOOKUP,
++	ATH11K_MON_OWNER_IDR_REMOVE,
++	ATH11K_MON_OWNER_UNMAP,
++	ATH11K_MON_OWNER_TRANSFER,
++	ATH11K_MON_OWNER_FREE,
++	ATH11K_MON_OWNER_MISMATCH,
++	ATH11K_MON_OWNER_IDR_MISS,
++};
++
++struct ath11k_mon_owner_event {
++	u64 seq;
++	dma_addr_t observed_paddr;
++	u32 cookie;
++	u32 generation;
++	u8 state;
++};
++
++/* Immutable scalar-only first mismatch snapshot; never retains an skb pointer. */
++struct ath11k_mon_owner_snapshot {
++	dma_addr_t desc_paddr;
++	dma_addr_t cb_paddr;
++	dma_addr_t current_paddr;
++	dma_addr_t adjacent_paddr;
++	dma_addr_t owner_paddr;
++	u64 seq;
++	u32 desc_cookie;
++	u32 current_cookie;
++	u32 adjacent_cookie;
++	u32 owner_cookie;
++	u32 owner_len;
++	u32 generation;
++	u32 hp_idx;
++	u32 adjacent_idx;
++	u8 owner_state;
++	bool idr_present;
++	bool idr_same;
++	bool owner_same;
++};
++
++struct ath11k_mon_owner_record {
++	unsigned long skb;
++	dma_addr_t paddr;
++	u32 len;
++	u32 cookie;
++	u32 generation;
++	u8 state;
++	u8 history_head;
++	u8 history_count;
++	bool mismatch_valid;
++	bool mismatch_logged;
++	struct ath11k_mon_owner_snapshot mismatch;
++	struct ath11k_mon_owner_event history[ATH11K_MON_OWNER_HISTORY_SIZE];
++};
++#endif
++
+ struct dp_rxdma_ring {
+ 	struct dp_srng refill_buf_ring;
+ 	struct idr bufs_idr;
+ 	/* Protects bufs_idr */
+ 	spinlock_t idr_lock;
+ 	int bufs_max;
++#ifdef CPTCFG_ATH11K_RT3000_MON_OWNER_DIAG
++	struct ath11k_mon_owner_record *mon_owner;
++	u32 mon_owner_count;
++	u64 mon_owner_seq;
++#endif
+ };
+ 
+ #define ATH11K_TX_COMPL_NEXT(x)	(((x) + 1) % DP_TX_COMP_RING_SIZE)
+--- a/drivers/net/wireless/ath/ath11k/dp_rx.c
++++ b/drivers/net/wireless/ath/ath11k/dp_rx.c
+@@ -6,6 +6,9 @@
+ #include <linux/ieee80211.h>
++#include <linux/atomic.h>
+ #include <linux/kernel.h>
+ #include <linux/skbuff.h>
++#include <linux/slab.h>
++#include <linux/ratelimit.h>
+ #include <crypto/hash.h>
+ #include "core.h"
+ #include "debug.h"
+@@ -20,6 +22,194 @@
+ #include "peer.h"
+ #include "nss.h"
+ 
++#ifdef CPTCFG_ATH11K_RT3000_MON_OWNER_DIAG
++static DEFINE_RATELIMIT_STATE(ath11k_mon_owner_ratelimit,
++			      DEFAULT_RATELIMIT_INTERVAL,
++			      DEFAULT_RATELIMIT_BURST);
++static atomic_t ath11k_mon_owner_first_fault = ATOMIC_INIT(0);
++
++static void ath11k_mon_owner_event_locked(struct dp_rxdma_ring *rx_ring,
++					  int buf_id, u8 state,
++					  struct sk_buff *skb,
++					  dma_addr_t observed_paddr,
++					  u32 cookie)
++{
++	struct ath11k_mon_owner_record *owner;
++	struct ath11k_mon_owner_event *event;
++	u64 seq;
++
++	if (!rx_ring->mon_owner || buf_id < 0 || buf_id >= rx_ring->mon_owner_count)
++		return;
++	owner = &rx_ring->mon_owner[buf_id];
++	/* Freeze this generation's forensic history at its first mismatch. */
++	if (state != ATH11K_MON_OWNER_IDR_ALLOC && owner->mismatch_valid)
++		return;
++	if (state == ATH11K_MON_OWNER_IDR_ALLOC) {
++		owner->generation++;
++		owner->skb = (unsigned long)skb;
++		owner->paddr = observed_paddr;
++		owner->len = skb->len + skb_tailroom(skb);
++		owner->cookie = 0;
++		owner->history_head = 0;
++		owner->history_count = 0;
++		owner->mismatch_valid = false;
++		owner->mismatch_logged = false;
++	} else if (skb && !owner->skb) {
++		owner->skb = (unsigned long)skb;
++	}
++	if (cookie)
++		owner->cookie = cookie;
++	owner->state = state;
++	seq = ++rx_ring->mon_owner_seq;
++	event = &owner->history[owner->history_head];
++	event->seq = seq;
++	event->observed_paddr = observed_paddr;
++	event->cookie = cookie ? cookie : owner->cookie;
++	event->generation = owner->generation;
++	event->state = state;
++	owner->history_head = (owner->history_head + 1) % ATH11K_MON_OWNER_HISTORY_SIZE;
++	if (owner->history_count < ATH11K_MON_OWNER_HISTORY_SIZE)
++		owner->history_count++;
++}
++
++static void ath11k_mon_owner_diag_mismatch(struct ath11k_base *ab,
++					   struct hal_srng *srng,
++					   struct dp_rxdma_ring *rx_ring,
++					   int mac_id, int buf_id,
++					   struct sk_buff *skb,
++					   dma_addr_t desc_paddr,
++					   dma_addr_t cb_paddr,
++					   u32 cookie)
++{
++	struct ath11k_mon_owner_event history[ATH11K_MON_OWNER_HISTORY_SIZE];
++	struct ath11k_mon_owner_snapshot snapshot = {};
++	struct ath11k_mon_owner_record *owner;
++	struct ath11k_mon_owner_event *event;
++	struct sk_buff *idr_skb;
++	void *current_desc, *adjacent_desc;
++	dma_addr_t current_paddr = 0, adjacent_paddr = 0;
++	u32 current_cookie = 0, adjacent_cookie = 0;
++	u8 rbm;
++	u32 hp_idx = 0, adjacent_idx = 0;
++	int i, n = 0, start;
++	bool emit = false, allow_emit;
++
++	lockdep_assert_held(&srng->lock);
++	if (!rx_ring->mon_owner)
++		return;
++	current_desc = ath11k_hal_srng_src_peek(ab, srng);
++	adjacent_desc = ath11k_hal_srng_src_next_peek(ab, srng);
++	if (current_desc)
++		ath11k_hal_rx_buf_addr_info_get(current_desc, &current_paddr, &current_cookie, &rbm);
++	if (adjacent_desc)
++		ath11k_hal_rx_buf_addr_info_get(adjacent_desc, &adjacent_paddr, &adjacent_cookie, &rbm);
++	if (srng->entry_size && srng->ring_size) {
++		hp_idx = srng->u.src_ring.hp / srng->entry_size;
++		adjacent_idx = ((srng->u.src_ring.hp + srng->entry_size) %
++				 srng->ring_size) / srng->entry_size;
++	}
++	/* Preserve one global first-fault record, then rate-limit all output. */
++	allow_emit = false;
++	if (buf_id >= 0 && buf_id < rx_ring->mon_owner_count &&
++	    atomic_cmpxchg(&ath11k_mon_owner_first_fault, 0, 1) == 0)
++		allow_emit = true;
++	else
++		allow_emit = __ratelimit(&ath11k_mon_owner_ratelimit);
++	/* Lock order is SRNG (caller) then IDR; copy scalars before unlocking. */
++	spin_lock_bh(&rx_ring->idr_lock);
++	if (buf_id >= 0 && buf_id < rx_ring->mon_owner_count) {
++		owner = &rx_ring->mon_owner[buf_id];
++		idr_skb = idr_find(&rx_ring->bufs_idr, buf_id);
++		if (!owner->mismatch_valid) {
++			/* cb_paddr was sampled by the caller before this IDR lock. */
++			owner->mismatch.desc_paddr = desc_paddr;
++			owner->mismatch.cb_paddr = cb_paddr;
++			owner->mismatch.current_paddr = current_paddr;
++			owner->mismatch.adjacent_paddr = adjacent_paddr;
++			owner->mismatch.owner_paddr = owner->paddr;
++			owner->mismatch.desc_cookie = cookie;
++			owner->mismatch.current_cookie = current_cookie;
++			owner->mismatch.adjacent_cookie = adjacent_cookie;
++			owner->mismatch.owner_cookie = owner->cookie;
++			owner->mismatch.owner_len = owner->len;
++			owner->mismatch.generation = owner->generation;
++			owner->mismatch.hp_idx = hp_idx;
++			owner->mismatch.adjacent_idx = adjacent_idx;
++			owner->mismatch.owner_state = owner->state;
++			owner->mismatch.idr_present = !!idr_skb;
++			owner->mismatch.idr_same = idr_skb == skb;
++			owner->mismatch.owner_same = owner->skb == (unsigned long)skb;
++		}
++	}
++	ath11k_mon_owner_event_locked(rx_ring, buf_id, ATH11K_MON_OWNER_MISMATCH,
++				      skb, desc_paddr, cookie);
++	if (buf_id >= 0 && buf_id < rx_ring->mon_owner_count) {
++		owner = &rx_ring->mon_owner[buf_id];
++		if (!owner->mismatch_valid) {
++			owner->mismatch.seq = rx_ring->mon_owner_seq;
++			owner->mismatch_valid = true;
++		}
++		if (!owner->mismatch_logged && allow_emit) {
++			snapshot = owner->mismatch;
++			start = (owner->history_head + ATH11K_MON_OWNER_HISTORY_SIZE -
++				 owner->history_count) % ATH11K_MON_OWNER_HISTORY_SIZE;
++			for (i = 0; i < owner->history_count; i++) {
++				event = &owner->history[(start + i) % ATH11K_MON_OWNER_HISTORY_SIZE];
++				if (event->generation == snapshot.generation)
++					history[n++] = *event;
++			}
++			owner->mismatch_logged = true;
++			emit = true;
++		}
++	}
++	spin_unlock_bh(&rx_ring->idr_lock);
++	if (!emit)
++		return;
++	dev_warn(ab->dev,
++		 "mon-owner mismatch first=1 (mon-owner first-mismatch) mac=%d ring=%u hp_idx=%u desc=%pad cookie=0x%x current=%pad current_cookie=0x%x adj_idx=%u adjacent=%pad adjacent_cookie=0x%x buf_id=%d idr_present=%u idr_same=%u owner_same=%u cb=%pad owner_paddr=%pad owner_cookie=0x%x len=%u gen=%u state=%u seq=%llu\n",
++		 mac_id, srng->ring_id, snapshot.hp_idx, &snapshot.desc_paddr,
++		 snapshot.desc_cookie, &snapshot.current_paddr, snapshot.current_cookie,
++		 snapshot.adjacent_idx, &snapshot.adjacent_paddr,
++		 snapshot.adjacent_cookie, buf_id, snapshot.idr_present, snapshot.idr_same,
++		 snapshot.owner_same,
++		 &snapshot.cb_paddr, &snapshot.owner_paddr, snapshot.owner_cookie,
++		 snapshot.owner_len, snapshot.generation, snapshot.owner_state,
++		 (unsigned long long)snapshot.seq);
++	for (i = 0; i < n; i++)
++		dev_warn(ab->dev,
++			 "mon-owner hist mac=%d ring=%u buf_id=%d gen=%u snapshot_seq=%llu event_seq=%llu state=%u cookie=0x%x observed=%pad\n",
++			 mac_id, srng->ring_id, buf_id, history[i].generation,
++			 (unsigned long long)snapshot.seq,
++			 (unsigned long long)history[i].seq, history[i].state,
++			 history[i].cookie, &history[i].observed_paddr);
++}
++
++static void ath11k_mon_owner_record(struct dp_rxdma_ring *rx_ring,
++				    int buf_id, u8 state, struct sk_buff *skb,
++				    dma_addr_t paddr, u32 cookie)
++{
++	if (!rx_ring->mon_owner)
++		return;
++	spin_lock_bh(&rx_ring->idr_lock);
++	ath11k_mon_owner_event_locked(rx_ring, buf_id, state, skb, paddr, cookie);
++	spin_unlock_bh(&rx_ring->idr_lock);
++}
++
++static void ath11k_mon_owner_diag_free(struct dp_rxdma_ring *rx_ring)
++{
++	kvfree(rx_ring->mon_owner);
++	rx_ring->mon_owner = NULL;
++	rx_ring->mon_owner_count = 0;
++	rx_ring->mon_owner_seq = 0;
++}
++#else
++#define ath11k_mon_owner_event_locked(rx_ring, buf_id, state, skb, observed, cookie) do { } while (0)
++#define ath11k_mon_owner_diag_mismatch(ab, srng, ring, mac, id, skb, desc, cb, cookie) do { } while (0)
++#define ath11k_mon_owner_record(rx_ring, id, state, skb, paddr, cookie) do { } while (0)
++#define ath11k_mon_owner_diag_free(rx_ring) do { } while (0)
++#endif
++
++
+ #define ATH11K_DP_RX_FRAGMENT_TIMEOUT_MS (2 * HZ)
+ 
+ static inline u8 *ath11k_dp_rx_h_80211_hdr(struct ath11k_base *ab, struct hal_rx_desc *desc)
+@@ -430,6 +572,9 @@
+ 			buf_id = idr_alloc(&rx_ring->bufs_idr, skb, 0,
+ 					   rx_ring->bufs_max * 3, GFP_ATOMIC);
+ 		}
++		if (buf_id >= 0)
++			ath11k_mon_owner_event_locked(rx_ring, buf_id,
++					      ATH11K_MON_OWNER_IDR_ALLOC, skb, paddr, 0);
+ 		spin_unlock_bh(&rx_ring->idr_lock);
+ 		if (buf_id < 0)
+ 			goto fail_dma_unmap;
+@@ -439,6 +584,8 @@
+ 			goto fail_idr_remove;
+ 
+ 		ATH11K_SKB_RXCB(skb)->paddr = paddr;
++		ath11k_mon_owner_record(rx_ring, buf_id, ATH11K_MON_OWNER_CB_READY,
++					 skb, paddr, 0);
+ 
+ 		cookie = FIELD_PREP(DP_RXDMA_BUF_COOKIE_PDEV_ID, mac_id) |
+ 			 FIELD_PREP(DP_RXDMA_BUF_COOKIE_BUF_ID, buf_id);
+@@ -446,6 +593,8 @@
+ 		num_remain--;
+ 
+ 		ath11k_hal_rx_buf_addr_info_set(desc, paddr, cookie, mgr);
++		ath11k_mon_owner_record(rx_ring, buf_id, ATH11K_MON_OWNER_PUBLISHED,
++				 skb, paddr, cookie);
+ 	}
+ 
+ 	ath11k_hal_srng_access_end(ab, srng);
+@@ -462,14 +611,22 @@
+ 
+ fail_idr_remove:
+ 	spin_lock_bh(&rx_ring->idr_lock);
++	ath11k_mon_owner_event_locked(rx_ring, buf_id, ATH11K_MON_OWNER_IDR_REMOVE,
++				      skb, paddr, 0);
+ 	idr_remove(&rx_ring->bufs_idr, buf_id);
+ 	spin_unlock_bh(&rx_ring->idr_lock);
++	dma_unmap_single(ab->dev, paddr, skb->len + skb_tailroom(skb),
++			 DMA_FROM_DEVICE);
++	ath11k_mon_owner_record(rx_ring, buf_id, ATH11K_MON_OWNER_UNMAP, skb, paddr, 0);
++	ath11k_mon_owner_record(rx_ring, buf_id, ATH11K_MON_OWNER_FREE, skb, paddr, 0);
++	dev_kfree_skb_any(skb);
++	goto fail_ring_access;
+ fail_dma_unmap:
+ 	dma_unmap_single(ab->dev, paddr, skb->len + skb_tailroom(skb),
+ 			 DMA_FROM_DEVICE);
+ fail_free_skb:
+ 	dev_kfree_skb_any(skb);
+-
++fail_ring_access:
+ 	ath11k_hal_srng_access_end(ab, srng);
+ 
+ 	spin_unlock_bh(&srng->lock);
+@@ -485,17 +642,24 @@
+ 
+ 	spin_lock_bh(&rx_ring->idr_lock);
+ 	idr_for_each_entry(&rx_ring->bufs_idr, skb, buf_id) {
++		ath11k_mon_owner_event_locked(rx_ring, buf_id, ATH11K_MON_OWNER_IDR_REMOVE,
++					      skb, ATH11K_SKB_RXCB(skb)->paddr, 0);
++		ath11k_mon_owner_event_locked(rx_ring, buf_id, ATH11K_MON_OWNER_UNMAP,
++					      skb, ATH11K_SKB_RXCB(skb)->paddr, 0);
+ 		idr_remove(&rx_ring->bufs_idr, buf_id);
+ 		/* TODO: Understand where internal driver does this dma_unmap
+ 		 * of rxdma_buffer.
+ 		 */
+ 		dma_unmap_single(ar->ab->dev, ATH11K_SKB_RXCB(skb)->paddr,
+ 				 skb->len + skb_tailroom(skb), DMA_FROM_DEVICE);
++		ath11k_mon_owner_event_locked(rx_ring, buf_id, ATH11K_MON_OWNER_FREE,
++					      skb, ATH11K_SKB_RXCB(skb)->paddr, 0);
+ 		dev_kfree_skb_any(skb);
+ 	}
+ 
+ 	idr_destroy(&rx_ring->bufs_idr);
+ 	spin_unlock_bh(&rx_ring->idr_lock);
++	ath11k_mon_owner_diag_free(rx_ring);
+ 
+ 	return 0;
+ }
+@@ -531,6 +695,19 @@
+ 		ath11k_hal_srng_get_entrysize(ar->ab, ringtype);
+ 
+ 	rx_ring->bufs_max = num_entries;
++#ifdef CPTCFG_ATH11K_RT3000_MON_OWNER_DIAG
++	if (ringtype == HAL_RXDMA_MONITOR_STATUS) {
++		if (num_entries > UINT_MAX / 3)
++			return -EOVERFLOW;
++		rx_ring->mon_owner_count = num_entries * 3;
++		rx_ring->mon_owner = kvcalloc(rx_ring->mon_owner_count,
++					       sizeof(*rx_ring->mon_owner), GFP_KERNEL);
++		if (!rx_ring->mon_owner) {
++			ath11k_mon_owner_diag_free(rx_ring);
++			return -ENOMEM;
++		}
++	}
++#endif
+ 	ath11k_dp_rxbufs_replenish(ar->ab, dp->mac_id, rx_ring, num_entries,
+ 				   HAL_RX_BUF_RBM_SW3_BM, GFP_KERNEL, NULL);
+ 	return 0;
+@@ -554,7 +733,9 @@
+ 
+ 	for (i = 0; i < ab->hw_params.num_rxmda_per_pdev; i++) {
+ 		rx_ring = &dp->rx_mon_status_refill_ring[i];
+-		ath11k_dp_rxdma_ring_buf_setup(ar, rx_ring, HAL_RXDMA_MONITOR_STATUS);
++		if (ath11k_dp_rxdma_ring_buf_setup(ar, rx_ring,
++					   HAL_RXDMA_MONITOR_STATUS))
++			return -ENOMEM;
+ 	}
+ 
+ 	return 0;
+@@ -3732,11 +3913,16 @@
+ 	spin_lock_bh(&rx_ring->idr_lock);
+ 	*buf_id = idr_alloc(&rx_ring->bufs_idr, skb, 0,
+ 			    rx_ring->bufs_max, GFP_ATOMIC);
++	if (*buf_id >= 0)
++		ath11k_mon_owner_event_locked(rx_ring, *buf_id, ATH11K_MON_OWNER_IDR_ALLOC,
++				      skb, paddr, 0);
+ 	spin_unlock_bh(&rx_ring->idr_lock);
+ 	if (*buf_id < 0)
+ 		goto fail_dma_unmap;
+ 
+ 	ATH11K_SKB_RXCB(skb)->paddr = paddr;
++	ath11k_mon_owner_record(rx_ring, *buf_id, ATH11K_MON_OWNER_CB_READY,
++				 skb, paddr, 0);
+ 	return skb;
+ 
+ fail_dma_unmap:
+@@ -3792,6 +3978,8 @@
+ 		num_remain--;
+ 
+ 		ath11k_hal_rx_buf_addr_info_set(desc, paddr, cookie, mgr);
++		ath11k_mon_owner_record(rx_ring, buf_id, ATH11K_MON_OWNER_PUBLISHED,
++				 skb, paddr, cookie);
+ 	}
+ 
+ 	ath11k_hal_srng_access_end(ab, srng);
+@@ -3802,6 +3990,8 @@
+ 
+ fail_desc_get:
+ 	spin_lock_bh(&rx_ring->idr_lock);
++	ath11k_mon_owner_event_locked(rx_ring, buf_id, ATH11K_MON_OWNER_IDR_REMOVE,
++				      skb, paddr, 0);
+ 	idr_remove(&rx_ring->bufs_idr, buf_id);
+ 	spin_unlock_bh(&rx_ring->idr_lock);
+ 	dma_unmap_single(ab->dev, paddr, skb->len + skb_tailroom(skb),
+@@ -3859,7 +4049,7 @@
+ 
+ enum dp_mon_reap_status
+ dp_rx_mon_handle_status_buf_done(struct ath11k_base *ab, struct hal_srng *srng,
+-				 struct dp_rxdma_ring *rx_ring)
++				 struct dp_rxdma_ring *rx_ring, int mac_id)
+ {
+ 	void *status_desc;
+ 	struct sk_buff *skb;
+@@ -3890,6 +4080,8 @@
+ 
+ 	rxcb = ATH11K_SKB_RXCB(skb);
+ 	if (unlikely(!rxcb->paddr || paddr != rxcb->paddr)) {
++		ath11k_mon_owner_diag_mismatch(ab, srng, rx_ring, mac_id, buf_id,
++					       skb, paddr, rxcb->paddr, cookie);
+ 		dev_warn_ratelimited(ab->dev,
+ 			"mon status look-ahead DMA mismatch ring_id=%u cookie=0x%x "
+ 			"buf_id=%d desc_paddr=%pad cb_paddr=%pad skb=%p\n",
+@@ -3967,6 +4159,9 @@
+ 
+ 			spin_lock_bh(&rx_ring->idr_lock);
+ 			skb = idr_find(&rx_ring->bufs_idr, buf_id);
++			ath11k_mon_owner_event_locked(rx_ring, buf_id,
++					      skb ? ATH11K_MON_OWNER_REAP_LOOKUP : ATH11K_MON_OWNER_IDR_MISS,
++					      skb, paddr, cookie);
+ 			spin_unlock_bh(&rx_ring->idr_lock);
+ 
+ 			if (!skb) {
+@@ -3979,6 +4174,8 @@
+ 			rxcb = ATH11K_SKB_RXCB(skb);
+ 
+ 			if (unlikely(!rxcb->paddr || paddr != rxcb->paddr)) {
++				ath11k_mon_owner_diag_mismatch(ab, srng, rx_ring, mac_id,
++						       buf_id, skb, paddr, rxcb->paddr, cookie);
+ 				dev_warn_ratelimited(ab->dev,
+ 					"mon status DMA mismatch mac_id=%d srng_id=%d ring_id=%u "
+ 					"cookie=0x%x buf_id=%d desc_paddr=%pad cb_paddr=%pad "
+@@ -4015,7 +4212,7 @@
+ 				 */
+ 
+ 				reap_status = dp_rx_mon_handle_status_buf_done(ab, srng,
+-									       rx_ring);
++									       rx_ring, mac_id);
+ 				if (reap_status == DP_MON_STATUS_NO_DMA) {
+ 					if (test_bit(ATH11K_FLAG_MON_STATUS_DMA_ERROR,
+ 						     &ab->dev_flags))
+@@ -4027,13 +4224,20 @@
+ 						    buf_id);
+ 
+ 					spin_lock_bh(&rx_ring->idr_lock);
++					ath11k_mon_owner_event_locked(rx_ring, buf_id,
++							      ATH11K_MON_OWNER_IDR_REMOVE,
++							      skb, paddr, cookie);
+ 					idr_remove(&rx_ring->bufs_idr, buf_id);
+ 					spin_unlock_bh(&rx_ring->idr_lock);
+ 
+ 					dma_unmap_single(ab->dev, rxcb->paddr,
+-							 skb->len + skb_tailroom(skb),
+-							 DMA_FROM_DEVICE);
++						 skb->len + skb_tailroom(skb),
++						 DMA_FROM_DEVICE);
+ 
++					ath11k_mon_owner_record(rx_ring, buf_id, ATH11K_MON_OWNER_UNMAP,
++							 skb, paddr, cookie);
++					ath11k_mon_owner_record(rx_ring, buf_id, ATH11K_MON_OWNER_FREE,
++							 skb, paddr, cookie);
+ 					dev_kfree_skb_any(skb);
+ 					pmon->mon_status_buf_state = DP_MON_STATUS_REPLINISH;
+ 					goto move_next;
+@@ -4041,6 +4245,9 @@
+ 			}
+ 
+ 			spin_lock_bh(&rx_ring->idr_lock);
++			ath11k_mon_owner_event_locked(rx_ring, buf_id,
++					      ATH11K_MON_OWNER_IDR_REMOVE,
++					      skb, paddr, cookie);
+ 			idr_remove(&rx_ring->bufs_idr, buf_id);
+ 			spin_unlock_bh(&rx_ring->idr_lock);
+ 			if (ab->hw_params.full_monitor_mode) {
+@@ -4052,6 +4259,10 @@
+ 			dma_unmap_single(ab->dev, rxcb->paddr,
+ 					 skb->len + skb_tailroom(skb),
+ 					 DMA_FROM_DEVICE);
++			ath11k_mon_owner_record(rx_ring, buf_id, ATH11K_MON_OWNER_UNMAP,
++					 skb, paddr, cookie);
++			ath11k_mon_owner_record(rx_ring, buf_id, ATH11K_MON_OWNER_TRANSFER,
++					 skb, paddr, cookie);
+ 
+ 			__skb_queue_tail(skb_list, skb);
+ 		} else {
+@@ -4075,6 +4286,8 @@
+ 
+ 		ath11k_hal_rx_buf_addr_info_set(rx_mon_status_desc, rxcb->paddr,
+ 						cookie, HAL_RX_BUF_RBM_SW3_BM);
++		ath11k_mon_owner_record(rx_ring, buf_id, ATH11K_MON_OWNER_PUBLISHED,
++				 skb, rxcb->paddr, cookie);
+ 
+ 		ath11k_hal_srng_src_get_next_entry(ab, srng);
+ 		num_buffs_reaped++;

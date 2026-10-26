@@ -24,8 +24,9 @@ ipq50xx_setup_interfaces()
 				"2:lan:1" "4:lan:2" "5:lan:3" \
 				"1:wan"
 			;;
-		h3c,rt3000)
-			# Machine-B two-switch model (Probe B/E evidence).
+		h3c,rt3000|\
+		h3c,rw3000-hw-a)
+			# Machine-B (and HW-A, same switch wiring) two-switch model (Probe B/E evidence).
 			#
 			#   internal switch0 (QCA MP, 3 ports): port1 -> eth0 (WAN jack),
 			#                                      port2 -> eth1 (LAN CPU port)
@@ -39,6 +40,28 @@ ipq50xx_setup_interfaces()
 			ucidef_add_switch "switch1" \
 				"6u@eth1" \
 				"2:lan:1" "3:lan:2" "4:lan:3"
+			;;
+		h3c,rt3000-rtl8367s)
+			# Machine-C: RTL8367S is an untagged LAN port expander on
+			# eth1 (LAN1-3); WAN is the separate SoC MAC0/eth0 path.
+			# kmod-rtl8367s-expander exposes it read-only to swconfig
+			# so LuCI shows per-port link state; the VLAN layout is fixed.
+			ucidef_set_interfaces_lan_wan "eth1" "eth0"
+			ucidef_add_switch "switch1" \
+				"6u@eth1" \
+				"1:lan:1" "2:lan:2" "3:lan:3"
+			;;
+		h3c,nx30-hw-d)
+			# Same-device CRC-validated ENV; no U-Boot diagnostic MAC inheritance.
+			local hwd_macs
+			hwd_macs="$(/usr/sbin/hwd-factory-mac)" || exit 1
+			set -- $hwd_macs
+			[ "$#" -eq 4 ] || exit 1
+			ucidef_set_interfaces_lan_wan "eth1" "eth0"
+			ucidef_set_interface_macaddr wan "$1"
+			ucidef_set_interface_macaddr lan "$2"
+			# Fresh mapping: LAN ports2/3/4; tagged CPU port6 on eth1.
+			ucidef_add_switch "switch1" 				"6t@eth1" 				"2:lan:1" "3:lan:2" "4:lan:3"
 			;;
 	esac
 }

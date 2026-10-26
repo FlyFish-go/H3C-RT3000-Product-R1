@@ -1,0 +1,7 @@
+#!/bin/sh /etc/rc.common
+# S19 reconciliation covers an eth1 add event that preceded procd hotplug.
+START=19
+
+start() {
+	/usr/libexec/rt3000-c-dsa-master-bind 10
+}

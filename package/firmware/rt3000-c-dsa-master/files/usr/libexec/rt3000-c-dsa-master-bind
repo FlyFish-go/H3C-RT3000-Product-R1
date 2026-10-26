@@ -1,0 +1,134 @@
+#!/bin/sh
+# Proposal only: bind the native C RTL8367S DSA switch after NSS dp2 exists.
+
+set -u
+
+FDT=/proc/device-tree
+SYS=/sys
+BOARD_FILE=/tmp/sysinfo/board_name
+MDIO_ID=90000.mdio:1d
+MODEL='H3C Magic RT3000 (RTL8367S, persistent C native profile)'
+BOARD='h3c,rt3000-rtl8367s'
+
+log() {
+	logger -t rt3000-c-dsa "$*" 2>/dev/null || echo "rt3000-c-dsa: $*" >&2
+}
+
+stop() {
+	log "STOP: $*"
+	exit 1
+}
+
+fdt_string() {
+	[ -r "$1" ] || return 1
+	tr -d '\000' < "$1" 2>/dev/null
+}
+
+fdt_u32() {
+	[ -r "$1" ] || return 1
+	bytes=$(wc -c < "$1" 2>/dev/null) || return 1
+	[ "$bytes" -eq 4 ] || return 1
+	hexdump -v -e '4/1 "%02x"' "$1" 2>/dev/null
+}
+
+wait_limit=${1:-0}
+case "$wait_limit" in
+	0|1|2|3|4|5|6|7|8|9|10) ;;
+	*) stop 'wait must be one integer from 0 through 10 seconds' ;;
+esac
+
+FDT_REAL=$(readlink -f "$FDT" 2>/dev/null) || stop 'device tree root is unavailable'
+[ -n "$FDT_REAL" ] || stop 'device tree root did not resolve'
+
+model=$(fdt_string "$FDT/model") || stop 'device model is unreadable'
+board=$(cat "$BOARD_FILE" 2>/dev/null) || stop 'board name is unreadable'
+[ "$model" = "$MODEL" ] || stop 'model identity mismatch; no bind attempted'
+[ "$board" = "$BOARD" ] || stop 'board identity mismatch; no bind attempted'
+
+dp2="$FDT/soc/dp2"
+switch="$FDT/soc/mdio@90000/switch@1d"
+cpu="$switch/ports/port@6"
+[ "$(fdt_string "$dp2/compatible")" = 'qcom,nss-dp' ] || stop 'dp2 compatible mismatch'
+[ "$(fdt_u32 "$dp2/qcom,id")" = '00000002' ] || stop 'dp2 qcom,id mismatch'
+[ "$(fdt_string "$switch/compatible")" = 'realtek,rtl8365mb' ] || stop 'switch compatible mismatch'
+[ "$(fdt_u32 "$cpu/reg")" = '00000006' ] || stop 'DSA CPU port index mismatch'
+[ "$(fdt_string "$cpu/label")" = 'cpu' ] || stop 'DSA CPU port label mismatch'
+[ "$(fdt_string "$cpu/phy-mode")" = '2500base-x' ] || stop 'DSA CPU port mode mismatch'
+[ "$(fdt_u32 "$cpu/fixed-link/speed")" = '000009c4' ] || stop 'DSA fixed-link speed mismatch'
+cpu_master=$(fdt_u32 "$cpu/ethernet") || stop 'CPU port master phandle is unreadable'
+dp2_phandle=$(fdt_u32 "$dp2/phandle") || stop 'dp2 phandle is unreadable'
+[ "$cpu_master" = "$dp2_phandle" ] || stop 'CPU port does not reference dp2'
+
+NETDEV="$SYS/class/net/eth1"
+MDIO_DEVICE="$SYS/bus/mdio_bus/devices/$MDIO_ID"
+MDIO_DRIVER="$SYS/bus/mdio_bus/drivers/realtek-mdio"
+BIND="$MDIO_DRIVER/bind"
+LOCK=/var/lock/rt3000-c-dsa-master.lock
+
+check_master() {
+	[ -e "$NETDEV/device/of_node" ] || return 1
+	[ "$(readlink -f "$NETDEV/device/of_node" 2>/dev/null)" = "$FDT_REAL/soc/dp2" ] || stop 'eth1 is not the dp2 master'
+	[ -e "$NETDEV/device/driver" ] || return 1
+	case "$(readlink -f "$NETDEV/device/driver" 2>/dev/null)" in
+		*/drivers/nss-dp) ;;
+		*) stop 'eth1 is not bound to the expected NSS DP driver' ;;
+	esac
+	return 0
+}
+
+check_mdio() {
+	[ -e "$MDIO_DEVICE/of_node" ] || return 1
+	[ "$(readlink -f "$MDIO_DEVICE/of_node" 2>/dev/null)" = "$FDT_REAL/soc/mdio@90000/switch@1d" ] || stop 'MDIO device node identity mismatch'
+	[ -e "$BIND" ] || stop 'realtek-mdio bind endpoint is unavailable'
+	return 0
+}
+
+elapsed=0
+while :; do
+	master_ready=0
+	mdio_ready=0
+	check_master && master_ready=1
+	check_mdio && mdio_ready=1
+	if [ "$master_ready" -eq 1 ] && [ "$mdio_ready" -eq 1 ]; then
+		break
+	fi
+	[ "$elapsed" -lt "$wait_limit" ] || stop 'dp2 master or RTL8367S MDIO device did not appear before the bounded wait expired'
+	sleep 1
+	elapsed=$((elapsed + 1))
+done
+
+# Hotplug ADD and S19 reconciliation can arrive together. Serialize the final
+# bound check and the single bind write; share the same overall wait budget.
+[ -d "$(dirname "$LOCK")" ] || stop 'lock directory is unavailable'
+while ! mkdir "$LOCK" 2>/dev/null; do
+	[ "$elapsed" -lt "$wait_limit" ] || stop 'another bounded bind attempt still holds the lock'
+	sleep 1
+	elapsed=$((elapsed + 1))
+done
+cleanup_lock() {
+	rmdir "$LOCK" 2>/dev/null || :
+}
+trap cleanup_lock EXIT
+trap 'exit 1' HUP INT TERM
+
+# Revalidate after acquiring the lock in case the interface/device changed.
+check_master || stop 'dp2 master disappeared before bind'
+check_mdio || stop 'RTL8367S MDIO device disappeared before bind'
+
+if [ -L "$MDIO_DEVICE/driver" ]; then
+	bound_driver=$(readlink -f "$MDIO_DEVICE/driver" 2>/dev/null)
+	expected_driver=$(readlink -f "$MDIO_DRIVER" 2>/dev/null)
+	[ -n "$expected_driver" ] || stop 'realtek-mdio driver path did not resolve'
+	[ "$bound_driver" = "$expected_driver" ] || stop 'MDIO device is bound to an unexpected driver'
+	log "$MDIO_ID is already bound to realtek-mdio; no-op"
+	exit 0
+fi
+
+[ -d "$MDIO_DRIVER" ] || stop 'realtek-mdio driver is not registered'
+printf '%s\n' "$MDIO_ID" > "$BIND" || stop 'single realtek-mdio bind request failed'
+
+bound_driver=$(readlink -f "$MDIO_DEVICE/driver" 2>/dev/null)
+expected_driver=$(readlink -f "$MDIO_DRIVER" 2>/dev/null)
+[ -n "$expected_driver" ] && [ "$bound_driver" = "$expected_driver" ] || stop 'bind request returned without the expected driver binding'
+log "$MDIO_ID bound to realtek-mdio after dp2 became available"
+exit 0

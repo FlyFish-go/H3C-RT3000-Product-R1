@@ -81,11 +81,11 @@ cat > "$TMPD/probe.sh" <<'PROBE'
 PROBE
 # Instead of sourcing (needs a live board), assert the mapping the hook uses is
 # the frozen one by checking the derivation still yields the expected values.
-. "$HERE/rt3000-mac.sh"
+. "$TOP/target/linux/ipq50xx/base-files/lib/rt3000/mac.sh"
 M=$(RT3000_ETHADDR_SOURCE=00:11:22:33:44:55 rt3000_mac_map 2>/dev/null)
 L=$(printf '%s\n' "$M" | sed -n 's/^lan //p')
-if [ "$L" = "9e:a7:ce:69:5e:6a" ]; then
-	ok "derivation feeding the hook yields the frozen LAN MAC"
+if [ "$L" = "00:11:22:33:44:56" ]; then
+	ok "derivation feeding the hook yields LAN = factory+1"
 else
 	bad "hook feed" "lan=$L"
 fi

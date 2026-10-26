@@ -1,0 +1,350 @@
+// SPDX-License-Identifier: GPL-2.0-or-later OR MIT
+
+/dts-v1/;
+
+#include "ipq5018.dtsi"
+
+/ {
+	model = "H3C Magic RT3000 (RTL8367S, C2 RAM bring-up)";
+	compatible = "h3c,rt3000-rtl8367s", "qcom,ipq5018-mp03.1-c2",
+		     "qcom,ipq5018";
+
+	#address-cells = <2>;
+	#size-cells = <2>;
+	interrupt-parent = <&intc>;
+
+	aliases {
+		serial0 = &blsp1_uart1;
+		ethernet0 = &mac0;
+		ethernet1 = &mac1;
+	};
+
+	chosen {
+		stdout-path = "serial0:115200n8";
+		/* Standard property: this QSDK tree does not parse bootargs-append. */
+		bootargs = "console=ttyMSM0,115200n8 init=/init";
+	};
+
+	/*
+	 * C DRAM capacity is user-confirmed from GDP1BFLM marking: 256 MiB.
+	 * Current-C active FDT /memory/reg and dmesg memblock independently report
+	 * base 0x40000000, size 0x10000000. OEM FIT's separate static C2 FDT says
+	 * 512 MiB; that disagrees with the active runtime map and is not used here.
+	 */
+	memory {
+		device_type = "memory";
+		reg = <0x0 0x40000000 0x0 0x10000000>;
+	};
+
+	/*
+	 * The current-C active OEM FDT explicitly has q6_mem_regions at
+	 * 0x4b000000+0x04500000; /proc/iomem also excludes this exact span from
+	 * System RAM (through 0x4f4fffff). Preserve this C-specific reservation so
+	 * Linux cannot allocate it while the C Q6 and first two Wi-Fi PDs are active.
+	 */
+	reserved-memory {
+		q6_mem_regions: q6_mem_regions@4b000000 {
+			no-map;
+			reg = <0x0 0x4b000000 0x0 0x04500000>;
+		};
+	};
+};
+
+/*
+ * The single no-map q6_mem_regions reservation protects the OEM subregion map
+ * without registering overlapping reserved-memory siblings.  ath11k's QDSS
+ * code resolves these two ETR resource names directly from the device tree.
+ */
+/ {
+	q6_memory_layout {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		q6_etr_dump@4d200000 {
+			reg = <0x0 0x4d200000 0x0 0x00100000>;
+		};
+
+		q6_qcn6122_etr_1@4e300000 {
+			reg = <0x0 0x4e300000 0x0 0x00100000>;
+		};
+	};
+};
+
+&tlmm {
+	blsp_uart0_pins: blsp_uart0_pins {
+		pins = "gpio28", "gpio29";
+		function = "blsp0_uart1";
+		drive-strength = <8>;
+		bias-disable;
+	};
+
+	mdio1_pins: mdio1_pins {
+		mdc {
+			pins = "gpio36";
+			function = "mdc";
+			drive-strength = <8>;
+			bias-pull-up;
+		};
+
+		mdio {
+			pins = "gpio37";
+			function = "mdio";
+			drive-strength = <8>;
+			bias-pull-up;
+		};
+	};
+};
+
+&blsp1_uart1 {
+	pinctrl-0 = <&blsp_uart0_pins>;
+	pinctrl-names = "default";
+	status = "okay";
+};
+
+/* C-only RTL8367S DSA switch on MDIO1. */
+&mdio1 {
+	#address-cells = <1>;
+	#size-cells = <0>;
+	pinctrl-0 = <&mdio1_pins>;
+	pinctrl-names = "default";
+	status = "okay";
+
+	switch@1d {
+		compatible = "realtek,rtl8365mb";
+		reg = <29>;
+
+		ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			port@0 { reg = <0>; label = "swp0"; };
+			port@1 { reg = <1>; label = "swp1"; };
+			port@2 { reg = <2>; label = "swp2"; };
+			port@3 { reg = <3>; label = "swp3"; };
+			port@4 { reg = <4>; label = "swp4"; };
+
+			/* RTL8367S EXT1/port 6 uses a 2.5G HSGMII SerDes lane.
+			 * 2500base-x represents the fixed lane rate to phylink.
+			 */
+			port@6 {
+				reg = <6>;
+				label = "cpu";
+				ethernet = <&mac1>;
+				phy-mode = "2500base-x";
+
+				fixed-link {
+					speed = <2500>;
+					full-duplex;
+				};
+			};
+		};
+	};
+};
+
+/* C2 OEM topology: MAC0's internal GE PHY is at MDIO0 address 7. */
+&mdio0 {
+	status = "okay";
+
+	ethernet-phy@7 {
+		reg = <7>;
+	};
+};
+
+/*
+ * Re-enable the IPQ5018 MAC/ESS path using the current C2 OEM FDT values.
+ * The external QCA83xx node from that FDT is intentionally not instantiated:
+ * this board's switch is RTL8367S and its configuration remains separate.
+ */
+&soc {
+	ess-instance {
+		ess-switch@0x39c00000 {
+			device_id = <0>;
+			switch_mac_mode = <0x0c>;
+			cmnblk_clk = "internal_96MHz";
+			status = "okay";
+
+			qcom,port_phyinfo {
+				port@0 {
+					port_id = <1>;
+					mdiobus = <&mdio0>;
+					phy_address = <7>;
+				};
+
+				port@1 {
+					port_id = <2>;
+					forced-speed = <2500>;
+					forced-duplex = <1>;
+				};
+			};
+		};
+	};
+
+	ess-uniphy@98000 {
+		status = "okay";
+	};
+
+	/* Exact dp1/dp2 properties from the current C2 OEM FDT. */
+	mac0: dp1 {
+		compatible = "qcom,nss-dp";
+		device_type = "network";
+		clocks = <&gcc GCC_SNOC_GMAC0_AXI_CLK>;
+		clock-names = "nss-snoc-gmac-axi-clk";
+		qcom,id = <1>;
+		reg = <0x39c00000 0x10000>;
+		interrupts = <GIC_SPI 101 IRQ_TYPE_LEVEL_HIGH>;
+		qcom,mactype = <2>;
+		qcom,link-poll = <1>;
+		qcom,phy-mdio-addr = <7>;
+		mdio-bus = <&mdio0>;
+		local-mac-address = [000000000000];
+		phy-mode = "sgmii";
+	};
+
+	mac1: dp2 {
+		compatible = "qcom,nss-dp";
+		device_type = "network";
+		clocks = <&gcc GCC_SNOC_GMAC1_AXI_CLK>;
+		clock-names = "nss-snoc-gmac-axi-clk";
+		qcom,id = <2>;
+		reg = <0x39d00000 0x10000>;
+		interrupts = <GIC_SPI 109 IRQ_TYPE_LEVEL_HIGH>;
+		qcom,mactype = <2>;
+		local-mac-address = [000000000000];
+		phy-mode = "sgmii";
+	};
+};
+
+/* This RAM-only candidate does not bring up coresight or Bluetooth. */
+&tmc_etr {
+	/delete-property/ memory-region;
+	status = "disabled";
+};
+
+&q6v5_wcss {
+	compatible = "qcom,ipq5018-q6-mpd";
+	#address-cells = <1>;
+	#size-cells = <1>;
+	ranges;
+
+	resets =
+		<&gcc GCC_WCSSAON_RESET>,
+		<&gcc GCC_WCSS_Q6_BCR>;
+	reset-names = "wcss_aon_reset", "wcss_q6_reset";
+
+	clocks =
+		<&gcc GCC_Q6_AXIS_CLK>,
+		<&gcc GCC_WCSS_ECAHB_CLK>,
+		<&gcc GCC_Q6_AXIM_CLK>,
+		<&gcc GCC_Q6_AXIM2_CLK>,
+		<&gcc GCC_Q6_AHB_CLK>,
+		<&gcc GCC_Q6_AHB_S_CLK>,
+		<&gcc GCC_WCSS_AXI_S_CLK>;
+	clock-names =
+		"gcc_q6_axis_clk",
+		"gcc_wcss_ecahb_clk",
+		"gcc_q6_axim_clk",
+		"gcc_q6_axim2_clk",
+		"gcc_q6_ahb_clk",
+		"gcc_q6_ahb_s_clk",
+		"gcc_wcss_axi_s_clk";
+
+	reg =
+		<0x0cd00000 0x4040>,
+		<0x01938000 0x8>,
+		<0x0193d204 0x4>;
+	reg-names = "qdsp6", "tcsr-msip", "tcsr-q6";
+	memory-region = <&q6_mem_regions>;
+	qcom,rproc = <&q6v5_wcss>;
+	firmware = "IPQ5018/q6_fw.mdt";
+	qcom,bootargs_smem = <507>;
+	boot-args = <0x1 0x4 0x3 0x0f 0x0 0x0>,
+		    <0x2 0x4 0x2 0x12 0x0 0x0>;
+	status = "okay";
+
+	q6_wcss_pd1: remoteproc_pd1@4ab000 {
+		compatible = "qcom,ipq5018-wcss-ahb-mpd";
+		resets =
+			<&gcc GCC_WCSSAON_RESET>,
+			<&gcc GCC_WCSS_BCR>,
+			<&gcc GCC_CE_BCR>;
+		reset-names = "wcss_aon_reset", "wcss_reset", "ce_reset";
+		clocks =
+			<&gcc GCC_WCSS_AHB_S_CLK>,
+			<&gcc GCC_WCSS_ACMT_CLK>,
+			<&gcc GCC_WCSS_AXI_M_CLK>;
+		clock-names = "gcc_wcss_ahb_s_clk", "gcc_wcss_acmt_clk",
+			      "gcc_wcss_axi_m_clk";
+		reg = <0x4ab000 0x20>;
+		reg-names = "rmb";
+		qcom,halt-regs = <&tcsr_q6_block 0xa000 0xd000 0x0>;
+		interrupts-extended =
+			<&wcss_smp2p_in 8 0>,
+			<&wcss_smp2p_in 9 0>,
+			<&wcss_smp2p_in 12 0>,
+			<&wcss_smp2p_in 11 0>;
+		interrupt-names = "fatal", "ready", "spawn-ack", "stop-ack";
+		qcom,smem-states =
+			<&wcss_smp2p_out 8>,
+			<&wcss_smp2p_out 9>,
+			<&wcss_smp2p_out 10>;
+		qcom,smem-state-names = "shutdown", "stop", "spawn";
+		firmware = "IPQ5018/q6_fw.mdt";
+		m3_firmware = "IPQ5018/m3_fw.mdt";
+	};
+
+	q6_wcss_pd2: remoteproc_pd2 {
+		compatible = "qcom,ipq5018-wcss-pcie-mpd";
+		interrupts-extended =
+			<&wcss_smp2p_in 16 0>,
+			<&wcss_smp2p_in 17 0>,
+			<&wcss_smp2p_in 20 0>,
+			<&wcss_smp2p_in 19 0>;
+		interrupt-names = "fatal", "ready", "spawn-ack", "stop-ack";
+		qcom,smem-states =
+			<&wcss_smp2p_out 16>,
+			<&wcss_smp2p_out 17>,
+			<&wcss_smp2p_out 18>;
+		qcom,smem-state-names = "shutdown", "stop", "spawn";
+		firmware = "IPQ5018/q6_fw.mdt";
+		m3_firmware = "qcn6122/m3_fw.mdt";
+	};
+};
+
+&wifi0 {
+	/* C active OEM FDT: target memory mode 2 selects BDF address 0x4c400000. */
+	nss-radio-priority = <0>;
+	qcom,multipd_arch;
+	qcom,rproc = <&q6_wcss_pd1>;
+	qcom,userpd-subsys-name = "q6v5_wcss_userpd1";
+	qcom,board_id = <0x23>;
+	qcom,bdf-addr = <0x0 0x0 0x4c400000>;
+	qcom,caldb-addr = <0>;
+	m3-dump-addr = <0x4d100000>;
+	status = "okay";
+};
+
+&wifi1 {
+	/* C active OEM FDT: target memory mode 2 selects BDF address 0x4d300000. */
+	nss-radio-priority = <1>;
+	qcom,multipd_arch;
+	qcom,rproc = <&q6_wcss_pd2>;
+	qcom,userpd-subsys-name = "q6v5_wcss_userpd2";
+	qcom,board_id = <0xb0>;
+	qcom,bdf-addr = <0x0 0x0 0x4d300000>;
+	qcom,caldb-addr = <0>;
+	m3-dump-addr = <0x4e200000>;
+	status = "okay";
+};
+
+&wifi2 {
+	status = "disabled";
+};
+
+&nss0 {
+	status = "disabled";
+};
+
+&bt {
+	status = "disabled";
+};

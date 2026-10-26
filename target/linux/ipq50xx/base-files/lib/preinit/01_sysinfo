@@ -1,0 +1,25 @@
+# One H3C image serves several carrier products (RT3000, RC3000, RW3000,
+# NX30) on the same PCB group, so the DT model cannot name the product.
+# Use the factory productname from the U-Boot environment and the group from
+# the DT. Raw scan: the OEM environment CRC is non-standard (see
+# /lib/rt3000/mac.sh). Runs before 02_sysinfo, which then keeps this model.
+do_sysinfo_h3c() {
+	local group mtd product
+
+	[ -d /proc/device-tree ] || return
+	case "$(strings /proc/device-tree/compatible | head -1)" in
+	h3c,rw3000-hw-a) group=HW-A ;;
+	h3c,rt3000) group=HW-B ;;
+	h3c,rt3000-rtl8367s) group=HW-C ;;
+	h3c,nx30-hw-d) group=HW-D ;;
+	*) return ;;
+	esac
+	mtd=$(sed -n 's/^\(mtd[0-9]*\):.*"0:APPSBLENV"$/\1/p' /proc/mtd)
+	# productname=NX30_2i5x names NX30; keep only the leading [A-Za-z0-9].
+	[ -n "$mtd" ] && product=$(dd if=/dev/$mtd bs=4096 count=1 2>/dev/null |
+		tr '\000' '\n' | sed -n 's/^productname=\([A-Za-z0-9]*\).*$/\1/p' | head -n1)
+	mkdir -p /tmp/sysinfo
+	echo "H3C Magic ${product:+$product }($group)" > /tmp/sysinfo/model
+}
+
+boot_hook_add preinit_main do_sysinfo_h3c

@@ -1,0 +1,346 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Codex <codex@openai.com>
+Subject: [PATCH] mtd: ipq50xx: gate exact HW-D NAND and physical write map
+
+Require the exact EF:BA:21 identity and 128 MiB / page2048 / erase131072 /
+OOB64 / ECC4 geometry before touching QSPI feature or training controls.
+The HW-D path keeps x1 reads and skips flash BBT/QE/training writes. Export the
+probed ID read-only and fail closed on an invalid physical partition map. The
+persistent aperture is whichever system slot is named rootfs (exactly one of
+0x900000/0x3100000; the other is oem_rootfs); validation RAM is fully
+read-only; installer RAM additionally permits BOOTCONFIG0/1.
+
+---
+--- a/drivers/mtd/nand/raw/qcom_nandc.c
++++ b/drivers/mtd/nand/raw/qcom_nandc.c
+@@ -469,6 +469,8 @@
+ 	struct list_head host_list;
+ 
+ 	struct device *dev;
++	struct nand_id hwd_nand_id;
++	bool hwd_nand_id_valid;
+ 
+ 	void __iomem *base;
+ 	phys_addr_t base_phys;
+@@ -3602,6 +3604,20 @@
+ 	return ret;
+ }
+ 
++static ssize_t hwd_nand_id_show(struct device *dev,
++				struct device_attribute *attr, char *buf)
++{
++	struct qcom_nand_controller *nandc = dev_get_drvdata(dev);
++
++	if (!nandc || !nandc->hwd_nand_id_valid)
++		return -ENODEV;
++	return snprintf(buf, PAGE_SIZE, "%02x:%02x:%02x\n",
++			nandc->hwd_nand_id.data[0],
++			nandc->hwd_nand_id.data[1],
++			nandc->hwd_nand_id.data[2]);
++}
++static DEVICE_ATTR_RO(hwd_nand_id);
++
+ static int qcom_nand_host_init_and_register(struct qcom_nand_controller *nandc,
+ 					    struct qcom_nand_host *host,
+ 					    struct device_node *dn)
+@@ -3611,6 +3627,7 @@
+ 	struct device *dev = nandc->dev;
+ 	bool c_mtd_discovery = false;
+ 	bool c_native_safe = false;
++	bool hwd_native_safe = false;
+ 	int ret;
+ 
+ 	ret = of_property_read_u32(dn, "reg", &host->cs);
+@@ -3646,6 +3663,17 @@
+ 	chip->legacy.block_bad		= qcom_nandc_block_bad;
+ 	chip->legacy.block_markbad	= qcom_nandc_block_markbad;
+ 
++	if (of_machine_is_compatible("h3c,nx30-hw-d")) {
++		if (!of_property_read_bool(nandc->dev->of_node,
++					   "h3c,nx30-hw-d-nand-safe-config")) {
++			dev_err(dev, "HW-D NAND safe-config gate missing\n");
++			return -EPERM;
++		}
++		hwd_native_safe = true;
++		chip->options |= NAND_SKIP_BBTSCAN;
++		chip->bbt_options &= ~NAND_BBT_USE_FLASH;
++	}
++
+ 	if (of_machine_is_compatible("h3c,rt3000-rtl8367s")) {
+ 		if (!of_property_read_bool(nandc->dev->of_node,
+ 					  "h3c,rt3000-native-nand-safe-config")) {
+@@ -3689,7 +3717,21 @@
+ 		return ret;
+ 	}
+ 
+-	if (c_mtd_discovery || c_native_safe)
++	if (hwd_native_safe) {
++		if (chip->id.len < 3 || chip->id.data[0] != 0xef ||
++		    chip->id.data[1] != 0xba || chip->id.data[2] != 0x21 ||
++		    mtd->type != MTD_NANDFLASH || mtd->size != 0x08000000ULL ||
++		    mtd->writesize != 2048 || mtd->erasesize != 131072 ||
++		    mtd->oobsize != 64 || mtd->ecc_strength != 4) {
++			dev_err(dev, "HW-D NAND identity/geometry rejected\n");
++			return -ENODEV;
++		}
++		dev_info(dev, "HW-D NAND JEDEC EF:BA:21, 128MiB, page2048, erase131072, OOB64, ECC4; x1/no-write-probe\n");
++		nandc->hwd_nand_id = chip->id;
++		nandc->hwd_nand_id_valid = true;
++	}
++
++	if (c_mtd_discovery || c_native_safe || hwd_native_safe)
+ 		host->quad_mode = false;
+ 
+ 	if (nandc->props->is_bam) {
+@@ -3718,7 +3760,7 @@
+ 	 * can be captured correctly.
+ 	 */
+ 	if (nandc->props->is_serial_nand) {
+-		if (!c_mtd_discovery && !c_native_safe) {
++		if (!c_mtd_discovery && !c_native_safe && !hwd_native_safe) {
+ 			ret = qspi_nand_device_config(nandc, host, mtd);
+ 			if (ret)
+ 				dev_err(nandc->dev, "qspi_nand device config failed\n");
+@@ -3733,6 +3775,8 @@
+ 						"failed to enable serial training\n");
+ 				}
+ 			}
++		} else if (hwd_native_safe) {
++			dev_info(dev, "HW-D safe probe: x1 reads; no QE, BBT, or training writes\n");
+ 		} else if (c_mtd_discovery) {
+ 			dev_info(dev, "C MTD discovery: x1 reads; no QE or training writes\n");
+ 		} else {
+@@ -3747,6 +3791,13 @@
+ 	}
+ 
+ 	ret = mtd_device_register(mtd, NULL, 0);
++	if (!ret && hwd_native_safe) {
++		ret = device_create_file(dev, &dev_attr_hwd_nand_id);
++		if (ret) {
++			nandc->hwd_nand_id_valid = false;
++			mtd_device_unregister(mtd);
++		}
++	}
+ 	if (ret)
+ 		nand_cleanup(chip);
+ 
+--- a/drivers/mtd/mtdpart.c
++++ b/drivers/mtd/mtdpart.c
+@@ -143,6 +143,111 @@
+ 		 (off == 0x00140000 && size == 0x00040000));
+ }
+ 
++/* HW-D exact-device physical NAND policy. */
++#define HWD_NAND_SIZE 0x08000000ULL
++#define HWD_A_OFF 0x00900000ULL
++#define HWD_B_OFF 0x03100000ULL
++#define HWD_SLOT_SIZE 0x02800000ULL
++#define HWD_INSTALLER_BC_PROP "h3c,nx30-hw-d-installer-write-bootconfig"
++#define HWD_RAM_RO_PROP "h3c,nx30-hw-d-ram-readonly"
++#define HWD_SAFE_PROP "h3c,nx30-hw-d-nand-safe-config"
++
++static bool hwd_nand(struct mtd_info *mtd)
++{
++	return mtd->type == MTD_NANDFLASH &&
++		of_machine_is_compatible("h3c,nx30-hw-d");
++}
++
++static bool hwd_installer_write_bc(struct mtd_info *mtd)
++{
++	struct device_node *np = mtd->dev.parent ? mtd->dev.parent->of_node : NULL;
++	return np && of_property_read_bool(np, HWD_INSTALLER_BC_PROP);
++}
++
++static bool hwd_ram_readonly(struct mtd_info *mtd)
++{
++	struct device_node *np = mtd->dev.parent ? mtd->dev.parent->of_node : NULL;
++	return np && of_property_read_bool(np, HWD_RAM_RO_PROP);
++}
++
++static bool hwd_nand_safe_node(struct mtd_info *mtd)
++{
++	struct device_node *np = mtd->dev.parent ? mtd->dev.parent->of_node : NULL;
++	return np && of_property_read_bool(np, HWD_SAFE_PROP);
++}
++
++static bool hwd_partition_map_valid(struct mtd_info *master,
++				    const struct mtd_partition *parts, int count)
++{
++	static const struct { u64 off, size; const char *name; } expected[] = {
++		{0x00000000,0x00080000,"0:SBL1"}, {0x00080000,0x00080000,"0:MIBIB"},
++		{0x00100000,0x00040000,"0:BOOTCONFIG"}, {0x00140000,0x00040000,"0:BOOTCONFIG1"},
++		{0x00180000,0x00100000,"0:QSEE"}, {0x00280000,0x00100000,"0:QSEE_1"},
++		{0x00380000,0x00040000,"0:DEVCFG"}, {0x003c0000,0x00040000,"0:DEVCFG_1"},
++		{0x00400000,0x00040000,"0:CDT"}, {0x00440000,0x00040000,"0:CDT_1"},
++		{0x00480000,0x00080000,"0:APPSBLENV"}, {0x00500000,0x00140000,"0:APPSBL"},
++		{0x00640000,0x00140000,"0:APPSBL_1"}, {0x00780000,0x00100000,"0:ART"},
++		{0x00880000,0x00080000,"0:TRAINING"}, {0x00900000,0x02800000,NULL},
++		{0x03100000,0x02800000,NULL}, {0x05900000,0x00600000,"pdt_data"},
++		{0x05f00000,0x00600000,"pdt_data_1"}, {0x06500000,0x00100000,"exp"},
++		{0x06600000,0x01700000,"plugin"},
++	};
++	bool seen[ARRAY_SIZE(expected)] = { false };
++	bool installer = hwd_installer_write_bc(master);
++	bool ram_readonly = hwd_ram_readonly(master);
++	int i, rootfs_slots = 0;
++	unsigned int j;
++
++	if (mtd_is_partition(master) || master->size != HWD_NAND_SIZE ||
++	    master->writesize != 2048 || master->erasesize != 131072 ||
++	    master->oobsize != 64 || master->ecc_strength != 4 ||
++	    !hwd_nand_safe_node(master) || count != ARRAY_SIZE(expected) || !parts)
++		return false;
++
++	for (i = 0; i < count; i++) {
++		if (!parts[i].name || !parts[i].size)
++			return false;
++		/* The two system slots (NULL rows) may be named either way round:
++		 * the booted one is rootfs, the other oem_rootfs.
++		 */
++		for (j = 0; j < ARRAY_SIZE(expected); j++)
++			if ((u64)parts[i].offset == expected[j].off &&
++			    (u64)parts[i].size == expected[j].size &&
++			    (expected[j].name ? !strcmp(parts[i].name, expected[j].name) :
++			     (!strcmp(parts[i].name, "rootfs") ||
++			      !strcmp(parts[i].name, "oem_rootfs"))))
++				break;
++		if (j == ARRAY_SIZE(expected) || seen[j])
++			return false;
++		seen[j] = true;
++		{
++			bool system_rootfs = !expected[j].name &&
++				!strcmp(parts[i].name, "rootfs");
++			bool writable = !(parts[i].mask_flags & MTD_WRITEABLE);
++			bool should_write = !ram_readonly &&
++				(system_rootfs || (installer && (j == 2 || j == 3)));
++			if (writable != should_write)
++				return false;
++			rootfs_slots += system_rootfs;
++		}
++	}
++	for (i = 0; i < ARRAY_SIZE(expected); i++)
++		if (!seen[i])
++			return false;
++	return rootfs_slots == 1;
++}
++
++static bool hwd_write_window(u64 off, u64 size, const char *name,
++			     bool installer, bool ram_readonly)
++{
++	if (ram_readonly)
++		return false;
++	if ((off == HWD_A_OFF || off == HWD_B_OFF) && size == HWD_SLOT_SIZE)
++		return name && !strcmp(name, "rootfs");
++	return installer && ((off == 0x00100000 && size == 0x00040000) ||
++			     (off == 0x00140000 && size == 0x00040000));
++}
++
+ static u64 part_absolute_offset(struct mtd_info *mtd)
+ {
+ 	struct mtd_part *part;
+@@ -490,7 +595,8 @@
+ 
+ static struct mtd_part *allocate_partition(struct mtd_info *parent,
+ 			const struct mtd_partition *part, int partno,
+-			uint64_t cur_offset, bool c_map_valid, bool c_installer)
++			uint64_t cur_offset, bool c_map_valid, bool c_installer,
++			bool d_map_valid, bool d_installer)
+ {
+ 	int wr_alignment = (parent->flags & MTD_NO_ERASE) ? parent->writesize :
+ 							    parent->erasesize;
+@@ -756,6 +862,19 @@
+ 			kfree(slave->mtd.name);
+ 			slave->mtd.name = name;
+ 		}
++	} else if (hwd_nand(parent)) {
++		u64 abs_off = part_absolute_offset(parent) + slave->offset;
++		bool permitted = d_map_valid &&
++			hwd_write_window(abs_off, slave->mtd.size, part->name,
++				  d_installer, hwd_ram_readonly(parent)) &&
++			(parent->orig_flags & MTD_WRITEABLE) &&
++			!(part->mask_flags & MTD_WRITEABLE);
++
++		if (permitted)
++			slave->mtd.flags |= MTD_WRITEABLE;
++		else
++			slave->mtd.flags &= ~MTD_WRITEABLE;
++		slave->mtd.orig_flags = slave->mtd.flags;
+ 	}
+ 	return slave;
+ }
+@@ -807,7 +926,7 @@
+ 	part.size = length;
+ 	part.offset = offset;
+ 
+-	new = allocate_partition(parent, &part, -1, offset, false, false);
++	new = allocate_partition(parent, &part, -1, offset, false, false, false, false);
+ 	if (IS_ERR(new))
+ 		return PTR_ERR(new);
+ 
+@@ -982,6 +1101,9 @@
+ 	bool c_nand = rt3000_c_nand(master);
+ 	bool c_map_valid = false;
+ 	bool c_installer = false;
++	bool d_nand = hwd_nand(master);
++	bool d_map_valid = false;
++	bool d_installer = false;
+ 	struct mtd_part *slave;
+ 	uint64_t cur_offset = 0;
+ 	int i, ret;
+@@ -994,12 +1116,21 @@
+ 		c_map_valid = true;
+ 		c_installer = rt3000_c_installer_write_bc(master);
+ 	}
++	if (d_nand && !mtd_is_partition(master)) {
++		if (!hwd_partition_map_valid(master, parts, nbparts)) {
++			pr_err("HW-D NAND identity/map/flags invalid; refusing child registration\n");
++			return -EINVAL;
++		}
++		d_map_valid = true;
++		d_installer = hwd_installer_write_bc(master);
++	}
+ 
+ 	printk(KERN_NOTICE "Creating %d MTD partitions on \"%s\":\n", nbparts, master->name);
+ 
+ 	for (i = 0; i < nbparts; i++) {
+ 		slave = allocate_partition(master, parts + i, i, cur_offset,
+-					   c_map_valid, c_installer);
++					   c_map_valid, c_installer,
++					   d_map_valid, d_installer);
+ 		if (IS_ERR(slave)) {
+ 			ret = PTR_ERR(slave);
+ 			goto err_del_partitions;
+--- a/drivers/mtd/mtdcore.c
++++ b/drivers/mtd/mtdcore.c
+@@ -832,6 +832,12 @@
+ 		of_machine_is_compatible("h3c,rt3000-rtl8367s");
+ }
+ 
++static bool hwd_nand_master(struct mtd_info *mtd)
++{
++	return mtd->type == MTD_NANDFLASH &&
++		of_machine_is_compatible("h3c,nx30-hw-d");
++}
++
+ int mtd_device_parse_register(struct mtd_info *mtd, const char * const *types,
+ 			      struct mtd_part_parser_data *parser_data,
+ 			      const struct mtd_partition *parts,
+@@ -840,7 +846,7 @@
+ 	int ret;
+ 
+ 	/* Never expose the raw C NAND master, including bad config builds. */
+-	if (rt3000_c_nand_master(mtd) &&
++	if ((rt3000_c_nand_master(mtd) || hwd_nand_master(mtd)) &&
+ 	    IS_ENABLED(CONFIG_MTD_PARTITIONED_MASTER))
+ 		return -EPERM;
+ 
+@@ -861,7 +867,8 @@
+ 		ret = 0;
+ 	else if (nr_parts)
+ 		ret = add_mtd_partitions(mtd, parts, nr_parts);
+-	else if (!device_is_registered(&mtd->dev) && rt3000_c_nand_master(mtd))
++	else if (!device_is_registered(&mtd->dev) &&
++		 (rt3000_c_nand_master(mtd) || hwd_nand_master(mtd)))
+ 		ret = -ENODEV; /* parser/map failure must not fall back to raw NAND */
+ 	else if (!device_is_registered(&mtd->dev))
+ 		ret = add_mtd_device(mtd);

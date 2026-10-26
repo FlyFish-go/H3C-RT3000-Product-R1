@@ -1,0 +1,245 @@
+--- a/drivers/mtd/mtdpart.c
++++ b/drivers/mtd/mtdpart.c
+@@ -57,13 +57,100 @@
+ 	return container_of(mtd, struct mtd_part, mtd);
+ }
+ 
++
++/* RT3000 C fail-closed physical NAND policy.  This is deliberately machine
++ * scoped and validates the complete child map before registering any child.
++ */
++#define RT3000_C_NAND_SIZE 0x08000000ULL
++#define RT3000_C_SLOT0_OFF 0x00900000ULL
++#define RT3000_C_SLOT1_OFF 0x03100000ULL
++#define RT3000_C_SLOT_SIZE 0x02800000ULL
++#define RT3000_C_INSTALLER_BC_PROP "h3c,rt3000-c-installer-write-bootconfig"
++#define RT3000_C_SAFE_PROP "h3c,rt3000-native-nand-safe-config"
++
++static bool rt3000_c_nand(struct mtd_info *mtd)
++{
++	return mtd->type == MTD_NANDFLASH &&
++		of_machine_is_compatible("h3c,rt3000-rtl8367s");
++}
++
++static bool rt3000_c_installer_write_bc(struct mtd_info *mtd)
++{
++	struct device_node *np = mtd->dev.parent ? mtd->dev.parent->of_node : NULL;
++
++	return np && of_property_read_bool(np, RT3000_C_INSTALLER_BC_PROP);
++}
++
++static bool rt3000_c_nand_safe_node(struct mtd_info *mtd)
++{
++	struct device_node *np = mtd->dev.parent ? mtd->dev.parent->of_node : NULL;
++
++	return np && of_property_read_bool(np, RT3000_C_SAFE_PROP);
++}
++
++static bool rt3000_c_partition_map_valid(struct mtd_info *master,
++					 const struct mtd_partition *parts,
++					 int count)
++{
++	static const struct { u64 off, size; } expected[] = {
++		{0x00000000,0x00080000},{0x00080000,0x00080000},
++		{0x00100000,0x00040000},{0x00140000,0x00040000},
++		{0x00180000,0x00100000},{0x00280000,0x00100000},
++		{0x00380000,0x00040000},{0x003c0000,0x00040000},
++		{0x00400000,0x00040000},{0x00440000,0x00040000},
++		{0x00480000,0x00080000},{0x00500000,0x00140000},
++		{0x00640000,0x00140000},{0x00780000,0x00100000},
++		{0x00880000,0x00080000},{0x00900000,0x02800000},
++		{0x03100000,0x02800000},{0x05900000,0x00600000},
++		{0x05f00000,0x00600000},{0x06500000,0x00100000},
++		{0x06600000,0x01700000},
++	};
++	bool seen[ARRAY_SIZE(expected)] = { false };
++	int i;
++	unsigned int j;
++
++	if (mtd_is_partition(master) || master->size != RT3000_C_NAND_SIZE ||
++	    master->writesize != 2048 || master->erasesize != 131072 ||
++	    master->oobsize != 64 || master->ecc_strength != 4 ||
++	    !rt3000_c_nand_safe_node(master) ||
++	    count != (int)ARRAY_SIZE(expected) || !parts)
++		return false;
++
++	for (i = 0; i < count; i++) {
++		if (parts[i].size == 0 || !parts[i].name)
++			return false;
++		for (j = 0; j < ARRAY_SIZE(expected); j++) {
++			if ((u64)parts[i].offset == expected[j].off &&
++			    (u64)parts[i].size == expected[j].size)
++				break;
++		}
++		if (j == ARRAY_SIZE(expected) || seen[j])
++			return false;
++		seen[j] = true;
++	}
++	for (i = 0; i < (int)ARRAY_SIZE(expected); i++)
++		if (!seen[i])
++			return false;
++	return true;
++}
++
++static bool rt3000_c_write_window(u64 off, u64 size, bool installer)
++{
++	if (off == RT3000_C_SLOT1_OFF && size == RT3000_C_SLOT_SIZE)
++		return true;
++	return installer &&
++		((off == 0x00100000 && size == 0x00040000) ||
++		 (off == 0x00140000 && size == 0x00040000));
++}
++
+ static u64 part_absolute_offset(struct mtd_info *mtd)
+ {
+-	struct mtd_part *part = mtd_to_part(mtd);
++	struct mtd_part *part;
+ 
+ 	if (!mtd_is_partition(mtd))
+ 		return 0;
+ 
++	part = mtd_to_part(mtd);
+ 	return part_absolute_offset(part->parent) + part->offset;
+ }
+ 
+@@ -403,7 +490,7 @@
+ 
+ static struct mtd_part *allocate_partition(struct mtd_info *parent,
+ 			const struct mtd_partition *part, int partno,
+-			uint64_t cur_offset)
++			uint64_t cur_offset, bool c_map_valid, bool c_installer)
+ {
+ 	int wr_alignment = (parent->flags & MTD_NO_ERASE) ? parent->writesize :
+ 							    parent->erasesize;
+@@ -637,6 +724,39 @@
+ 	}
+ 
+ out_register:
++	if (rt3000_c_nand(parent)) {
++		u64 abs_off = part_absolute_offset(parent) + slave->offset;
++		bool permitted = c_map_valid &&
++			rt3000_c_write_window(abs_off, slave->mtd.size, c_installer) &&
++			(parent->orig_flags & MTD_WRITEABLE) &&
++			!(part->mask_flags & MTD_WRITEABLE);
++
++		if (permitted)
++			slave->mtd.flags |= MTD_WRITEABLE;
++		else
++			slave->mtd.flags &= ~MTD_WRITEABLE;
++		slave->mtd.orig_flags = slave->mtd.flags;
++
++		if (c_map_valid && abs_off == RT3000_C_SLOT0_OFF &&
++		    slave->mtd.size == RT3000_C_SLOT_SIZE) {
++			name = kstrdup("rootfs", GFP_KERNEL);
++			if (!name) {
++				free_partition(slave);
++				return ERR_PTR(-ENOMEM);
++			}
++			kfree(slave->mtd.name);
++			slave->mtd.name = name;
++		} else if (c_map_valid && abs_off == RT3000_C_SLOT1_OFF &&
++			   slave->mtd.size == RT3000_C_SLOT_SIZE) {
++			name = kstrdup("rootfs_1", GFP_KERNEL);
++			if (!name) {
++				free_partition(slave);
++				return ERR_PTR(-ENOMEM);
++			}
++			kfree(slave->mtd.name);
++			slave->mtd.name = name;
++		}
++	}
+ 	return slave;
+ }
+ 
+@@ -687,7 +807,7 @@
+ 	part.size = length;
+ 	part.offset = offset;
+ 
+-	new = allocate_partition(parent, &part, -1, offset);
++	new = allocate_partition(parent, &part, -1, offset, false, false);
+ 	if (IS_ERR(new))
+ 		return PTR_ERR(new);
+ 
+@@ -859,14 +979,27 @@
+ 		       const struct mtd_partition *parts,
+ 		       int nbparts)
+ {
++	bool c_nand = rt3000_c_nand(master);
++	bool c_map_valid = false;
++	bool c_installer = false;
+ 	struct mtd_part *slave;
+ 	uint64_t cur_offset = 0;
+ 	int i, ret;
+ 
++	if (c_nand && !mtd_is_partition(master)) {
++		if (!rt3000_c_partition_map_valid(master, parts, nbparts)) {
++			pr_err("RT3000 C NAND map invalid; refusing child registration\n");
++			return -EINVAL;
++		}
++		c_map_valid = true;
++		c_installer = rt3000_c_installer_write_bc(master);
++	}
++
+ 	printk(KERN_NOTICE "Creating %d MTD partitions on \"%s\":\n", nbparts, master->name);
+ 
+ 	for (i = 0; i < nbparts; i++) {
+-		slave = allocate_partition(master, parts + i, i, cur_offset);
++		slave = allocate_partition(master, parts + i, i, cur_offset,
++					   c_map_valid, c_installer);
+ 		if (IS_ERR(slave)) {
+ 			ret = PTR_ERR(slave);
+ 			goto err_del_partitions;
+--- a/drivers/mtd/mtdcore.c
++++ b/drivers/mtd/mtdcore.c
+@@ -826,6 +826,12 @@
+  *
+  * Returns zero in case of success and a negative error code in case of failure.
+  */
++static bool rt3000_c_nand_master(struct mtd_info *mtd)
++{
++	return mtd->type == MTD_NANDFLASH &&
++		of_machine_is_compatible("h3c,rt3000-rtl8367s");
++}
++
+ int mtd_device_parse_register(struct mtd_info *mtd, const char * const *types,
+ 			      struct mtd_part_parser_data *parser_data,
+ 			      const struct mtd_partition *parts,
+@@ -833,6 +839,11 @@
+ {
+ 	int ret;
+ 
++	/* Never expose the raw C NAND master, including bad config builds. */
++	if (rt3000_c_nand_master(mtd) &&
++	    IS_ENABLED(CONFIG_MTD_PARTITIONED_MASTER))
++		return -EPERM;
++
+ 	mtd_set_dev_defaults(mtd);
+ 
+ 	if (IS_ENABLED(CONFIG_MTD_PARTITIONED_MASTER)) {
+@@ -850,6 +861,8 @@
+ 		ret = 0;
+ 	else if (nr_parts)
+ 		ret = add_mtd_partitions(mtd, parts, nr_parts);
++	else if (!device_is_registered(&mtd->dev) && rt3000_c_nand_master(mtd))
++		ret = -ENODEV; /* parser/map failure must not fall back to raw NAND */
+ 	else if (!device_is_registered(&mtd->dev))
+ 		ret = add_mtd_device(mtd);
+ 	else
+--- a/drivers/mtd/nand/raw/qcom_nandc.c
++++ b/drivers/mtd/nand/raw/qcom_nandc.c
+@@ -3646,9 +3646,12 @@
+ 	chip->legacy.block_bad		= qcom_nandc_block_bad;
+ 	chip->legacy.block_markbad	= qcom_nandc_block_markbad;
+ 
+-	if (of_machine_is_compatible("h3c,rt3000-rtl8367s") &&
+-	    of_property_read_bool(nandc->dev->of_node,
+-				  "h3c,rt3000-native-nand-safe-config")) {
++	if (of_machine_is_compatible("h3c,rt3000-rtl8367s")) {
++		if (!of_property_read_bool(nandc->dev->of_node,
++					  "h3c,rt3000-native-nand-safe-config")) {
++			dev_err(dev, "C NAND safe-config gate missing\n");
++			return -EPERM;
++		}
+ 		c_native_safe = true;
+ 		chip->options |= NAND_SKIP_BBTSCAN;
+ 		chip->bbt_options &= ~NAND_BBT_USE_FLASH;

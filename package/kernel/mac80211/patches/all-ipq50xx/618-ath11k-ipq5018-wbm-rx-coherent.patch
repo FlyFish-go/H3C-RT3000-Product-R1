@@ -1,0 +1,14 @@
+--- a/drivers/net/wireless/ath/ath11k/dp.c
++++ b/drivers/net/wireless/ath/ath11k/dp.c
+@@ -288,8 +288,9 @@
+ 	if (ab->nss.enabled)
+ 		cached = false;
+ 
+-	/* IPQ5018 REO destination entries need coherent visibility. */
+-	if (type == HAL_REO_DST &&
++	/* Keep IPQ5018 RX descriptor rings coherent on the C board. */
++	if ((type == HAL_REO_DST ||
++	     (type == HAL_WBM2SW_RELEASE && ring_num == 3)) &&
+ 	    ab->hw_rev == ATH11K_HW_IPQ5018 &&
+ 	    of_machine_is_compatible("h3c,rt3000-rtl8367s")) {
+ 		cached = false;

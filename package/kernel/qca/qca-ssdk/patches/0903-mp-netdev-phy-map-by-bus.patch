@@ -1,0 +1,208 @@
+From: RT3000 C SSDK notifier fix
+Subject: [PATCH] mp: scope PHY notifier mapping by configured MDIO identity
+
+The MP NETDEV_CHANGE notifier is global, while the legacy address-only
+mapper can confuse PHYs on distinct MDIO buses and defaults unmapped addresses
+to port 0. Resolve only initialized SSDK PHY records using notifier-specific
+bus identity and PHY address; dispatch a unique match through the existing
+adapter bitmap check. Keep the legacy mapper and its bus-routing state intact.
+For default-bus resolution, require explicit equal switch and port MDIO
+phandles; missing or unresolved foreign bus identity remains unmatched.
+
+--- a/include/init/ssdk_dts.h
++++ b/include/init/ssdk_dts.h
+@@ -76,6 +76,9 @@
+ 	a_uint32_t port_speed;
+ 	phy_features_t phy_features;
+ 	struct mii_bus *miibus;
++	/* Notifier-only MDIO identity; does not change legacy bus routing. */
++	struct mii_bus *notify_miibus;
++	a_bool_t notify_miibus_is_default;
+ } ssdk_port_phyinfo;
+ 
+ typedef struct
+--- a/src/init/ssdk_dts.c
++++ b/src/init/ssdk_dts.c
+@@ -602,7 +602,7 @@
+ 	a_bool_t phy_c45, phy_combo, phy_i2c, phy_forced;
+ 	const char *mac_type = NULL, *media_type = NULL;
+ 	sw_error_t rv = SW_OK;
+-	struct device_node *mdio_node;
++	struct device_node *mdio_node, *switch_mdio_node;
+ 	int phy_reset_gpio = 0;
+ 	phy_dac_t phy_dac = {0};
+ 
+@@ -611,10 +611,15 @@
+ 		SSDK_INFO("qcom,port_phyinfo DT doesn't exist!\n");
+ 		return SW_NOT_FOUND;
+ 	}
++	switch_mdio_node = of_parse_phandle(switch_node, "mdio-bus", 0);
+ 
+ 	for_each_available_child_of_node(phy_info_node, port_node) {
+-		if (of_property_read_u32(port_node, "port_id", &port_id))
++		if (of_property_read_u32(port_node, "port_id", &port_id)) {
++			of_node_put(port_node);
++			of_node_put(switch_mdio_node);
++			of_node_put(phy_info_node);
+ 			return SW_BAD_VALUE;
++		}
+ 
+ 		/* initialize phy_addr in case of undefined dts field */
+ 		phy_addr = 0xff;
+@@ -652,6 +657,10 @@
+ 			hsl_port_phy_access_type_set(dev_id, port_id, PHY_I2C_ACCESS);
+ 			if (of_property_read_u32(port_node, "phy_i2c_address",
+ 						&phy_i2c_addr)) {
++				of_node_put(mdio_node);
++				of_node_put(port_node);
++				of_node_put(switch_mdio_node);
++				of_node_put(phy_info_node);
+ 				return SW_BAD_VALUE;
+ 			}
+ 			/* phy_i2c_address is the i2c slave addr */
+@@ -712,9 +721,16 @@
+ 
+ 			port_phyinfo->phy_features |= PHY_F_INIT;
+ 
++			/* Use the platform default only when both phandles prove
++			 * this port and the switch refer to the same MDIO node.
++			 */
++			port_phyinfo->notify_miibus_is_default =
++				switch_mdio_node && mdio_node == switch_mdio_node ?
++				A_TRUE : A_FALSE;
+ 			if (mdio_node)
+ 			{
+ 				port_phyinfo->miibus = of_mdio_find_bus(mdio_node);
++				port_phyinfo->notify_miibus = port_phyinfo->miibus;
+ 				phy_reset_gpio = of_get_named_gpio(mdio_node, "phy-reset-gpio",
+ 					SSDK_PHY_RESET_GPIO_INDEX);
+ 				if(phy_reset_gpio > 0)
+@@ -726,7 +742,10 @@
+ 				}
+ 			}
+ 		}
+-	}
++		of_node_put(mdio_node);
++	}
++	of_node_put(switch_mdio_node);
++	of_node_put(phy_info_node);
+ 
+ 	return rv;
+ }
+@@ -735,6 +754,7 @@
+ 		ssdk_init_cfg *cfg)
+ {
+ 	struct device_node *mdio_node = NULL;
++	struct device_node *switch_mdio_node = NULL;
+ 	struct device_node *child = NULL;
+ 	ssdk_port_phyinfo *port_phyinfo;
+ 	a_uint32_t len = 0, i = 1;
+@@ -745,6 +765,7 @@
+ 	if (SW_OK == ssdk_dt_parse_phy_info(switch_node, dev_id, cfg))
+ 		return;
+ 
++	switch_mdio_node = of_parse_phandle(switch_node, "mdio-bus", 0);
+ 	mdio_node = of_find_node_by_name(NULL, "mdio");
+ 
+ 	if (!mdio_node) {
+@@ -768,6 +789,11 @@
+ 				port_phyinfo->port_id = i;
+ 				if (phy_addr) {
+ 					port_phyinfo->phy_addr = be32_to_cpup(phy_addr);
++					port_phyinfo->notify_miibus =
++						of_mdio_find_bus(mdio_node);
++					port_phyinfo->notify_miibus_is_default =
++						switch_mdio_node &&
++						mdio_node == switch_mdio_node ? A_TRUE : A_FALSE;
+ 				}
+ 				if (c45_phy) {
+ 					port_phyinfo->phy_features |= PHY_F_CLAUSE45;
+@@ -787,7 +813,9 @@
+ 				break;
+ 			}
+ 		}
+-	}
++		of_node_put(mdio_node);
++	}
++	of_node_put(switch_mdio_node);
+ 	return;
+ }
+ 
+--- a/src/init/ssdk_init.c
++++ b/src/init/ssdk_init.c
+@@ -3418,6 +3418,48 @@
+ #endif
+ #endif
+ 
++#ifdef MP
++/*
++ * Map only PHYs explicitly represented by the SSDK port configuration.
++ * The legacy address-only mapper is still used by unrelated SSDK callers,
++ * but cannot distinguish identical addresses on separate MDIO buses.
++ */
++static int ssdk_mdio_bus_phy_to_configured_port(struct qca_phy_priv *priv,
++		struct mii_bus *bus, a_uint32_t phy_addr, a_uint32_t *port_id)
++{
++	a_uint32_t i;
++	a_bool_t found = A_FALSE;
++	struct mii_bus *configured_bus;
++	ssdk_port_phyinfo *phyinfo;
++
++	if (!priv || !bus || !port_id || phy_addr >= PHY_MAX_ADDR)
++		return -ENODEV;
++
++	for (i = 0; i < SW_MAX_NR_PORT; i++) {
++		phyinfo = ssdk_port_phyinfo_get(priv->device_id, i);
++		if (!phyinfo || phyinfo->port_id != i ||
++			!(phyinfo->phy_features & PHY_F_INIT) ||
++			(phyinfo->phy_features & PHY_F_I2C) ||
++			phyinfo->phy_addr != phy_addr)
++			continue;
++
++		configured_bus = phyinfo->notify_miibus;
++		if (!configured_bus && phyinfo->notify_miibus_is_default)
++			configured_bus = priv->miibus;
++		if (!configured_bus || configured_bus != bus)
++			continue;
++
++		if (found)
++			return -EEXIST;
++
++		*port_id = i;
++		found = A_TRUE;
++	}
++
++	return found ? 0 : -ENODEV;
++}
++#endif
++
+ //#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,14,0))
+ static int ssdk_dev_event(struct notifier_block *this, unsigned long event, void *ptr)
+ {
+@@ -3491,13 +3533,23 @@
+ 				}
+ 				if (dev->phydev != NULL) {
+ 					int addr;
++					struct mii_bus *bus;
+ #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,9,0))
+ 					addr = dev->phydev->mdio.addr;
++					bus = dev->phydev->mdio.bus;
+ #else
+ 					addr = dev->phydev->addr;
+-#endif
+-					port_id = qca_ssdk_phy_addr_to_port(priv->device_id,
+-						addr);
++					bus = dev->phydev->bus;
++#endif
++					rv = ssdk_mdio_bus_phy_to_configured_port(priv, bus,
++						(a_uint32_t)addr, &port_id);
++					if (rv == -ENODEV)
++						break;
++					if (rv) {
++						SSDK_ERROR("ambiguous configured PHY mapping for addr %d\n",
++							addr);
++						return NOTIFY_DONE;
++					}
+ 					rv = p_api->adpt_port_netdev_notify_set(priv, port_id);
+ 					if (rv) {
+ 						SSDK_ERROR("netdev change notify failed\n");

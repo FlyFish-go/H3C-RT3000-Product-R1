@@ -1,0 +1,74 @@
+From 5a7d9c11eb13a230fd437a006a067ab802e49ccf Mon Sep 17 00:00:00 2001
+From: Codex <codex@openai.com>
+Date: Sun, 4 Oct 2026 00:00:00 +0000
+Subject: [PATCH] mtd: qcom_nandc: propagate C bad-block marker read errors
+
+For the C board compatible, propagate raw marker read submission and
+flash-status failures as negative errno. Preserve historical behavior on
+non-C boards, where read failure still returns the original zero result.
+A successfully read marker still returns exactly 0 or 1.
+
+---
+ drivers/mtd/nand/raw/qcom_nandc.c | 29 +++++++++++++++++++++++------
+ 1 file changed, 23 insertions(+), 6 deletions(-)
+
+diff --git a/drivers/mtd/nand/raw/qcom_nandc.c b/drivers/mtd/nand/raw/qcom_nandc.c
+--- a/drivers/mtd/nand/raw/qcom_nandc.c
++++ b/drivers/mtd/nand/raw/qcom_nandc.c
+@@ -2511,12 +2511,29 @@
+ 	return nand_prog_page_end_op(chip);
+ }
+ 
++static int qcom_nandc_block_bad_result(int read_ret, int flash_ret,
++				       int marker_bad, bool c_board)
++{
++	if (read_ret) {
++		if (!c_board)
++			return 0;
++		return read_ret < 0 ? read_ret : -EIO;
++	}
++	if (flash_ret) {
++		if (!c_board)
++			return 0;
++		return flash_ret < 0 ? flash_ret : -EIO;
++	}
++	return !!marker_bad;
++}
++
+ static int qcom_nandc_block_bad(struct nand_chip *chip, loff_t ofs)
+ {
+ 	struct mtd_info *mtd = nand_to_mtd(chip);
+ 	struct qcom_nand_host *host = to_qcom_nand_host(chip);
+ 	struct qcom_nand_controller *nandc = get_qcom_nand_controller(chip);
+ 	struct nand_ecc_ctrl *ecc = &chip->ecc;
++	bool c_board = of_machine_is_compatible("h3c,rt3000-rtl8367s");
+ 	int page, ret, bbpos, bad = 0;
+ 
+ 	page = (int)(ofs >> chip->page_shift) & chip->pagemask;
+@@ -2532,11 +2549,12 @@
+ 	clear_bam_transaction(nandc);
+ 	ret = copy_last_cw(host, page);
+ 	if (ret)
+-		goto err;
+-
+-	if (check_flash_errors(host, 1)) {
++		return qcom_nandc_block_bad_result(ret, 0, 0, c_board);
++
++	ret = check_flash_errors(host, 1);
++	if (ret) {
+ 		dev_warn(nandc->dev, "error when trying to read BBM\n");
+-		goto err;
++		return qcom_nandc_block_bad_result(0, ret, 0, c_board);
+ 	}
+ 
+ 	bbpos = mtd->writesize - host->cw_size * (ecc->steps - 1);
+@@ -2545,8 +2563,7 @@
+ 
+ 	if (chip->options & NAND_BUSWIDTH_16)
+ 		bad = bad || (nandc->data_buffer[bbpos + 1] != 0xff);
+-err:
+-	return bad;
++	return qcom_nandc_block_bad_result(0, 0, bad, c_board);
+ }
+ 
+ static int qcom_nandc_block_markbad(struct nand_chip *chip, loff_t ofs)

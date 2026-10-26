@@ -1,5 +1,5 @@
 #!/bin/sh
-# RT3000 Machine-B - default LAN address.
+# RT3000 Machine-B and Machine-C - default LAN address.
 #
 # Why this file exists:
 #
@@ -26,7 +26,10 @@
 # Ordering: uci-defaults runs after config_generate, so network.lan already
 # exists by the time this executes.
 
-[ "$(board_name)" = "h3c,rt3000" ] || exit 0
+case "$(board_name)" in
+	h3c,rt3000|h3c,rt3000-rtl8367s|h3c,nx30-hw-d|h3c,rw3000-hw-a) ;;
+	*) exit 0 ;;
+esac
 
 # Never touch a LAN address the operator has already changed.  config_generate
 # writes the stock default; anything else is deliberate and must be preserved.

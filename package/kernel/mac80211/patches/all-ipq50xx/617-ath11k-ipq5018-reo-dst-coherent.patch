@@ -1,0 +1,25 @@
+--- a/drivers/net/wireless/ath/ath11k/dp.c
++++ b/drivers/net/wireless/ath/ath11k/dp.c
+@@ -4,6 +4,7 @@
+  */
+ 
+ #include <crypto/hash.h>
++#include <linux/of.h>
+ #include "core.h"
+ #include "dp_tx.h"
+ #include "hal_tx.h"
+@@ -287,6 +288,14 @@
+ 	if (ab->nss.enabled)
+ 		cached = false;
+ 
++	/* IPQ5018 REO destination entries need coherent visibility. */
++	if (type == HAL_REO_DST &&
++	    ab->hw_rev == ATH11K_HW_IPQ5018 &&
++	    of_machine_is_compatible("h3c,rt3000-rtl8367s")) {
++		cached = false;
++		ring->cached = 0;
++	}
++
+ 	ring->size = (num_entries * entry_sz) + align - 1;
+ 
+ 	if (!cached) {

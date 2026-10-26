@@ -1,0 +1,26 @@
+--- a/drivers/net/wireless/ath/ath11k/dp_rx.c
++++ b/drivers/net/wireless/ath/ath11k/dp_rx.c
+@@ -2792,6 +2792,14 @@
+ 		return -ENOMEM;
+ 	}
+ 
++	/* pskb_expand_head() may replace skb->head. The RX descriptor pointer
++	 * is stored in skb->cb and is not adjusted by the skb core; recompute it
++	 * from the unchanged payload position before later RXCB consumers use it.
++	 */
++	if (space_extra > 0)
++		rxcb->rx_desc = (struct hal_rx_desc *)(first->data -
++						       buf_first_hdr_len);
++
+ 	rem_len = msdu_len - buf_first_len;
+ 	while ((skb = __skb_dequeue(msdu_list)) != NULL && rem_len > 0) {
+ 		rxcb = ATH11K_SKB_RXCB(skb);
+@@ -3777,6 +3785,8 @@
+ 				    "failed to coalesce msdu rx buffer%d\n", ret);
+ 			goto free_out;
+ 		}
++		/* Coalescing can expand/relocate the first skb head. */
++		rx_desc = rxcb->rx_desc;
+ 	}
+ 
+ 	ath11k_dp_rx_h_mpdu(ar, msdu, rx_desc, rx_status, fast_rx);

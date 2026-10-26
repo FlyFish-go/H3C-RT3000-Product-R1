@@ -1,0 +1,15 @@
+--- a/drivers/net/wireless/ath/ath11k/hal_rx.c
++++ b/drivers/net/wireless/ath/ath11k/hal_rx.c
+@@ -200,9 +200,9 @@
+ 	ppdu_info->qcn6122_vht_siga_logged = true;
+ 	bw = FIELD_GET(HAL_RX_VHT_SIG_A_INFO_INFO0_BW, info0);
+ 	dev_info(ab->dev,
+-		 "qcn6122-vht-siga-615 sample=%u mac=%d ppdu=%u chan=%u raw_info0=0x%08x siga_bw=%u\n",
+-		 16 - remaining, mac_id, ppdu_info->ppdu_id,
+-		 ppdu_info->chan_num, info0, bw);
++		 "qcn6122-vht-siga-615 sample=%u host_ns=%llu mac=%d ppdu=%u chan=%u raw_info0=0x%08x siga_bw=%u\n",
++		 16 - remaining, (unsigned long long)ktime_get_ns(),
++		 mac_id, ppdu_info->ppdu_id, ppdu_info->chan_num, info0, bw);
+ 	if (!remaining)
+ 		WRITE_ONCE(ath11k_qcn6122_vht_siga_trace_enable, false);
+ }

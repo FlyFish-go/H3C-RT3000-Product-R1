@@ -1,0 +1,280 @@
+diff --git a/drivers/net/wireless/ath/ath11k/core.h b/drivers/net/wireless/ath/ath11k/core.h
+--- a/drivers/net/wireless/ath/ath11k/core.h
++++ b/drivers/net/wireless/ath/ath11k/core.h
+@@ -124,6 +124,9 @@
+ 
+ struct ath11k_skb_rxcb {
+ 	dma_addr_t paddr;
++#ifdef CPTCFG_ATH11K_RT3000_MON_OWNER_DIAG
++	u32 cookie;
++#endif
+ 	bool is_first_msdu;
+ 	bool is_last_msdu;
+ 	bool is_continuation;
+diff --git a/drivers/net/wireless/ath/ath11k/dp_rx.c b/drivers/net/wireless/ath/ath11k/dp_rx.c
+--- a/drivers/net/wireless/ath/ath11k/dp_rx.c
++++ b/drivers/net/wireless/ath/ath11k/dp_rx.c
+@@ -312,6 +312,215 @@
+ 		 info_mcs, nss, nss_bitmap, info_nss, bw, sgi, status->encoding,
+ 		 status->rate_idx, status->nss);
+ }
++enum ath11k_ipq5018_rx_diag_reason {
++	ATH11K_IPQ5018_DIAG_WBM_TYPE,
++	ATH11K_IPQ5018_DIAG_WBM_SOURCE,
++	ATH11K_IPQ5018_DIAG_WBM_RBM,
++	ATH11K_IPQ5018_DIAG_WBM_OTHER,
++	ATH11K_IPQ5018_DIAG_MSDU_DONE,
++	ATH11K_IPQ5018_DIAG_INVALID_VHT,
++	ATH11K_IPQ5018_DIAG_REASON_COUNT,
++};
++
++static DEFINE_RATELIMIT_STATE(ath11k_ipq5018_rx_diag_ratelimit,
++			      DEFAULT_RATELIMIT_INTERVAL,
++			      DEFAULT_RATELIMIT_BURST);
++static atomic_t ath11k_ipq5018_rx_diag_first[ATH11K_IPQ5018_DIAG_REASON_COUNT] = {
++	ATOMIC_INIT(0), ATOMIC_INIT(0), ATOMIC_INIT(0),
++	ATOMIC_INIT(0), ATOMIC_INIT(0), ATOMIC_INIT(0),
++};
++
++static bool ath11k_ipq5018_rx_diag_allow(enum ath11k_ipq5018_rx_diag_reason reason,
++					 bool *first_for_reason)
++{
++	if ((unsigned int)reason >= ATH11K_IPQ5018_DIAG_REASON_COUNT)
++		return false;
++
++	*first_for_reason =
++		atomic_cmpxchg(&ath11k_ipq5018_rx_diag_first[reason], 0, 1) == 0;
++	if (*first_for_reason)
++		return true;
++
++	return __ratelimit(&ath11k_ipq5018_rx_diag_ratelimit);
++}
++
++static const char *ath11k_ipq5018_rx_diag_reason_name(
++					 enum ath11k_ipq5018_rx_diag_reason reason)
++{
++	switch (reason) {
++	case ATH11K_IPQ5018_DIAG_WBM_TYPE:
++		return "wbm_type";
++	case ATH11K_IPQ5018_DIAG_WBM_SOURCE:
++		return "wbm_source";
++	case ATH11K_IPQ5018_DIAG_WBM_RBM:
++		return "wbm_rbm";
++	case ATH11K_IPQ5018_DIAG_WBM_OTHER:
++		return "wbm_other";
++	case ATH11K_IPQ5018_DIAG_MSDU_DONE:
++		return "msdu_done";
++	case ATH11K_IPQ5018_DIAG_INVALID_VHT:
++		return "invalid_vht";
++	default:
++		return "unknown";
++	}
++}
++
++static enum ath11k_ipq5018_rx_diag_reason
++ath11k_ipq5018_rx_diag_wbm_reason(int ret, u32 type, u32 source, u32 rbm)
++{
++	if (ret != -EINVAL)
++		return ATH11K_IPQ5018_DIAG_WBM_OTHER;
++	if (type != HAL_WBM_REL_DESC_TYPE_REL_MSDU)
++		return ATH11K_IPQ5018_DIAG_WBM_TYPE;
++	if (source != HAL_WBM_REL_SRC_MODULE_RXDMA &&
++	    source != HAL_WBM_REL_SRC_MODULE_REO)
++		return ATH11K_IPQ5018_DIAG_WBM_SOURCE;
++	if (rbm != HAL_RX_BUF_RBM_SW3_BM)
++		return ATH11K_IPQ5018_DIAG_WBM_RBM;
++	return ATH11K_IPQ5018_DIAG_WBM_OTHER;
++}
++
++static void ath11k_ipq5018_rx_diag_wbm_reject(struct ath11k_base *ab,
++					      struct hal_srng *srng,
++					      u32 *desc, int ret)
++{
++	struct hal_wbm_release_ring *wbm = (struct hal_wbm_release_ring *)desc;
++	enum ath11k_ipq5018_rx_diag_reason reason;
++	bool first_for_reason;
++	u32 info0, info1, type, source, rbm, cookie;
++	u32 cookie_pdev, cookie_buf_id;
++
++	if (!ab || ab->hw_params.hw_rev != ATH11K_HW_IPQ5018 || !desc)
++		return;
++
++	info0 = le32_to_cpu(wbm->info0);
++	info1 = le32_to_cpu(wbm->buf_addr_info.info1);
++	type = FIELD_GET(HAL_WBM_RELEASE_INFO0_DESC_TYPE, info0);
++	source = FIELD_GET(HAL_WBM_RELEASE_INFO0_REL_SRC_MODULE, info0);
++	rbm = FIELD_GET(BUFFER_ADDR_INFO1_RET_BUF_MGR, info1);
++	cookie = FIELD_GET(BUFFER_ADDR_INFO1_SW_COOKIE, info1);
++	cookie_pdev = FIELD_GET(DP_RXDMA_BUF_COOKIE_PDEV_ID, cookie);
++	cookie_buf_id = FIELD_GET(DP_RXDMA_BUF_COOKIE_BUF_ID, cookie);
++	reason = ath11k_ipq5018_rx_diag_wbm_reason(ret, type, source, rbm);
++	if (!ath11k_ipq5018_rx_diag_allow(reason, &first_for_reason))
++		return;
++
++	dev_warn(ab->dev,
++		 "rx-warning metadata event=ipq5018_wbm_reject reason=%s first_for_reason=%u ret=%d ring_id=%u ring_entry_size=%u desc_size=%u info0=0x%08x info1=0x%08x type=%u source=%u rbm=%u cookie=0x%08x cookie_pdev=%u cookie_buf_id=%u nss_enabled=%u\n",
++		 ath11k_ipq5018_rx_diag_reason_name(reason), first_for_reason,
++		 ret, srng->ring_id, srng->entry_size, (u32)sizeof(*wbm), info0, info1,
++		 type, source, rbm, cookie, cookie_pdev, cookie_buf_id,
++		 ab->nss.enabled);
++}
++
++static bool ath11k_ipq5018_rx_diag_info3(struct ath11k_base *ab,
++					 struct sk_buff *skb,
++					 struct hal_rx_desc *desc,
++					 u32 *info3)
++{
++	if (!ab || ab->hw_params.hw_rev != ATH11K_HW_IPQ5018 ||
++	    !skb || !desc || !info3)
++		return false;
++	if (!ath11k_rx_warning_desc_fits_skb(skb, desc,
++						     ab->hw_params.hal_desc_sz))
++		return false;
++
++	*info3 = le32_to_cpu(desc->u.qcn9074.msdu_start.info3);
++	return true;
++}
++
++static void ath11k_ipq5018_rx_diag_msdu_done(struct ath11k_base *ab,
++					     struct sk_buff *msdu,
++					     struct sk_buff *last_buf,
++					     struct hal_rx_desc *rx_desc,
++					     struct hal_rx_desc *last_desc,
++					     struct rx_attention *attention)
++{
++	struct ath11k_skb_rxcb *first_cb, *last_cb;
++	u32 first_info3 = 0, last_info3 = 0;
++	u32 first_start_tag = 0, last_start_tag = 0, last_attn_tag = 0;
++	u32 attn_info1 = 0, attn_info2 = 0;
++	u16 attn_info0 = 0, ppdu_id = 0;
++	bool first_valid, last_valid, first_for_reason;
++
++	if (!ab || ab->hw_params.hw_rev != ATH11K_HW_IPQ5018 ||
++	    !msdu || !last_buf || !rx_desc || !last_desc)
++		return;
++
++	first_cb = ATH11K_SKB_RXCB(msdu);
++	last_cb = ATH11K_SKB_RXCB(last_buf);
++	first_valid = ath11k_ipq5018_rx_diag_info3(ab, msdu, rx_desc,
++						   &first_info3);
++	last_valid = ath11k_ipq5018_rx_diag_info3(ab, last_buf, last_desc,
++						  &last_info3);
++	if (first_valid)
++		first_start_tag = le32_to_cpu(rx_desc->u.qcn9074.msdu_start_tag);
++	if (last_valid) {
++		last_start_tag = le32_to_cpu(last_desc->u.qcn9074.msdu_start_tag);
++		last_attn_tag = le32_to_cpu(last_desc->u.qcn9074.rx_attn_tag);
++	}
++	if (last_valid && attention) {
++		attn_info0 = le16_to_cpu(attention->info0);
++		ppdu_id = le16_to_cpu(attention->phy_ppdu_id);
++		attn_info1 = le32_to_cpu(attention->info1);
++		attn_info2 = le32_to_cpu(attention->info2);
++	}
++	if (!ath11k_ipq5018_rx_diag_allow(ATH11K_IPQ5018_DIAG_MSDU_DONE,
++					  &first_for_reason))
++		return;
++
++	dev_warn(ab->dev,
++		 "rx-warning metadata event=ipq5018_msdu_done reason=msdu_done first_for_reason=%u mac=%u desc_size=%u struct_desc_size=%u first_skb_len=%u first_tailroom=%u last_skb_len=%u last_tailroom=%u first_cookie=0x%08x first_cookie_pdev=%u first_cookie_buf_id=%u first_cb_paddr=%pad first_continuation=%u last_cookie=0x%08x last_cookie_pdev=%u last_cookie_buf_id=%u last_cb_paddr=%pad last_continuation=%u first_valid=%u first_info3=0x%08x first_start_tag=0x%08x last_valid=%u last_info3=0x%08x last_start_tag=0x%08x last_attn_tag=0x%08x attn_info0=0x%04x ppdu_id=0x%04x attn_info1=0x%08x attn_info2=0x%08x msdu_done_bit=%u\n",
++		 first_for_reason, first_cb->mac_id, ab->hw_params.hal_desc_sz,
++		 (u32)sizeof(struct hal_rx_desc_qcn9074), msdu->len,
++		 skb_tailroom(msdu), last_buf->len, skb_tailroom(last_buf),
++		 first_cb->cookie,
++		 (u32)FIELD_GET(DP_RXDMA_BUF_COOKIE_PDEV_ID, first_cb->cookie),
++		 (u32)FIELD_GET(DP_RXDMA_BUF_COOKIE_BUF_ID, first_cb->cookie),
++		 &first_cb->paddr, first_cb->is_continuation,
++		 last_cb->cookie,
++		 (u32)FIELD_GET(DP_RXDMA_BUF_COOKIE_PDEV_ID, last_cb->cookie),
++		 (u32)FIELD_GET(DP_RXDMA_BUF_COOKIE_BUF_ID, last_cb->cookie),
++		 &last_cb->paddr, last_cb->is_continuation,
++		 first_valid, first_info3, first_start_tag, last_valid, last_info3,
++		 last_start_tag, last_attn_tag, attn_info0, ppdu_id, attn_info1,
++		 attn_info2, !!(attn_info2 & BIT(31)));
++}
++
++static void ath11k_ipq5018_rx_diag_invalid_vht(struct ath11k *ar,
++					       struct hal_rx_desc *desc,
++					       enum rx_msdu_start_pkt_type pkt_type,
++					       u8 rate_mcs, u8 nss, u8 bw, u8 sgi,
++					       struct ieee80211_rx_status *status)
++{
++	u32 info3 = 0;
++	u8 info_pkt_type = 0, info_mcs = 0, nss_bitmap = 0, nss_popcount = 0;
++	bool info3_valid, first_for_reason;
++
++	if (!ar || ar->ab->hw_params.hw_rev != ATH11K_HW_IPQ5018 || !desc)
++		return;
++	if (!ath11k_ipq5018_rx_diag_allow(ATH11K_IPQ5018_DIAG_INVALID_VHT,
++					  &first_for_reason))
++		return;
++
++	/* The normal h_rate path has already read these fields via hw_ops. */
++	info3_valid = true;
++	info3 = le32_to_cpu(desc->u.qcn9074.msdu_start.info3);
++	info_pkt_type = FIELD_GET(RX_MSDU_START_INFO3_PKT_TYPE, info3);
++	info_mcs = FIELD_GET(RX_MSDU_START_INFO3_RATE_MCS, info3);
++	nss_bitmap = FIELD_GET(RX_MSDU_START_INFO3_MIMO_SS_BITMAP, info3);
++	nss_popcount = hweight8(nss_bitmap);
++
++	dev_warn(ar->ab->dev,
++		 "rx-warning metadata event=ipq5018_invalid_vht reason=invalid_vht first_for_reason=%u desc_size=%u pkt_type=%u info_pkt_type=%u rate_mcs=%u info_mcs=%u nss=%u nss_bitmap=0x%02x nss_popcount=%u bw=%u sgi=%u status_encoding=%u status_rate_idx=%u status_nss=%u info3_valid=%u info3=0x%08x\n",
++		 first_for_reason, ar->ab->hw_params.hal_desc_sz, pkt_type,
++		 info_pkt_type, rate_mcs, info_mcs, nss, nss_bitmap,
++		 nss_popcount, bw, sgi, status->encoding, status->rate_idx,
++		 status->nss, info3_valid, info3);
++}
++
++
++
+ #else
+ #define ath11k_mon_owner_event_locked(rx_ring, buf_id, state, skb, observed, cookie) do { } while (0)
+ #define ath11k_mon_owner_diag_mismatch(ab, srng, ring, mac, id, skb, desc, cb, cookie) do { } while (0)
+@@ -319,6 +528,9 @@
+ #define ath11k_mon_owner_diag_free(rx_ring) do { } while (0)
+ #define ath11k_rx_warning_diag_msdu_done(ab, msdu, last_buf, rx_desc, last_desc, attention) do { } while (0)
+ #define ath11k_rx_warning_diag_invalid_vht(ar, desc, pkt_type, rate_mcs, nss, bw, sgi, status) do { } while (0)
++#define ath11k_ipq5018_rx_diag_wbm_reject(ab, srng, desc, ret) do { } while (0)
++#define ath11k_ipq5018_rx_diag_msdu_done(ab, msdu, last_buf, rx_desc, last_desc, attention) do { } while (0)
++#define ath11k_ipq5018_rx_diag_invalid_vht(ar, desc, pkt_type, rate_mcs, nss, bw, sgi, status) do { } while (0)
+ #endif
+ 
+ 
+@@ -744,6 +956,11 @@
+ 			goto fail_idr_remove;
+ 
+ 		ATH11K_SKB_RXCB(skb)->paddr = paddr;
++#ifdef CPTCFG_ATH11K_RT3000_MON_OWNER_DIAG
++		ATH11K_SKB_RXCB(skb)->cookie =
++			FIELD_PREP(DP_RXDMA_BUF_COOKIE_PDEV_ID, mac_id) |
++			FIELD_PREP(DP_RXDMA_BUF_COOKIE_BUF_ID, buf_id);
++#endif
+ 		ath11k_mon_owner_record(rx_ring, buf_id, ATH11K_MON_OWNER_CB_READY,
+ 					 skb, paddr, 0);
+ 
+@@ -3283,6 +3500,8 @@
+ 		if (rate_mcs > ATH11K_VHT_MCS_MAX) {
+ 			ath11k_rx_warning_diag_invalid_vht(ar, rx_desc, pkt_type,
+ 							 rate_mcs, nss, bw, sgi, rx_status);
++			ath11k_ipq5018_rx_diag_invalid_vht(ar, rx_desc, pkt_type,
++							    rate_mcs, nss, bw, sgi, rx_status);
+ 			ath11k_warn(ar->ab,
+ 				    "Received with invalid mcs in VHT mode %d\n",
+ 				     rate_mcs);
+@@ -3486,6 +3705,8 @@
+ 	if (!ath11k_dp_rx_h_attn_msdu_done(rx_attention)) {
+ 		ath11k_rx_warning_diag_msdu_done(ab, msdu, last_buf, rx_desc,
+ 						 lrx_desc, rx_attention);
++		ath11k_ipq5018_rx_diag_msdu_done(ab, msdu, last_buf, rx_desc,
++						 lrx_desc, rx_attention);
+ 		ath11k_warn(ab, "msdu_done bit in attention is not set\n");
+ 		ret = -EIO;
+ 		goto free_out;
+@@ -5610,6 +5831,7 @@
+ 
+ 		ret = ath11k_hal_wbm_desc_parse_err(ab, rx_desc, &err_info);
+ 		if (ret) {
++			ath11k_ipq5018_rx_diag_wbm_reject(ab, srng, rx_desc, ret);
+ 			ath11k_warn(ab,
+ 				    "failed to parse rx error in wbm_rel ring desc %d\n",
+ 				    ret);

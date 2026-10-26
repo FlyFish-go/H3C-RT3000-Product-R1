@@ -1,0 +1,67 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Codex <codex@openai.com>
+Subject: [PATCH proposal] mtd: qcom_nandc: safe writable C native installer probe
+
+Opt in only when the C board compatible and dedicated controller property are
+both present. Keep raw marker reads and normal MTD writability, skip flash BBT
+use and all QE/training writes, and force x1 reads. Preserve the fully read-only
+C discovery profile in patch 422 and all non-C behavior.
+
+This patch is staged in rt3000-machine-c/native/patches for review only. It is
+not part of the target patch series and has not been built.
+
+--- a/drivers/mtd/nand/raw/qcom_nandc.c
++++ b/drivers/mtd/nand/raw/qcom_nandc.c
+@@ -3610,6 +3610,7 @@
+ 	struct mtd_info *mtd = nand_to_mtd(chip);
+ 	struct device *dev = nandc->dev;
+ 	bool c_mtd_discovery = false;
++	bool c_native_safe = false;
+ 	int ret;
+ 
+ 	ret = of_property_read_u32(dn, "reg", &host->cs);
+@@ -3645,6 +3646,14 @@
+ 	chip->legacy.block_bad		= qcom_nandc_block_bad;
+ 	chip->legacy.block_markbad	= qcom_nandc_block_markbad;
+ 
++	if (of_machine_is_compatible("h3c,rt3000-rtl8367s") &&
++	    of_property_read_bool(nandc->dev->of_node,
++				  "h3c,rt3000-native-nand-safe-config")) {
++		c_native_safe = true;
++		chip->options |= NAND_SKIP_BBTSCAN;
++		chip->bbt_options &= ~NAND_BBT_USE_FLASH;
++	}
++
+ 	if (of_machine_is_compatible("h3c,rt3000-rtl8367s-mtd-discovery")) {
+ 		if (!of_property_read_bool(nandc->dev->of_node,
+ 					   "h3c,rt3000-mtd-discovery-read-only")) {
+@@ -3677,7 +3686,7 @@
+ 		return ret;
+ 	}
+ 
+-	if (c_mtd_discovery)
++	if (c_mtd_discovery || c_native_safe)
+ 		host->quad_mode = false;
+ 
+ 	if (nandc->props->is_bam) {
+@@ -3706,7 +3715,7 @@
+ 	 * can be captured correctly.
+ 	 */
+ 	if (nandc->props->is_serial_nand) {
+-		if (!c_mtd_discovery) {
++		if (!c_mtd_discovery && !c_native_safe) {
+ 			ret = qspi_nand_device_config(nandc, host, mtd);
+ 			if (ret)
+ 				dev_err(nandc->dev, "qspi_nand device config failed\n");
+@@ -3721,8 +3730,10 @@
+ 						"failed to enable serial training\n");
+ 				}
+ 			}
++		} else if (c_mtd_discovery) {
++			dev_info(dev, "C MTD discovery: x1 reads; no QE or training writes\n");
+ 		} else {
+-			dev_info(dev, "C MTD discovery: x1 reads; no QE or training writes\n");
++			dev_info(dev, "C native installer: x1 reads; no QE or training writes\n");
+ 		}
+ 	}
+ 

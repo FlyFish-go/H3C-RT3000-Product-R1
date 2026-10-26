@@ -1,0 +1,12 @@
+#!/bin/sh /etc/rc.common
+# Run after boot/kmodloader, before network. Restore physical MACs each boot.
+START=19
+start() {
+	[ "$(board_name)" = "h3c,nx30-hw-d" ] || return 0
+	local macs
+	macs="$(/usr/sbin/hwd-factory-mac)" || return 1
+	set -- $macs
+	[ "$#" -eq 4 ] || return 1
+	[ "$(cat /sys/class/net/eth0/address)" = "$1" ] || ip link set dev eth0 address "$1" || return 1
+	[ "$(cat /sys/class/net/eth1/address)" = "$2" ] || ip link set dev eth1 address "$2" || return 1
+}

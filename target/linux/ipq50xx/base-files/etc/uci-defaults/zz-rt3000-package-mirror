@@ -1,7 +1,7 @@
 #!/bin/sh
 # Upstream 21.02 user-space packages only; ipq50xx/QSDK has no upstream core feed.
 . /lib/functions.sh
-[ "$(board_name)" = 'h3c,rt3000' ] || exit 0
+case "$(board_name)" in h3c,rt3000|h3c,rt3000-rtl8367s|h3c,rw3000-hw-a|h3c,nx30-hw-d) ;; *) exit 0 ;; esac
 file=/etc/opkg/distfeeds.conf
 [ -f "$file" ] || exit 1
 sed -i \

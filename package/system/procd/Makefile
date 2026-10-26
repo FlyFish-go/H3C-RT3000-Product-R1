@@ -26,7 +26,10 @@ PKG_ASLR_PIE_REGULAR:=1
 PKG_CONFIG_DEPENDS:= \
 	CONFIG_TARGET_INIT_PATH CONFIG_KERNEL_SECCOMP \
 	CONFIG_PROCD_SHOW_BOOT CONFIG_PROCD_ZRAM_TMPFS \
-	CONFIG_KERNEL_NAMESPACES CONFIG_PACKAGE_procd-ujail CONFIG_PACKAGE_procd-seccomp
+	CONFIG_KERNEL_NAMESPACES CONFIG_PACKAGE_procd-ujail CONFIG_PACKAGE_procd-seccomp \
+	CONFIG_TARGET_MULTI_PROFILE \
+	CONFIG_TARGET_ipq50xx_arm_DEVICE_h3c_rt3000_rtl8367s_ram \
+	CONFIG_TARGET_ipq50xx_arm_DEVICE_h3c_rt3000_rtl8367s_installer_ram
 
 include $(INCLUDE_DIR)/package.mk
 include $(INCLUDE_DIR)/cmake.mk
@@ -37,6 +40,14 @@ endif
 
 CMAKE_OPTIONS += -DEARLY_PATH="$(TARGET_INIT_PATH)"
 TARGET_LDFLAGS += $(if $(CONFIG_USE_GLIBC),-lrt)
+
+# The C UART/RAM image has no sysupgrade client or stage2. Do not install
+# procd's sysupgrade dispatcher into this single-profile rootfs.
+ifeq ($(CONFIG_TARGET_MULTI_PROFILE),)
+ifneq ($(filter y,$(CONFIG_TARGET_ipq50xx_arm_DEVICE_h3c_rt3000_rtl8367s_ram) $(CONFIG_TARGET_ipq50xx_arm_DEVICE_h3c_rt3000_rtl8367s_installer_ram)),)
+C_RAM_ONLY_ROOTFS:=1
+endif
+endif
 
 TARGET_CFLAGS += -flto
 TARGET_LDFLAGS += -flto
@@ -133,7 +144,8 @@ CMAKE_OPTIONS += -DSECCOMP_SUPPORT=$(SECCOMP) -DUTRACE_SUPPORT=$(SECCOMP)
 define Package/procd/install
 	$(INSTALL_DIR) $(1)/sbin $(1)/etc $(1)/lib/functions
 
-	$(INSTALL_BIN) $(PKG_INSTALL_DIR)/usr/sbin/{init,procd,askfirst,udevtrigger,upgraded} $(1)/sbin/
+	$(INSTALL_BIN) $(PKG_INSTALL_DIR)/usr/sbin/{init,procd,askfirst,udevtrigger} $(1)/sbin/
+	$(if $(C_RAM_ONLY_ROOTFS),,$(INSTALL_BIN) $(PKG_INSTALL_DIR)/usr/sbin/upgraded $(1)/sbin/)
 	$(INSTALL_DATA) $(PKG_INSTALL_DIR)/usr/lib/libsetlbf.so $(1)/lib
 	$(INSTALL_BIN) ./files/reload_config $(1)/sbin/
 	$(INSTALL_CONF) ./files/hotplug*.json $(1)/etc/

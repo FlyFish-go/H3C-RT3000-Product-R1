@@ -53,6 +53,7 @@ def main():
             base.with_suffix('.warnings').write_text(compiled.stderr)
             dtb = base.with_suffix('.dtb')
             check(prop(dtb, '/soc/gpio_keys/button_reset', 'gpios', 'x').split()[1:] == ['22', '1'], profile+': RESET34 active-low')
+            check('gpio27_pullup' in run(['fdtget', '-l', dtb, '/soc/pinctrl@1000000/button_pins']).stdout.split(), profile+': GPIO27 pull-up kept for QCN6102')
             check(prop(dtb, '/soc/gpio_keys/button_wps', 'gpios', 'x').split()[1:] == ['26', '1'], profile+': WPS38 unchanged')
             for color, pin in [('green', '18'), ('red', '17')]:
                 node = '/leds/system_'+color
@@ -102,6 +103,14 @@ def main():
 #define min(a,b) ((a)<(b)?(a):(b))
 #define min_t(t,a,b) min((t)(a),(t)(b))
 #define pr_debug(...) ((void)0)
+#define pr_info(...) ((void)0)
+#define pr_warn(...) ((void)0)
+#define __initdata
+static int kstrtoull(const char *s, unsigned int base, unsigned long long *res) {
+    char *end; if (!*s || *s == '-') return -EINVAL;
+    errno = 0; *res = strtoull(s, &end, base);
+    return errno || *end ? -EINVAL : 0;
+}
 #define fdt_nop_property(...) ((void)0)
 #define fdt_totalsize(...) 0
 #define crc32_be(...) 0
@@ -185,6 +194,39 @@ int main(int argc, char **argv) {
             prefix='x='+'a'*(1024-len(nand)-2-2)
             check(len(parse(prefix,nand,extra=''))==1023, 'exact 1024-byte capacity accepted')
             check(parse(prefix+'a',nand,extra='')=='REFUSED', 'one-byte excess refused')
+            # U-Boot names the booted physical extent; Linux makes it the writable rootfs.
+            low='0x2800000@0x900000(rootfs),0x2800000@0x3100000(oem_rootfs)ro'
+            high='0x2800000@0x900000(oem_rootfs)ro,0x2800000@0x3100000(rootfs)'
+            final=parse(stale+' h3c.boot_slot=0x900000',nand)
+            check(low in final and high not in final and final.endswith(nand.replace(high,low)), 'boot_slot low swaps rootfs/oem_rootfs')
+            check('h3c.boot_slot=0x900000' in final and final.count('ubi.mtd=')==1, 'boot_slot kept; one attach')
+            check(len(final.split()[-1])==len(nand.split()[-1]), 'swapped map keeps length')
+            check(parse(stale+' h3c.boot_slot=0x3100000',nand).endswith(nand), 'boot_slot high keeps DT map')
+            check(parse(stale,nand).endswith(nand), 'old U-Boot without boot_slot keeps DT map')
+            for bad in ['0x1234','0x900000x','','-1','0x900000 h3c.boot_slot=0x900000']:
+                check(parse(stale+' h3c.boot_slot='+bad,nand).endswith(nand), 'unusable boot_slot '+repr(bad)+' keeps DT map')
+            check(parse(stale+' h3c.boot_slot=0x900000',ram).endswith(ram), 'RAM map never follows boot_slot')
+            check(parse(stale+' h3c.boot_slot=0x900000',nand.replace('(oem_rootfs)ro','(other)ro')).endswith(nand.replace('(oem_rootfs)ro','(other)ro')), 'unexpected labels keep DT map')
+            # U-Boot pre.4 adds h3c.boot_size; 80 MiB at 0x900000 is the PTABLE single rootfs.
+            single='0x5000000@0x900000(rootfs)'
+            big=' h3c.boot_slot=0x900000 h3c.boot_size=0x5000000'
+            final=parse(stale+big,nand)
+            check(final.endswith(nand.replace(high,single)), 'boot_size 80 MiB: one rootfs (B/C orientation)')
+            check('oem_rootfs' not in final and final.count('ubi.mtd=')==1 and final.count('mtdparts=')==1, 'single map: no oem_rootfs; one attach')
+            check(parse(stale+big,nand.replace(high,low)).endswith(nand.replace(high,single)), 'boot_size 80 MiB: one rootfs (A/D orientation)')
+            check(parse(stale+' h3c.boot_size=0x5000000 h3c.boot_slot=0x900000',nand).endswith(nand.replace(high,single)), 'argument order does not matter')
+            check(parse(stale+' h3c.boot_slot=0x900000 h3c.boot_size=0x2800000',nand).endswith(nand.replace(high,low)), 'boot_size 40 MiB keeps two-slot swap')
+            check(parse(stale+' h3c.boot_slot=0x3100000 h3c.boot_size=0x2800000',nand).endswith(nand), 'boot_size 40 MiB high slot keeps DT map')
+            check(parse(stale+' h3c.boot_slot=0x3100000 h3c.boot_size=0x5000000',nand).endswith(nand), '80 MiB at the high slot is not single')
+            check(parse(stale+' h3c.boot_size=0x5000000',nand).endswith(nand), 'boot_size without boot_slot keeps DT map')
+            for bad in ['0x1000000','0x5000000x','','-1','0x5000000 h3c.boot_size=0x5000000']:
+                check(parse(stale+' h3c.boot_slot=0x900000 h3c.boot_size='+bad,nand).endswith(nand.replace(high,low)), 'unusable boot_size '+repr(bad)+' falls back to two slots')
+            check(parse(stale+big,ram).endswith(ram), 'RAM map never follows boot_size')
+            check(parse(stale+big,nand.replace('(oem_rootfs)ro','(other)ro')).endswith(nand.replace('(oem_rootfs)ro','(other)ro')), 'single: unexpected labels keep DT map')
+            gap=nand.replace(high,'0x2800000@0x900000(oem_rootfs)ro,0x20000@0x3000000(gap),0x2800000@0x3100000(rootfs)')
+            check(parse(stale+big,gap).endswith(gap), 'single: non-adjacent slots keep DT map')
+            odd=nand.replace(high,'0x2700000@0x900000(oem_rootfs)ro,0x2800000@0x3100000(rootfs)')
+            check(parse(stale+big,odd).endswith(odd), 'single: unexpected slot size keeps DT map')
 
     image=(ROOT/'target/linux/ipq50xx/image/Makefile').read_text()
     profile=image.split('define Device/h3c_rt3000\n',1)[1].split('\nendef',1)[0]

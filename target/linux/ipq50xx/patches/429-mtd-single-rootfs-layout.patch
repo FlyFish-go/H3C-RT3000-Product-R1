@@ -1,0 +1,156 @@
+From: FlyFish-go <2541290956@qq.com>
+Subject: [PATCH] mtd: rt3000-c, hw-d: accept the single 80 MiB rootfs layout
+
+U-Boot's PTABLE page can replace the two 40 MiB system slots with one
+80 MiB rootfs at 0x900000. Patch 030 then hands Linux a 20-entry map
+with 0x5000000@0x900000(rootfs). Let the C (425/428) and HW-D (426)
+physical map guards accept that one writable rootfs in place of the two
+slot rows; every other entry, flag and size check is unchanged.
+
+---
+--- a/drivers/mtd/mtdpart.c
++++ b/drivers/mtd/mtdpart.c
+@@ -65,6 +65,7 @@
+ #define RT3000_C_SLOT0_OFF 0x00900000ULL
+ #define RT3000_C_SLOT1_OFF 0x03100000ULL
+ #define RT3000_C_SLOT_SIZE 0x02800000ULL
++#define RT3000_C_SINGLE_SIZE 0x05000000ULL
+ #define RT3000_C_INSTALLER_BC_PROP "h3c,rt3000-c-installer-write-bootconfig"
+ #define RT3000_C_SAFE_PROP "h3c,rt3000-native-nand-safe-config"
+ 
+@@ -88,6 +89,19 @@
+ 	return np && of_property_read_bool(np, RT3000_C_SAFE_PROP);
+ }
+ 
++/* PTABLE single layout: one 80 MiB rootfs at slot 0 replaces both slots. */
++static bool rt3000_c_single_slot(const struct mtd_partition *parts, int count)
++{
++	int i, single = 0;
++
++	for (i = 0; i < count; i++)
++		if ((u64)parts[i].offset == RT3000_C_SLOT0_OFF &&
++		    (u64)parts[i].size == RT3000_C_SINGLE_SIZE &&
++		    parts[i].name && !strcmp(parts[i].name, "rootfs"))
++			single++;
++	return single == 1;
++}
++
+ static bool rt3000_c_partition_map_valid(struct mtd_info *master,
+ 					 const struct mtd_partition *parts,
+ 					 int count)
+@@ -106,6 +120,7 @@
+ 		{0x06600000,0x01700000},
+ 	};
+ 	bool seen[ARRAY_SIZE(expected)] = { false };
++	bool single = parts && rt3000_c_single_slot(parts, count);
+ 	int i;
+ 	unsigned int j;
+ 
+@@ -113,12 +128,24 @@
+ 	    master->writesize != 2048 || master->erasesize != 131072 ||
+ 	    master->oobsize != 64 || master->ecc_strength != 4 ||
+ 	    !rt3000_c_nand_safe_node(master) ||
+-	    count != (int)ARRAY_SIZE(expected) || !parts)
++	    count != (int)ARRAY_SIZE(expected) - single || !parts)
+ 		return false;
+ 
+ 	for (i = 0; i < count; i++) {
+ 		if (parts[i].size == 0 || !parts[i].name)
+ 			return false;
++		if (single && (u64)parts[i].offset == RT3000_C_SLOT0_OFF &&
++		    (u64)parts[i].size == RT3000_C_SINGLE_SIZE) {
++			/* The single rootfs stands for both slot rows. */
++			for (j = 0; j < ARRAY_SIZE(expected); j++) {
++				if (expected[j].size != RT3000_C_SLOT_SIZE)
++					continue;
++				if (seen[j])
++					return false;
++				seen[j] = true;
++			}
++			continue;
++		}
+ 		for (j = 0; j < ARRAY_SIZE(expected); j++) {
+ 			if ((u64)parts[i].offset == expected[j].off &&
+ 			    (u64)parts[i].size == expected[j].size)
+@@ -152,7 +179,7 @@
+ 		else if (!strcmp(parts[i].name, "oem_rootfs"))
+ 			oem++;
+ 	}
+-	return rootfs == 1 && oem == 1;
++	return (rootfs == 1 && oem == 1) || rt3000_c_single_slot(parts, count);
+ }
+ 
+ static bool rt3000_c_write_window(u64 off, u64 size, bool installer)
+@@ -169,6 +196,7 @@
+ #define HWD_A_OFF 0x00900000ULL
+ #define HWD_B_OFF 0x03100000ULL
+ #define HWD_SLOT_SIZE 0x02800000ULL
++#define HWD_SINGLE_SIZE 0x05000000ULL
+ #define HWD_INSTALLER_BC_PROP "h3c,nx30-hw-d-installer-write-bootconfig"
+ #define HWD_RAM_RO_PROP "h3c,nx30-hw-d-ram-readonly"
+ #define HWD_SAFE_PROP "h3c,nx30-hw-d-nand-safe-config"
+@@ -216,18 +244,39 @@
+ 	bool seen[ARRAY_SIZE(expected)] = { false };
+ 	bool installer = hwd_installer_write_bc(master);
+ 	bool ram_readonly = hwd_ram_readonly(master);
+-	int i, rootfs_slots = 0;
++	int i, rootfs_slots = 0, single = 0;
+ 	unsigned int j;
+ 
++	/* PTABLE single layout: one 80 MiB rootfs replaces both system slots. */
++	for (i = 0; parts && i < count; i++)
++		single += (u64)parts[i].offset == HWD_A_OFF &&
++			(u64)parts[i].size == HWD_SINGLE_SIZE;
+ 	if (mtd_is_partition(master) || master->size != HWD_NAND_SIZE ||
+ 	    master->writesize != 2048 || master->erasesize != 131072 ||
+ 	    master->oobsize != 64 || master->ecc_strength != 4 ||
+-	    !hwd_nand_safe_node(master) || count != ARRAY_SIZE(expected) || !parts)
++	    !hwd_nand_safe_node(master) || single > 1 ||
++	    count != (int)ARRAY_SIZE(expected) - single || !parts)
+ 		return false;
+ 
+ 	for (i = 0; i < count; i++) {
+ 		if (!parts[i].name || !parts[i].size)
+ 			return false;
++		if ((u64)parts[i].offset == HWD_A_OFF &&
++		    (u64)parts[i].size == HWD_SINGLE_SIZE) {
++			bool writable = !(parts[i].mask_flags & MTD_WRITEABLE);
++
++			if (strcmp(parts[i].name, "rootfs") || writable == ram_readonly)
++				return false;
++			for (j = 0; j < ARRAY_SIZE(expected); j++) {
++				if (expected[j].name)
++					continue;
++				if (seen[j])
++					return false;
++				seen[j] = true;
++			}
++			rootfs_slots++;
++			continue;
++		}
+ 		/* The two system slots (NULL rows) may be named either way round:
+ 		 * the booted one is rootfs, the other oem_rootfs.
+ 		 */
+@@ -263,7 +312,8 @@
+ {
+ 	if (ram_readonly)
+ 		return false;
+-	if ((off == HWD_A_OFF || off == HWD_B_OFF) && size == HWD_SLOT_SIZE)
++	if (((off == HWD_A_OFF || off == HWD_B_OFF) && size == HWD_SLOT_SIZE) ||
++	    (off == HWD_A_OFF && size == HWD_SINGLE_SIZE))
+ 		return name && !strcmp(name, "rootfs");
+ 	return installer && ((off == 0x00100000 && size == 0x00040000) ||
+ 			     (off == 0x00140000 && size == 0x00040000));
+@@ -853,8 +903,10 @@
+ out_register:
+ 	if (rt3000_c_nand(parent)) {
+ 		u64 abs_off = part_absolute_offset(parent) + slave->offset;
+-		bool slot = slave->mtd.size == RT3000_C_SLOT_SIZE &&
+-			(abs_off == RT3000_C_SLOT0_OFF || abs_off == RT3000_C_SLOT1_OFF);
++		bool slot = (slave->mtd.size == RT3000_C_SLOT_SIZE &&
++			(abs_off == RT3000_C_SLOT0_OFF || abs_off == RT3000_C_SLOT1_OFF)) ||
++			(slave->mtd.size == RT3000_C_SINGLE_SIZE &&
++			 abs_off == RT3000_C_SLOT0_OFF);
+ 		bool window = c_named && slot ? !strcmp(part->name, "rootfs") :
+ 			rt3000_c_write_window(abs_off, slave->mtd.size, c_installer);
+ 		bool permitted = c_map_valid && window &&

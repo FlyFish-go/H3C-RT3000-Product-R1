@@ -1,0 +1,46 @@
+From: FlyFish-go <2541290956@qq.com>
+Subject: [PATCH] ath11k: allow a smaller RXDMA monitor status ring
+
+Every radio keeps its monitor status ring full of 2 KiB RX buffers, which
+the skb recycler rounds up to 4 KiB slab objects: 512 entries per radio
+in the 256M profile, about 4 MiB for two radios.  These buffers only carry
+PPDU status TLVs for station statistics.  Default to 128 entries (bench:
+-2 MiB on HW-A, Wi-Fi throughput unchanged) and keep mon_status_ring_size
+to go back up to the profile size if station statistics ever drop.
+
+---
+--- a/drivers/net/wireless/ath/ath11k/core.c
++++ b/drivers/net/wireless/ath/ath11k/core.c
+@@ -23,6 +23,10 @@
+ MODULE_PARM_DESC(nss_offload, "Enable NSS Offload support");
+ #endif
+ 
++unsigned int ath11k_mon_status_ring_size = 128;
++module_param_named(mon_status_ring_size, ath11k_mon_status_ring_size, uint, 0444);
++MODULE_PARM_DESC(mon_status_ring_size, "RXDMA monitor status ring entries per radio");
++
+ unsigned int ath11k_debug_mask;
+ EXPORT_SYMBOL(ath11k_debug_mask);
+ module_param_named(debug_mask, ath11k_debug_mask, uint, 0644);
+--- a/drivers/net/wireless/ath/ath11k/core.h
++++ b/drivers/net/wireless/ath/ath11k/core.h
+@@ -32,6 +32,7 @@
+ #include "peer.h"
+ 
+ extern unsigned int ath11k_skip_radio;
++extern unsigned int ath11k_mon_status_ring_size;
+ extern wait_queue_head_t ath11k_radio_prb_wq;
+ extern bool dev_init_progress;
+ extern struct mutex dev_init_lock;
+--- a/drivers/net/wireless/ath/ath11k/dp_rx.c
++++ b/drivers/net/wireless/ath/ath11k/dp_rx.c
+@@ -1955,7 +1955,8 @@
+ 		ret = ath11k_dp_srng_setup(ar->ab,
+ 					   srng,
+ 					   HAL_RXDMA_MONITOR_STATUS, 0, dp->mac_id + i,
+-					   DP_RXDMA_MON_STATUS_RING_SIZE);
++					   clamp_val(ath11k_mon_status_ring_size, 64,
++						     DP_RXDMA_MON_STATUS_RING_SIZE));
+ 		if (ret) {
+ 			ath11k_warn(ar->ab,
+ 				    "failed to setup rx_mon_status_refill_ring %d\n", i);

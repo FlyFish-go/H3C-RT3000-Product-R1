@@ -1,0 +1,17 @@
+# Copy this unit's Wi-Fi calibration out of its own ART partition before
+# ath11k loads. The firmware paths in /lib/firmware link here; if ART cannot
+# be read, the radios get no calibration rather than another unit's.
+
+hwd_caldata() {
+	local dir=/tmp/hwd-cal mtd
+
+	mtd=$(sed -n 's/^\(mtd[0-9]*\):.*"0:ART"$/\1/p' /proc/mtd)
+	[ -n "$mtd" ] || { echo "hwd-caldata: no 0:ART partition" > /dev/kmsg; return 0; }
+	mkdir -p "$dir"
+	# IPQ5018: ART 0x1000, QCN6122 PD1: 0x26800, PD2: 0x46800; 0x20000 bytes each.
+	dd if=/dev/$mtd of="$dir/ipq5018.bin" bs=4096 skip=1 count=32 2>/dev/null
+	dd if=/dev/$mtd of="$dir/qcn6122-1.bin" bs=2048 skip=77 count=64 2>/dev/null
+	dd if=/dev/$mtd of="$dir/qcn6122-2.bin" bs=2048 skip=141 count=64 2>/dev/null
+}
+
+boot_hook_add preinit_main hwd_caldata

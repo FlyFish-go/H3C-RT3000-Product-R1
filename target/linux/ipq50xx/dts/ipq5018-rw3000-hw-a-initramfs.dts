@@ -1,0 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0-or-later OR MIT
+/* HW-A RAM root: same partition view as the NAND profile, never auto-attach UBI. */
+#include "ipq5018-rw3000-hw-a.dts"
+
+/ {
+	chosen {
+		h3c,storage-bootargs = "mtdparts=qcom_nand.0:0x80000@0(0:SBL1)ro,0x80000@0x80000(0:MIBIB)ro,0x40000@0x100000(0:BOOTCONFIG)ro,0x40000@0x140000(0:BOOTCONFIG1)ro,0x100000@0x180000(0:QSEE)ro,0x100000@0x280000(0:QSEE_1)ro,0x40000@0x380000(0:DEVCFG)ro,0x40000@0x3c0000(0:DEVCFG_1)ro,0x40000@0x400000(0:CDT)ro,0x40000@0x440000(0:CDT_1)ro,0x80000@0x480000(0:APPSBLENV)ro,0x140000@0x500000(0:APPSBL)ro,0x140000@0x640000(0:APPSBL_1)ro,0x100000@0x780000(0:ART)ro,0x80000@0x880000(0:TRAINING)ro,0x2800000@0x900000(rootfs),0x2800000@0x3100000(oem_rootfs)ro,0x600000@0x5900000(pdt_data)ro,0x600000@0x5f00000(pdt_data_1)ro,0x100000@0x6500000(exp)ro,0x1700000@0x6600000(plugin)ro rdinit=/init";
+	};
+};

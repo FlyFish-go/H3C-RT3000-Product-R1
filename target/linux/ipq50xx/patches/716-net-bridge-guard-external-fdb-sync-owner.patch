@@ -1,0 +1,261 @@
+--- a/include/net/switchdev.h
++++ b/include/net/switchdev.h
+@@ -112,6 +112,10 @@
+ 	SWITCHDEV_VXLAN_FDB_ADD_TO_DEVICE,
+ 	SWITCHDEV_VXLAN_FDB_DEL_TO_DEVICE,
+ 	SWITCHDEV_VXLAN_FDB_OFFLOADED,
++
++	/* Scoped reconciliation events used by the RT3000 C DSA mirror. */
++	SWITCHDEV_RT3000_FDB_SYNC_ADD_TO_BRIDGE,
++	SWITCHDEV_RT3000_FDB_SYNC_DEL_TO_BRIDGE,
+ };
+ 
+ struct switchdev_notifier_info {
+@@ -123,6 +127,7 @@
+ 	struct switchdev_notifier_info info; /* must be first */
+ 	const unsigned char *addr;
+ 	u16 vid;
++	u32 external_learn_domain;
+ 	u8 added_by_user:1,
+ 	   offloaded:1;
+ };
+--- a/net/bridge/br_private.h
++++ b/net/bridge/br_private.h
+@@ -191,6 +191,7 @@
+ 					added_by_user:1,
+ 					added_by_external_learn:1,
+ 					offloaded:1;
++	u32				external_learn_domain;
+ 
+ 	/* write-heavy members should not affect lookups */
+ 	unsigned long			updated ____cacheline_aligned_in_smp;
+@@ -590,6 +591,14 @@
+ int br_fdb_external_learn_del(struct net_bridge *br, struct net_bridge_port *p,
+ 			      const unsigned char *addr, u16 vid,
+ 			      bool swdev_notify);
++int br_fdb_external_learn_add_domain(struct net_bridge *br,
++			    struct net_bridge_port *p,
++			    const unsigned char *addr, u16 vid,
++			    bool swdev_notify, u32 domain);
++int br_fdb_external_learn_del_domain(struct net_bridge *br,
++			    struct net_bridge_port *p,
++			    const unsigned char *addr, u16 vid,
++			    bool swdev_notify, u32 domain);
+ void br_fdb_offloaded_set(struct net_bridge *br, struct net_bridge_port *p,
+ 			  const unsigned char *addr, u16 vid, bool offloaded);
+ 
+--- a/net/bridge/br.c
++++ b/net/bridge/br.c
+@@ -16,6 +16,7 @@
+ #include <net/llc.h>
+ #include <net/stp.h>
+ #include <net/switchdev.h>
++#include <linux/rt3000_fdb_domain.h>
+ 
+ #include "br_private.h"
+ 
+@@ -154,6 +155,7 @@
+ 	struct net_bridge_port *p;
+ 	struct net_bridge *br;
+ 	struct switchdev_notifier_fdb_info *fdb_info;
++	u32 domain;
+ 	int err = NOTIFY_DONE;
+ 
+ 	p = br_port_get_rtnl_rcu(dev);
+@@ -178,6 +180,36 @@
+ 		fdb_info = ptr;
+ 		err = br_fdb_external_learn_del(br, p, fdb_info->addr,
+ 						fdb_info->vid, false);
++		if (err)
++			err = notifier_from_errno(err);
++		break;
++	case SWITCHDEV_RT3000_FDB_SYNC_ADD_TO_BRIDGE:
++		fdb_info = ptr;
++		err = rt3000_fdb_domain_event_scope(true,
++			fdb_info->external_learn_domain, &domain);
++		if (err) {
++			err = notifier_from_errno(err);
++			break;
++		}
++		err = br_fdb_external_learn_add_domain(br, p, fdb_info->addr,
++						       fdb_info->vid, false, domain);
++		if (err) {
++			err = notifier_from_errno(err);
++			break;
++		}
++		br_fdb_offloaded_set(br, p, fdb_info->addr,
++				     fdb_info->vid, true);
++		break;
++	case SWITCHDEV_RT3000_FDB_SYNC_DEL_TO_BRIDGE:
++		fdb_info = ptr;
++		err = rt3000_fdb_domain_event_scope(true,
++			fdb_info->external_learn_domain, &domain);
++		if (err) {
++			err = notifier_from_errno(err);
++			break;
++		}
++		err = br_fdb_external_learn_del_domain(br, p, fdb_info->addr,
++						       fdb_info->vid, false, domain);
+ 		if (err)
+ 			err = notifier_from_errno(err);
+ 		break;
+--- a/net/bridge/br_fdb.c
++++ b/net/bridge/br_fdb.c
+@@ -21,6 +21,7 @@
+ #include <asm/unaligned.h>
+ #include <linux/if_vlan.h>
+ #include <net/switchdev.h>
++#include <linux/rt3000_fdb_domain.h>
+ #include <trace/events/bridge.h>
+ #include "br_private.h"
+ 
+@@ -534,6 +535,7 @@
+ 		fdb->added_by_user = 0;
+ 		fdb->added_by_external_learn = 0;
++		fdb->external_learn_domain = 0;
+ 		fdb->offloaded = 0;
+ 		fdb->is_sticky = 0;
+ 		fdb->updated = fdb->used = jiffies;
+ 		if (rhashtable_lookup_insert_fast(&br->fdb_hash_tbl,
+@@ -633,8 +634,10 @@
+ 				fdb_modified = true;
+ 
+ 				/* Take over HW learned entry */
+-				if (unlikely(fdb->added_by_external_learn))
++				if (unlikely(fdb->added_by_external_learn)) {
+ 					fdb->added_by_external_learn = 0;
++					fdb->external_learn_domain = 0;
++				}
+ 
+ 				atomic_notifier_call_chain(
+ 					&br_fdb_update_notifier_list,
+@@ -642,8 +645,10 @@
+ 			}
+ 			if (now != fdb->updated)
+ 				fdb->updated = now;
+-			if (unlikely(added_by_user))
++			if (unlikely(added_by_user)) {
+ 				fdb->added_by_user = 1;
++				fdb->external_learn_domain = 0;
++			}
+ 			if (unlikely(fdb_modified)) {
+ 				trace_br_fdb_update(br, source, addr, vid, added_by_user);
+ 				fdb_notify(br, fdb, RTM_NEWNEIGH, true);
+@@ -653,8 +658,10 @@
+ 		spin_lock(&br->hash_lock);
+ 		fdb = fdb_create(br, source, addr, vid, 0, 0);
+ 		if (fdb) {
+-			if (unlikely(added_by_user))
++			if (unlikely(added_by_user)) {
+ 				fdb->added_by_user = 1;
++				fdb->external_learn_domain = 0;
++			}
+ 			trace_br_fdb_update(br, source, addr, vid,
+ 					    added_by_user);
+ 			fdb_notify(br, fdb, RTM_NEWNEIGH, true);
+@@ -978,6 +985,7 @@
+ 	}
+ 
+ 	fdb->added_by_user = 1;
++	fdb->external_learn_domain = 0;
+ 
+ 	fdb->used = jiffies;
+ 	if (modified) {
+@@ -1315,9 +1323,10 @@
+ 	rcu_read_unlock();
+ }
+ 
+-int br_fdb_external_learn_add(struct net_bridge *br, struct net_bridge_port *p,
+-			      const unsigned char *addr, u16 vid,
+-			      bool swdev_notify)
++int br_fdb_external_learn_add_domain(struct net_bridge *br,
++			    struct net_bridge_port *p,
++			    const unsigned char *addr, u16 vid,
++			    bool swdev_notify, u32 domain)
+ {
+ 	struct net_bridge_fdb_entry *fdb;
+ 	bool modified = false;
+@@ -1337,8 +1346,15 @@
+ 		if (swdev_notify)
+ 			fdb->added_by_user = 1;
+ 		fdb->added_by_external_learn = 1;
++		fdb->external_learn_domain = domain;
+ 		fdb_notify(br, fdb, RTM_NEWNEIGH, swdev_notify);
+ 	} else {
++		err = rt3000_fdb_domain_add_check(domain,
++			fdb->external_learn_domain, fdb->dst == p,
++			fdb->added_by_external_learn, fdb->is_local,
++			fdb->is_static, fdb->added_by_user);
++		if (err)
++			goto err_unlock;
+ 		fdb->updated = jiffies;
+ 
+ 		if (fdb->dst != p) {
+@@ -1355,8 +1371,12 @@
+ 			modified = true;
+ 		}
+ 
+-		if (swdev_notify)
++		if (fdb->added_by_external_learn)
++			fdb->external_learn_domain = domain;
++		if (swdev_notify) {
+ 			fdb->added_by_user = 1;
++			fdb->external_learn_domain = 0;
++		}
+ 
+ 		if (modified)
+ 			fdb_notify(br, fdb, RTM_NEWNEIGH, swdev_notify);
+@@ -1368,24 +1388,49 @@
+ 	return err;
+ }
+ 
+-int br_fdb_external_learn_del(struct net_bridge *br, struct net_bridge_port *p,
++int br_fdb_external_learn_add(struct net_bridge *br,
++			      struct net_bridge_port *p,
+ 			      const unsigned char *addr, u16 vid,
+ 			      bool swdev_notify)
+ {
++	return br_fdb_external_learn_add_domain(br, p, addr, vid,
++						swdev_notify, 0);
++}
++
++int br_fdb_external_learn_del_domain(struct net_bridge *br,
++			    struct net_bridge_port *p,
++			    const unsigned char *addr, u16 vid,
++			    bool swdev_notify, u32 domain)
++{
+ 	struct net_bridge_fdb_entry *fdb;
+ 	int err = 0;
+ 
+ 	spin_lock_bh(&br->hash_lock);
+ 
+ 	fdb = br_fdb_find(br, addr, vid);
+-	if (fdb && fdb->added_by_external_learn)
+-		fdb_delete(br, fdb, swdev_notify);
+-	else
++	if (fdb && fdb->added_by_external_learn) {
++		err = rt3000_fdb_domain_del_check(domain,
++			fdb->external_learn_domain, fdb->dst == p,
++			fdb->added_by_external_learn, fdb->is_local,
++			fdb->is_static, fdb->added_by_user);
++		if (!err)
++			fdb_delete(br, fdb, swdev_notify);
++	} else {
+ 		err = -ENOENT;
++	}
+ 
+ 	spin_unlock_bh(&br->hash_lock);
+ 
+ 	return err;
++}
++
++int br_fdb_external_learn_del(struct net_bridge *br,
++			      struct net_bridge_port *p,
++			      const unsigned char *addr, u16 vid,
++			      bool swdev_notify)
++{
++	return br_fdb_external_learn_del_domain(br, p, addr, vid,
++						swdev_notify, 0);
+ }
+ 
+ void br_fdb_offloaded_set(struct net_bridge *br, struct net_bridge_port *p,

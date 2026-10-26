@@ -1,0 +1,227 @@
+--- a/drivers/net/wireless/ath/ath11k/Kconfig
++++ b/drivers/net/wireless/ath/ath11k/Kconfig
+@@ -50,6 +50,15 @@
+ 	  History is per buffer, is frozen at first mismatch, and emits
+ 	  history only when a DMA metadata mismatch is detected.
+ 
++config ATH11K_RT3000_REO_IDR_CLAIM
++	bool "C IPQ5018 REO RX buffer ownership fix"
++	depends on ATH11K
++	default n
++	help
++	  Claim normal REO RX buffers before handoff, retain incomplete MSDU
++	  continuations per ring/radio, and allocate fresh RX IDs. Runtime enabled
++	  only for IPQ5018. Changes ath11k_dp layout; rebuild the module trio.
++
+ config ATH11K_DEBUG
+ 	bool "QCA ath11k debugging"
+ 	depends on ATH11K
+--- a/drivers/net/wireless/ath/ath11k/dp.h
++++ b/drivers/net/wireless/ath/ath11k/dp.h
+@@ -357,6 +357,10 @@
+ 	struct dp_srng reo_cmd_ring;
+ 	struct dp_srng reo_status_ring;
+ 	struct dp_srng reo_dst_ring[DP_REO_DST_RING_MAX];
++#ifdef CPTCFG_ATH11K_RT3000_REO_IDR_CLAIM
++	/* Pending incomplete RX MSDUs, indexed by REO ring and radio. */
++	struct sk_buff_head *reo_pending_msdu;
++#endif
+ 	struct dp_tx_ring tx_ring[DP_TCL_NUM_RING_MAX];
+ 	struct hal_wbm_idle_scatter_list scatter_list[DP_IDLE_SCATTER_BUFS_MAX];
+ 	struct list_head reo_cmd_list;
+--- a/drivers/net/wireless/ath/ath11k/dp_rx.c
++++ b/drivers/net/wireless/ath/ath11k/dp_rx.c
+@@ -1143,6 +1143,15 @@
+ 	struct ath11k_dp *dp = &ab->dp;
+ 	int i;
+ 
++#ifdef CPTCFG_ATH11K_RT3000_REO_IDR_CLAIM
++	if (dp->reo_pending_msdu) {
++		/* These pending buffers are unmapped; free without DMA unmap. */
++		for (i = 0; i < DP_REO_DST_RING_MAX * MAX_RADIOS; i++)
++			skb_queue_purge(&dp->reo_pending_msdu[i]);
++		kfree(dp->reo_pending_msdu);
++		dp->reo_pending_msdu = NULL;
++	}
++#endif
+ 	for (i = 0; i < DP_REO_DST_RING_MAX; i++)
+ 		ath11k_dp_srng_cleanup(ab, &dp->reo_dst_ring[i]);
+ }
+@@ -1153,6 +1162,16 @@
+ 	int ret;
+ 	int i;
+ 
++#ifdef CPTCFG_ATH11K_RT3000_REO_IDR_CLAIM
++	if (ab->hw_params.hw_rev == ATH11K_HW_IPQ5018) {
++		dp->reo_pending_msdu = kcalloc(DP_REO_DST_RING_MAX * MAX_RADIOS,
++					       sizeof(*dp->reo_pending_msdu), GFP_KERNEL);
++		if (!dp->reo_pending_msdu)
++			return -ENOMEM;
++		for (i = 0; i < DP_REO_DST_RING_MAX * MAX_RADIOS; i++)
++			skb_queue_head_init(&dp->reo_pending_msdu[i]);
++	}
++#endif
+ 	for (i = 0; i < DP_REO_DST_RING_MAX; i++) {
+ 		ret = ath11k_dp_srng_setup(ab, &dp->reo_dst_ring[i],
+ 					   HAL_REO_DST, i, 0,
+@@ -3846,6 +3865,44 @@
+ 	ath11k_dp_rx_deliver_msdu(ar, napi, msdu, &rx_status, NULL);
+ }
+ 
++#ifdef CPTCFG_ATH11K_RT3000_REO_IDR_CLAIM
++static bool ath11k_dp_rx_reo_idr_claim_enabled(struct ath11k_base *ab)
++{
++	return ab->hw_params.hw_rev == ATH11K_HW_IPQ5018 &&
++	       ab->dp.reo_pending_msdu;
++}
++
++static struct sk_buff_head *
++ath11k_dp_rx_reo_pending_queue(struct ath11k_dp *dp, int ring_id, int mac_id)
++{
++	return &dp->reo_pending_msdu[ring_id * MAX_RADIOS + mac_id];
++}
++
++static int ath11k_dp_rx_reo_take_complete_prefix(struct sk_buff_head *pending,
++						 struct sk_buff_head *ready)
++{
++	struct ath11k_skb_rxcb *rxcb;
++	struct sk_buff *skb;
++	unsigned long flags;
++	int n = 0, last_complete = 0, complete = 0, i;
++
++	spin_lock_irqsave(&pending->lock, flags);
++	skb_queue_walk(pending, skb) {
++		n++;
++		rxcb = ATH11K_SKB_RXCB(skb);
++		if (!rxcb->is_continuation) {
++			last_complete = n;
++			complete++;
++		}
++	}
++	for (i = 0; i < last_complete; i++)
++		__skb_queue_tail(ready, __skb_dequeue(pending));
++	spin_unlock_irqrestore(&pending->lock, flags);
++	return complete;
++}
++
++#endif
++
+ int ath11k_dp_process_rx(struct ath11k_base *ab, int ring_id,
+ 			 struct napi_struct *napi, int budget)
+ {
+@@ -3867,12 +3924,25 @@
+ 	u32 *rx_buf_id[MAX_RADIOS];
+ 	u32 cookie;
+ 	int i;
+-
++#ifdef CPTCFG_ATH11K_RT3000_REO_IDR_CLAIM
++	bool reo_idr_claim = ath11k_dp_rx_reo_idr_claim_enabled(ab);
++#endif
+ 
+ 	for (i = 0; i < MAX_RADIOS; i++) {
+ 		__skb_queue_head_init(&msdu_list[i]);
++#ifdef CPTCFG_ATH11K_RT3000_REO_IDR_CLAIM
++		rx_buf_id[i] = reo_idr_claim ? NULL :
++			kzalloc(sizeof(u32) * DP_RX_MAX_IDR_BUF, GFP_ATOMIC);
++#else
+ 		rx_buf_id[i] = kzalloc(sizeof(u32) * DP_RX_MAX_IDR_BUF, GFP_ATOMIC);
++#endif
++	}
++#ifdef CPTCFG_ATH11K_RT3000_REO_IDR_CLAIM
++	if (reo_idr_claim && (ring_id < 0 || ring_id >= DP_REO_DST_RING_MAX)) {
++		ath11k_warn(ab, "invalid REO ring id %d\n", ring_id);
++		goto exit;
+ 	}
++#endif
+ 
+ 	srng = &ab->hal.srng_list[dp->reo_dst_ring[ring_id].ring_id];
+ 
+@@ -3888,12 +3958,23 @@
+ 		buf_id = FIELD_GET(DP_RXDMA_BUF_COOKIE_BUF_ID,
+ 				   cookie);
+ 		mac_id = FIELD_GET(DP_RXDMA_BUF_COOKIE_PDEV_ID, cookie);
++#ifdef CPTCFG_ATH11K_RT3000_REO_IDR_CLAIM
++		if (reo_idr_claim && (mac_id >= ab->num_radios || mac_id >= MAX_RADIOS)) {
++			ath11k_warn(ab, "invalid REO pdev id %d\n", mac_id);
++			continue;
++		}
++#endif
+ 
+ 		ar = ab->pdevs[mac_id].ar;
+ 		rx_ring = &ar->dp.rx_refill_buf_ring;
+ 		i = num_buffs_reaped[mac_id];
+ 
+ 		spin_lock_bh(&rx_ring->idr_lock);
++#ifdef CPTCFG_ATH11K_RT3000_REO_IDR_CLAIM
++		if (reo_idr_claim) {
++			msdu = idr_remove(&rx_ring->bufs_idr, buf_id);
++		} else
++#endif
+ 		if (rx_buf_id[mac_id] && i < DP_RX_MAX_IDR_BUF) {
+ 			msdu = idr_find(&rx_ring->bufs_idr, buf_id);
+ 			rx_buf_id[mac_id][i] = buf_id;
+@@ -3979,19 +4060,54 @@
+ 
+ 	spin_unlock_bh(&srng->lock);
+ 
+-	if (unlikely(!total_msdu_reaped))
+-		goto exit;
++#ifdef CPTCFG_ATH11K_RT3000_REO_IDR_CLAIM
++	if (reo_idr_claim) {
++		total_msdu_reaped = 0;
++		for (i = 0; i < ab->num_radios && i < MAX_RADIOS; i++) {
++			struct sk_buff_head ready;
++			struct sk_buff_head *pending;
++			int complete_count, refill_count;
++
++			__skb_queue_head_init(&ready);
++			ar = ab->pdevs[i].ar;
++			rx_ring = &ar->dp.rx_refill_buf_ring;
++			pending = ath11k_dp_rx_reo_pending_queue(&ab->dp, ring_id, i);
++			skb_queue_splice_tail_init(&msdu_list[i], pending);
++			complete_count = ath11k_dp_rx_reo_take_complete_prefix(pending,
++								       &ready);
++			if (!skb_queue_empty(&ready))
++				ath11k_dp_rx_process_received_packets(ab, napi, &ready, i);
++
++			/* Refill only buffers newly removed from the IDR this poll.
++			 * Older pending payload SKBs have already been replaced and must
++			 * not be replenished a second time when their chain completes.
++			 */
++			refill_count = num_buffs_reaped[i];
++			if (refill_count) {
++				ar = ab->pdevs[i].ar;
++				rx_ring = &ar->dp.rx_refill_buf_ring;
++				ath11k_dp_rxbufs_replenish(ab, i, rx_ring, refill_count,
++							   HAL_RX_BUF_RBM_SW3_BM, GFP_ATOMIC, NULL);
++			}
++			total_msdu_reaped += complete_count;
++		}
++	} else
++#endif
++	{
++		if (unlikely(!total_msdu_reaped))
++			goto exit;
+ 
+-	for (i = 0; i < ab->num_radios; i++) {
+-		if (!num_buffs_reaped[i])
+-			continue;
++		for (i = 0; i < ab->num_radios; i++) {
++			if (!num_buffs_reaped[i])
++				continue;
+ 
+-		ath11k_dp_rx_process_received_packets(ab, napi, &msdu_list[i], i);
+-		ar = ab->pdevs[i].ar;
+-		rx_ring = &ar->dp.rx_refill_buf_ring;
++			ath11k_dp_rx_process_received_packets(ab, napi, &msdu_list[i], i);
++			ar = ab->pdevs[i].ar;
++			rx_ring = &ar->dp.rx_refill_buf_ring;
+ 
+-		ath11k_dp_rxbufs_replenish(ab, i, rx_ring, num_buffs_reaped[i],
+-					   HAL_RX_BUF_RBM_SW3_BM, GFP_ATOMIC, rx_buf_id[i]);
++			ath11k_dp_rxbufs_replenish(ab, i, rx_ring, num_buffs_reaped[i],
++						   HAL_RX_BUF_RBM_SW3_BM, GFP_ATOMIC, rx_buf_id[i]);
++		}
+ 	}
+ 
+ exit:

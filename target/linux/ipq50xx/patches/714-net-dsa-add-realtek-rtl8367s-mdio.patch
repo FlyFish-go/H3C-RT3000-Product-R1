@@ -1,0 +1,92 @@
+diff --git a/drivers/net/dsa/Kconfig b/drivers/net/dsa/Kconfig
+--- a/drivers/net/dsa/Kconfig
++++ b/drivers/net/dsa/Kconfig
+@@ -75,6 +75,18 @@
+ 	  This enables support for the Realtek SMI-based switch
+ 	  chips, currently only RTL8366RB.
+ 
++config NET_DSA_REALTEK_RTL8365MB
++	tristate "Realtek RTL8365MB / RTL8367S switch support"
++	depends on NET_DSA && OF
++	select FIXED_PHY
++	select IRQ_DOMAIN
++	select REALTEK_PHY
++	select REGMAP
++	select NET_DSA_TAG_RTL8_4
++	help
++	  Enable the upstream DSA driver for RTL8365MB-VC and RTL8367S
++	  switches managed through the Realtek MDIO register interface.
++
+ config NET_DSA_SMSC_LAN9303
+ 	tristate
+ 	select NET_DSA_TAG_LAN9303
+diff --git a/drivers/net/dsa/Makefile b/drivers/net/dsa/Makefile
+--- a/drivers/net/dsa/Makefile
++++ b/drivers/net/dsa/Makefile
+@@ -10,6 +10,7 @@
+ obj-$(CONFIG_NET_DSA_MV88E6060) += mv88e6060.o
+ obj-$(CONFIG_NET_DSA_QCA8K)	+= qca8k.o
+ obj-$(CONFIG_NET_DSA_REALTEK_SMI) += realtek-smi.o
++obj-$(CONFIG_NET_DSA_REALTEK_RTL8365MB) += realtek/
+ realtek-smi-objs		:= realtek-smi-core.o rtl8366.o rtl8366rb.o
+ obj-$(CONFIG_NET_DSA_SMSC_LAN9303) += lan9303-core.o
+ obj-$(CONFIG_NET_DSA_SMSC_LAN9303_I2C) += lan9303_i2c.o
+diff --git a/net/dsa/Kconfig b/net/dsa/Kconfig
+--- a/net/dsa/Kconfig
++++ b/net/dsa/Kconfig
+@@ -87,6 +87,12 @@
+ 	  Realtek switches with 4 byte protocol A tags, sich as found in
+ 	  the Realtek RTL8366RB.
+ 
++config NET_DSA_TAG_RTL8_4
++	tristate "Tag driver for Realtek 8 byte protocol 4 tags"
++	depends on NET_DSA
++	help
++	  Support the protocol 4 tag used by RTL8365MB-VC and RTL8367S.
++
+ config NET_DSA_TAG_QCA
+ 	tristate "Tag driver for Qualcomm Atheros QCA8K switches"
+ 	help
+diff --git a/net/dsa/Makefile b/net/dsa/Makefile
+--- a/net/dsa/Makefile
++++ b/net/dsa/Makefile
+@@ -11,6 +11,7 @@
+ obj-$(CONFIG_NET_DSA_TAG_GSWIP) += tag_gswip.o
+ obj-$(CONFIG_NET_DSA_TAG_KSZ) += tag_ksz.o
+ obj-$(CONFIG_NET_DSA_TAG_RTL4_A) += tag_rtl4_a.o
++obj-$(CONFIG_NET_DSA_TAG_RTL8_4) += tag_rtl8_4.o
+ obj-$(CONFIG_NET_DSA_TAG_LAN9303) += tag_lan9303.o
+ obj-$(CONFIG_NET_DSA_TAG_MTK) += tag_mtk.o
+ obj-$(CONFIG_NET_DSA_TAG_QCA) += tag_qca.o
+diff --git a/include/net/dsa.h b/include/net/dsa.h
+--- a/include/net/dsa.h
++++ b/include/net/dsa.h
+@@ -43,6 +43,8 @@
+ #define DSA_TAG_PROTO_SJA1105_VALUE		13
+ #define DSA_TAG_PROTO_KSZ8795_VALUE		14
+ #define DSA_TAG_PROTO_RTL4_A_VALUE		17
++#define DSA_TAG_PROTO_RTL8_4_VALUE		18
++#define DSA_TAG_PROTO_RTL8_4T_VALUE		19
+ 
+ enum dsa_tag_protocol {
+ 	DSA_TAG_PROTO_NONE		= DSA_TAG_PROTO_NONE_VALUE,
+@@ -61,6 +63,8 @@
+ 	DSA_TAG_PROTO_SJA1105		= DSA_TAG_PROTO_SJA1105_VALUE,
+ 	DSA_TAG_PROTO_KSZ8795		= DSA_TAG_PROTO_KSZ8795_VALUE,
+ 	DSA_TAG_PROTO_RTL4_A		= DSA_TAG_PROTO_RTL4_A_VALUE,
++	DSA_TAG_PROTO_RTL8_4		= DSA_TAG_PROTO_RTL8_4_VALUE,
++	DSA_TAG_PROTO_RTL8_4T		= DSA_TAG_PROTO_RTL8_4T_VALUE,
+ };
+ 
+ struct packet_type;
+diff --git a/include/uapi/linux/if_ether.h b/include/uapi/linux/if_ether.h
+--- a/include/uapi/linux/if_ether.h
++++ b/include/uapi/linux/if_ether.h
+@@ -88,6 +88,7 @@
+ #define ETH_P_PAE	0x888E		/* Port Access Entity (IEEE 802.1X) */
+ #define ETH_P_AOE	0x88A2		/* ATA over Ethernet		*/
+ #define ETH_P_8021AD	0x88A8          /* 802.1ad Service VLAN		*/
++#define ETH_P_REALTEK	0x8899		/* Realtek proprietary protocol */
+ #define ETH_P_802_EX1	0x88B5		/* 802.1 Local Experimental 1.  */
+ #define ETH_P_PREAUTH	0x88C7		/* 802.11 Preauthentication */
+ #define ETH_P_TIPC	0x88CA		/* TIPC 			*/

@@ -1,0 +1,60 @@
+From: RT3000 developers <noreply@openai.com>
+Subject: [PATCH] ath11k: reserve headroom for empty aligned RX buffers
+
+The RX refill and monitor-status paths allocate empty skbs, then call
+skb_pull() to align skb->data. skb_pull() cannot advance an empty skb, so
+the requested alignment is not applied. Use skb_reserve() at these two
+allocation sites; keep skb_pull() semantics for populated skbs unchanged.
+
+Also report monitor-status descriptor/cb DMA address mismatches immediately
+before DMA sync. This diagnostic does not change ownership or control flow.
+
+Offline validation: both allocation sites use dev_alloc_skb() before the
+alignment adjustment. The monitor-status path takes descriptor paddr and
+cookie from the same ring entry, while skb paddr comes from its IDR entry.
+This candidate does not establish the panic root cause. The skb alignment
+change follows the upstream discussion at
+https://lore-kernel.gnuweeb.org/ath11k/20260719215817.2468580-3-wabsie%40gmail.com/T/
+and https://github.com/eisbaw/ath11k-page-frag-fix . No device validation is
+claimed.
+
+--- a/drivers/net/wireless/ath/ath11k/dp_rx.c
++++ b/drivers/net/wireless/ath/ath11k/dp_rx.c
+@@ -411,8 +411,8 @@ int ath11k_dp_rxbufs_replenish(struct ath11k_base *ab, int mac_id,
+ 		if (!IS_ALIGNED((unsigned long)skb->data,
+ 				DP_RX_BUFFER_ALIGN_SIZE)) {
+-			skb_pull(skb,
+-				 PTR_ALIGN(skb->data, DP_RX_BUFFER_ALIGN_SIZE) -
+-				 skb->data);
++			skb_reserve(skb,
++				    PTR_ALIGN(skb->data, DP_RX_BUFFER_ALIGN_SIZE) -
++				    skb->data);
+ 		}
+ 
+ 		paddr = dma_map_single(ab->dev, skb->data,
+@@ -3720,7 +3720,7 @@ static struct sk_buff *ath11k_dp_rx_alloc_mon_status_buf(struct ath11k_base *ab,
+ 	if (!IS_ALIGNED((unsigned long)skb->data,
+ 			DP_RX_BUFFER_ALIGN_SIZE)) {
+-		skb_pull(skb, PTR_ALIGN(skb->data, DP_RX_BUFFER_ALIGN_SIZE) -
+-			 skb->data);
++		skb_reserve(skb, PTR_ALIGN(skb->data, DP_RX_BUFFER_ALIGN_SIZE) -
++			    skb->data);
+ 	}
+ 
+ 	paddr = dma_map_single(ab->dev, skb->data,
+@@ -3951,6 +3951,15 @@ static int ath11k_dp_rx_reap_mon_status_ring(struct ath11k_base *ab, int mac_id,
+ 
+ 			rxcb = ATH11K_SKB_RXCB(skb);
+ 
++			if (unlikely(!rxcb->paddr || paddr != rxcb->paddr))
++				dev_warn_ratelimited(ab->dev,
++					"mon status DMA mismatch mac_id=%d srng_id=%d ring_id=%u "
++					"cookie=0x%x buf_id=%d desc_paddr=%pad cb_paddr=%pad "
++					"skb=%p len=%u tailroom=%u\n",
++					mac_id, srng_id, srng->ring_id, cookie, buf_id,
++					&paddr, &rxcb->paddr, skb, skb->len,
++					skb_tailroom(skb));
++
+ 			dma_sync_single_for_cpu(ab->dev, rxcb->paddr,
+ 						skb->len + skb_tailroom(skb),
+ 						DMA_FROM_DEVICE);

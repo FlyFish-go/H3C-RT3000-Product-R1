@@ -43,6 +43,12 @@ $(eval $(call generate-ath11k-firmware,qcn9074,qcn9074))
 define Build/Compile
 endef
 
+
+# HW-D uses the stock WLAN.HK.2.7.0.1-01744 payload above.  The OEM 2.5
+# payload (hwd-oem25-files/) left Q6 failing ~50% of SoC resets under QSDK
+# 5.4; 2.7 starts 10/10 when paired with the hybrid QCN6122 BDF installed by
+# hwd-nx30-oem-wifi.  hwd-oem25-files/ is kept only as evidence.
+
 $(foreach pkg, $(ALL_PACKAGE), \
 	$(eval $(call BuildPackage,$(pkg))) \
 )

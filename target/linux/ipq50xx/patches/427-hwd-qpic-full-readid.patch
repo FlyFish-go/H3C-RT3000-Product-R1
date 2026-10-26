@@ -1,0 +1,128 @@
+--- a/drivers/mtd/nand/raw/qcom_nandc.c
++++ b/drivers/mtd/nand/raw/qcom_nandc.c
+@@ -471,6 +471,8 @@
+ 	struct device *dev;
+ 	struct nand_id hwd_nand_id;
+ 	bool hwd_nand_id_valid;
++	bool hwd_capture_id;
++	bool hwd_readid_success;
+ 
+ 	void __iomem *base;
+ 	phys_addr_t base_phys;
+@@ -1720,6 +1722,15 @@
+ 	}
+ }
+ 
++static void hwd_nand_capture_raw_id(struct nand_id *id, u32 raw_id)
++{
++	id->data[0] = raw_id & 0xff;
++	id->data[1] = (raw_id >> 8) & 0xff;
++	id->data[2] = (raw_id >> 16) & 0xff;
++	id->data[3] = (raw_id >> 24) & 0xff;
++	id->len = sizeof(raw_id);
++}
++
+ static void post_command(struct qcom_nand_host *host, int command)
+ {
+ 	struct nand_chip *chip = &host->chip;
+@@ -1728,6 +1739,15 @@
+ 	switch (command) {
+ 	case NAND_CMD_READID:
+ 		nandc_read_buffer_sync(nandc, true);
++		if (nandc->hwd_capture_id && nandc->hwd_readid_success) {
++			u32 raw_id = le32_to_cpu(nandc->reg_read_buf[0]);
++
++			/* Keep the full QPIC READ_ID register out of NAND core's
++			 * intentionally two-byte serial-NAND identification buffer.
++			 */
++			hwd_nand_capture_raw_id(&nandc->hwd_nand_id, raw_id);
++			nandc->hwd_nand_id_valid = true;
++		}
+ 		memcpy(nandc->data_buffer, nandc->reg_read_buf,
+ 		       nandc->buf_count);
+ 		break;
+@@ -1755,6 +1775,12 @@
+ 	bool wait = false;
+ 	int ret = 0;
+ 
++	if (command == NAND_CMD_READID && nandc->hwd_capture_id) {
++		if (column == 0)
++			nandc->hwd_nand_id_valid = false;
++		nandc->hwd_readid_success = false;
++	}
++
+ 	pre_command(host, command);
+ 
+ 	switch (command) {
+@@ -1814,6 +1840,8 @@
+ 				"failure submitting descs for command %d\n",
+ 				command);
+ 	}
++	if (command == NAND_CMD_READID && nandc->hwd_capture_id)
++		nandc->hwd_readid_success = column == 0 && !ret;
+ 
+ 	free_descs(nandc);
+ 
+@@ -3618,6 +3646,12 @@
+ }
+ static DEVICE_ATTR_RO(hwd_nand_id);
+ 
++static bool hwd_nand_jedec_valid(const struct nand_id *id)
++{
++	return id->len >= 3 && id->data[0] == 0xef &&
++	       id->data[1] == 0xba && id->data[2] == 0x21;
++}
++
+ static int qcom_nand_host_init_and_register(struct qcom_nand_controller *nandc,
+ 					    struct qcom_nand_host *host,
+ 					    struct device_node *dn)
+@@ -3703,6 +3737,8 @@
+ 	/* set up initial status value */
+ 	host->status = NAND_STATUS_READY | NAND_STATUS_WP;
+ 
++	nandc->hwd_nand_id_valid = false;
++	nandc->hwd_capture_id = hwd_native_safe;
+ 	if (nandc->props->is_serial_nand) {
+ 		qspi_nand_init(nandc);
+ 		if (nandc->boot_layout)
+@@ -3712,23 +3748,35 @@
+ 	} else {
+ 		ret = nand_scan(chip, 1);
+ 	}
++	nandc->hwd_capture_id = false;
+ 	if (ret) {
+ 		dev_err(nandc->dev, "nand scan returned error\n");
+ 		return ret;
+ 	}
+ 
+ 	if (hwd_native_safe) {
+-		if (chip->id.len < 3 || chip->id.data[0] != 0xef ||
+-		    chip->id.data[1] != 0xba || chip->id.data[2] != 0x21 ||
++		if (!nandc->hwd_nand_id_valid ||
++		    !hwd_nand_jedec_valid(&nandc->hwd_nand_id) ||
+ 		    mtd->type != MTD_NANDFLASH || mtd->size != 0x08000000ULL ||
+ 		    mtd->writesize != 2048 || mtd->erasesize != 131072 ||
+ 		    mtd->oobsize != 64 || mtd->ecc_strength != 4) {
+-			dev_err(dev, "HW-D NAND identity/geometry rejected\n");
++			dev_err(dev,
++				"HW-D NAND rejected: raw-id=%02x:%02x:%02x:%02x/%u "
++				"table-id=%02x:%02x/%u type=%u size=%llu page=%u "
++				"erase=%u oob=%u ecc=%u steps=%u\n",
++				nandc->hwd_nand_id.data[0],
++				nandc->hwd_nand_id.data[1],
++				nandc->hwd_nand_id.data[2],
++				nandc->hwd_nand_id.data[3],
++				nandc->hwd_nand_id_valid ? nandc->hwd_nand_id.len : 0,
++				chip->id.data[0], chip->id.data[1], chip->id.len,
++				mtd->type, (unsigned long long)mtd->size,
++				mtd->writesize, mtd->erasesize, mtd->oobsize,
++				mtd->ecc_strength, chip->ecc.steps);
++			nand_cleanup(chip);
+ 			return -ENODEV;
+ 		}
+ 		dev_info(dev, "HW-D NAND JEDEC EF:BA:21, 128MiB, page2048, erase131072, OOB64, ECC4; x1/no-write-probe\n");
+-		nandc->hwd_nand_id = chip->id;
+-		nandc->hwd_nand_id_valid = true;
+ 	}
+ 
+ 	if (c_mtd_discovery || c_native_safe || hwd_native_safe)

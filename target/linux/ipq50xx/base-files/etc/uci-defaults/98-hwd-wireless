@@ -1,0 +1,72 @@
+#!/bin/sh
+# Exact D factory MACs; determine radio identity by detected band, never index.
+[ "$(board_name)" = "h3c,nx30-hw-d" ] || exit 0
+. /lib/functions.sh
+. /lib/rt3000/wifi-c.sh
+hwd_macs="$(/usr/sbin/hwd-factory-mac)" || exit 1
+set -- $hwd_macs
+[ "$#" -eq 4 ] || exit 1
+hwd_mac_2g="$3"
+hwd_mac_5g="$4"
+
+hwd_device() {
+	local band
+	config_get band "$1" band
+	case "$band" in
+		2g) hwd_seen_2g=$((hwd_seen_2g+1)); hwd_radio_2g="$1";;
+		5g) hwd_seen_5g=$((hwd_seen_5g+1)); hwd_radio_5g="$1";;
+		*) hwd_error=1;;
+	esac
+}
+hwd_iface() {
+	local device band
+	# Only generated default interfaces receive the factory addresses.
+	case "$1" in default_radio*) ;; *) return;; esac
+	config_get device "$1" device
+	config_get band "$device" band
+	case "$band" in
+		2g) hwd_if_2g=$((hwd_if_2g+1)); hwd_section_2g="$1";;
+		5g) hwd_if_5g=$((hwd_if_5g+1)); hwd_section_5g="$1";;
+		*) hwd_error=1; return;;
+	esac
+}
+# Firmware probes and normal mac80211 hotplug detection are asynchronous.
+# Wait for their complete generated config, without starting a second detector.
+hwd_wait=0
+while :; do
+	set -- /sys/class/ieee80211/phy*
+	[ "$#" -le 2 ] || exit 1
+	hwd_seen_2g=0; hwd_seen_5g=0; hwd_if_2g=0; hwd_if_5g=0; hwd_error=0
+	config_load wireless
+	config_foreach hwd_device wifi-device
+	config_foreach hwd_iface wifi-iface
+	if [ "$#" -eq 2 ] && [ -d "$1" ] && [ -d "$2" ] &&
+	   [ "$hwd_seen_2g" -eq 1 ] && [ "$hwd_seen_5g" -eq 1 ] &&
+	   [ "$hwd_if_2g" -eq 1 ] && [ "$hwd_if_5g" -eq 1 ] && [ "$hwd_error" -eq 0 ]; then
+		break
+	fi
+	[ "$hwd_wait" -lt 45 ] || {
+		logger -t hwd-factory-mac 'two PHYs and complete default interfaces not ready; retry retained'
+		exit 1
+	}
+	hwd_wait=$((hwd_wait + 1))
+	sleep 1
+done
+uci -q set "wireless.$hwd_section_2g.macaddr=$hwd_mac_2g" || exit 1
+uci -q set "wireless.$hwd_section_5g.macaddr=$hwd_mac_5g" || exit 1
+# Same first-boot Wi-Fi as the other boards: both bands up, WPA2, shared defaults.
+for hwd_s in "$hwd_section_2g:$RT3000_WIFI_SSID_2G" "$hwd_section_5g:$RT3000_WIFI_SSID_5G"; do
+	uci -q set "wireless.${hwd_s%%:*}.ssid=${hwd_s#*:}" &&
+	uci -q set "wireless.${hwd_s%%:*}.encryption=psk2" &&
+	uci -q set "wireless.${hwd_s%%:*}.key=$RT3000_WIFI_DEFAULT_KEY" &&
+	uci -q set "wireless.${hwd_s%%:*}.disabled=0" || exit 1
+done
+uci -q set "wireless.$hwd_radio_2g.htmode=HE20" || exit 1
+uci -q set "wireless.$hwd_radio_5g.htmode=HE80" || exit 1
+uci -q set "wireless.$hwd_radio_2g.disabled=0" || exit 1
+uci -q set "wireless.$hwd_radio_5g.disabled=0" || exit 1
+# ath11k wiphys are self-managed; without a country the firmware default
+# (US) stays in force. NX30 is a CN-market unit.
+uci -q set "wireless.$hwd_radio_2g.country=CN" || exit 1
+uci -q set "wireless.$hwd_radio_5g.country=CN" || exit 1
+uci -q commit wireless

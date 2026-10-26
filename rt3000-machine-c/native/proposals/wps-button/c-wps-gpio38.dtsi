@@ -1,0 +1,36 @@
+/* C buttons. U-Boot live press test: RESET=GPIO27, WPS/MESH=GPIO38, both active-low. */
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/input/linux-event-codes.h>
+
+&tlmm {
+	c_wps_button_pins: c_wps_button_pins {
+		pins = "gpio27", "gpio38";
+		function = "gpio";
+		drive-strength = <8>;
+		bias-pull-up;
+	};
+};
+
+&soc {
+	c_gpio_keys: gpio_keys {
+		compatible = "gpio-keys";
+		pinctrl-0 = <&c_wps_button_pins>;
+		pinctrl-names = "default";
+
+		button_reset {
+			label = "reset";
+			gpios = <&tlmm 27 GPIO_ACTIVE_LOW>;
+			linux,input-type = <EV_KEY>;
+			linux,code = <KEY_RESTART>;
+			debounce-interval = <60>;
+		};
+
+		button_wps {
+			label = "wps";
+			gpios = <&tlmm 38 GPIO_ACTIVE_LOW>;
+			linux,input-type = <EV_KEY>;
+			linux,code = <KEY_WPS_BUTTON>;
+			debounce-interval = <60>;
+		};
+	};
+};

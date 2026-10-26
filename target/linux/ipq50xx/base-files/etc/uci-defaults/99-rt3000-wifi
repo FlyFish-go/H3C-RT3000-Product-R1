@@ -1,5 +1,5 @@
 #!/bin/sh
-# RT3000 Machine-B — Wi-Fi first-boot policy, applied by PHYSICAL device path.
+# RT3000 Machine-B/C — Wi-Fi first-boot policy, applied by PHYSICAL device path.
 #
 # Why this file exists (and why the old static /etc/config/wireless is gone):
 #
@@ -42,13 +42,18 @@
 # separate step from board.d still applies, and is why this remains here.
 
 . /lib/rt3000/mac.sh
+. /lib/rt3000/wifi-c.sh
 
-[ "$(board_name)" = "h3c,rt3000" ] || exit 0
+board=$(board_name)
+case "$board" in
+	h3c,rt3000|h3c,rt3000-rtl8367s|h3c,rw3000-hw-a) ;;
+	*) exit 0 ;;
+esac
 
 # Physical identity of each radio, as exposed by the kernel under
 # /sys/devices/.  These are the device-tree node paths, not UCI names.
-WIFI24_PATH="platform/soc/c000000.wifi"          # IPQ5018 integrated, 2.4 GHz
-WIFI5_PATH="platform/soc/soc:wifi1@c000000"      # external QCN6102, 5 GHz
+WIFI24_PATH="$RT3000_WIFI24_PATH"                # IPQ5018 integrated, 2.4 GHz
+WIFI5_PATH="$RT3000_WIFI5_PATH"                  # external QCN6102, 5 GHz
 
 # Resolve a section's configured path to the PHY the kernel actually bound.
 # Prints the phy name (phy0, phy1, ...) or nothing when the path matches no
@@ -104,6 +109,9 @@ apply_radio_policy() {
 		found=1
 
 		uci -q set "wireless.$section.band=$band"
+		# ath11k wiphys are self-managed; without a country the firmware
+		# default (US) stays in force. These are CN-market units.
+		uci -q set "wireless.$section.country=CN"
 		uci -q set "wireless.$section.disabled=$disabled"
 
 		# Channel width.  5 GHz is pinned to HE80 rather than HE160: a 160 MHz
@@ -160,31 +168,71 @@ apply_radio_policy() {
 # A usable factory MAC is required before any identity is written.  When it is
 # unusable the helper fails and we leave the kernel defaults alone rather than
 # inventing an identity -- same fail-closed rule as the wired policy.
+RT3_NATIVE_MAC_REQUIRED=0
+if [ "$board" = "h3c,rt3000-rtl8367s" ]; then
+	RT3_MODEL=$(tr -d '\000' < /proc/device-tree/model 2>/dev/null)
+	if [ "$RT3_MODEL" = 'H3C Magic RT3000 (RTL8367S, persistent C native profile)' ]; then
+		RT3_NATIVE_MAC_REQUIRED=1
+		if [ ! -r /lib/rt3000/c-mac.sh ]; then
+			logger -t rt3000-wifi "C factory identity unavailable; firstboot policy unchanged"
+			exit 1
+		fi
+		. /lib/rt3000/c-mac.sh
+		WAN=$(rt3000_c_factory_mac) || WAN=
+	else
+		# RAM/installer C has no persistent ENV identity; retain live OEM WAN input.
+		WAN=$(cat /sys/class/net/eth0/address 2>/dev/null)
+	fi
+	if ! rt3000_mac_valid "$WAN"; then
+		logger -t rt3000-wifi "C factory identity unavailable; firstboot policy unchanged"
+		[ "$RT3_NATIVE_MAC_REQUIRED" -eq 1 ] && exit 1
+	fi
+	RT3000_ETHADDR_SOURCE="$WAN"
+fi
+
 MACMAP=$(rt3000_mac_map) || {
-	logger -t rt3000-wifi "factory MAC unusable; radio policy applied without derived MACs"
+	logger -t rt3000-wifi "factory MAC unusable; applying radio policy without derived MACs"
+	[ "$RT3_NATIVE_MAC_REQUIRED" -eq 1 ] && exit 1
 	MACMAP=""
 }
 
 W24=$(printf '%s\n' "$MACMAP" | sed -n 's/^wifi24 //p')
 W5=$(printf '%s\n'  "$MACMAP" | sed -n 's/^wifi5 //p')
 
-# Default WPA2 passphrase for both bands.  This is a shipped default, not a
-# secret: it is visible in the image and must be changed by the operator for
-# any real deployment.  Keeping it here (rather than open encryption) means a
-# freshly flashed unit is never an open AP.
-RT3_WIFI_KEY="${RT3_WIFI_KEY:-RTRCRWNX}"
+# The shared default is published in the image, not a deployment secret. C
+# radios remain disabled until the operator supplies validated RF settings.
+RT3_WIFI_KEY="${RT3_WIFI_KEY:-$RT3000_WIFI_DEFAULT_KEY}"
+
+if [ "$board" = "h3c,rt3000-rtl8367s" ]; then
+	lock /var/lock/rt3000-c-wifi || exit 1
+	trap 'lock -u /var/lock/rt3000-c-wifi >/dev/null 2>&1' 0
+	trap 'exit 1' HUP INT TERM
+
+	LAN=$(printf '%s\n' "$MACMAP" | sed -n 's/^lan //p')
+	if [ -n "$LAN" ]; then
+		# C's MAC1/eth1 is the DSA CPU master and is not a member of the
+		# user-port bridge.  Give netifd an explicit device rule so the
+		# placeholder ethaddr1 is replaced before the DSA bridge comes up.
+		uci -q set network.rt3000_c_cpu='device'
+		uci -q set network.rt3000_c_cpu.name='eth1'
+		uci -q set "network.rt3000_c_cpu.macaddr=$LAN"
+		uci -q commit network || exit 1
+	fi
+
+	# C starts with secure AP defaults but keeps both radios disabled. A
+	# persistent ieee80211 hotplug hook applies the same policy if a PHY appears
+	# after this one-shot uci-defaults script has completed.
+	rt3000_c_wifi_apply "$W24" "$W5" || exit 1
+	uci -q commit wireless || exit 1
+	exit 0
+fi
 
 # Applied once by uci-defaults during image initialization, including a
 # factory reset. This is not a service that reconfigures a running radio.
-#
-# Both bands are enabled and secured.  Shipping an open AP by default is not
-# acceptable for a device handed to an end user: anyone in range joins the LAN.
-# 5 GHz uses HE80 (see the htmode note above) so the AP starts without waiting
-# for a DFS channel-availability check.
-#
+# Both bands are enabled and secured, with 5 GHz limited to non-DFS HE80.
 # Field order: <phy path> <band> <ssid> <mac> <disabled> <encryption> <key> <htmode>
-apply_radio_policy "$WIFI24_PATH" "2g" "RT3000"    "$W24" "0" "psk2" "$RT3_WIFI_KEY" "HE20"
-apply_radio_policy "$WIFI5_PATH"  "5g" "RT3000-5G" "$W5"  "0" "psk2" "$RT3_WIFI_KEY" "HE80"
+apply_radio_policy "$WIFI24_PATH" "2g" "$RT3000_WIFI_SSID_2G" "$W24" "0" "psk2" "$RT3_WIFI_KEY" "HE20"
+apply_radio_policy "$WIFI5_PATH"  "5g" "$RT3000_WIFI_SSID_5G" "$W5"  "0" "psk2" "$RT3_WIFI_KEY" "HE80"
 
 uci -q commit wireless
 

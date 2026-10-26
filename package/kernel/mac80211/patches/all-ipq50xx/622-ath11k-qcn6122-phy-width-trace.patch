@@ -1,0 +1,159 @@
+--- a/drivers/net/wireless/ath/ath11k/hal_rx.c
++++ b/drivers/net/wireless/ath/ath11k/hal_rx.c
+@@ -5,6 +5,7 @@
+ 
+ #include <linux/atomic.h>
+ #include <linux/moduleparam.h>
++#include <linux/ktime.h>
+ #include <linux/of.h>
+ #include "debug.h"
+ #include "hal.h"
+@@ -41,6 +42,137 @@
+ 		&ath11k_qcn6122_vht_siga_trace_enable, 0600);
+ MODULE_PARM_DESC(qcn6122_vht_siga_trace,
+ 		 "Log at most 16 C/QCN6122 VHT SIG-A status samples");
++
++static bool ath11k_qcn6122_rssi_legacy_trace_enable;
++static atomic_t ath11k_qcn6122_rssi_legacy_trace_remaining = ATOMIC_INIT(16);
++
++static int ath11k_qcn6122_rssi_legacy_trace_set(const char *val,
++						 const struct kernel_param *kp)
++{
++	bool enable;
++	int ret;
++
++	ret = kstrtobool(val, &enable);
++	if (ret)
++		return ret;
++	if (enable)
++		atomic_set(&ath11k_qcn6122_rssi_legacy_trace_remaining, 16);
++	WRITE_ONCE(*(bool *)kp->arg, enable);
++	return 0;
++}
++
++static const struct kernel_param_ops ath11k_qcn6122_rssi_legacy_trace_ops = {
++	.set = ath11k_qcn6122_rssi_legacy_trace_set,
++	.get = param_get_bool,
++};
++module_param_cb(qcn6122_rssi_legacy_trace,
++		&ath11k_qcn6122_rssi_legacy_trace_ops,
++		&ath11k_qcn6122_rssi_legacy_trace_enable, 0600);
++MODULE_PARM_DESC(qcn6122_rssi_legacy_trace,
++		 "Log at most 16 QCN6122 PHYRX_RSSI_LEGACY raw samples");
++
++static void ath11k_qcn6122_rssi_legacy_trace(struct ath11k_base *ab,
++					    struct hal_rx_mon_ppdu_info *ppdu_info,
++					    int mac_id, struct sk_buff *skb,
++					    const struct hal_tlv_hdr *tlv,
++					    const u8 *tlv_data)
++{
++	__le32 raw_word0_le = 0, raw_word35_le = 0, raw_word36_le = 0;
++	unsigned long skb_start, skb_end, tlv_start, payload_start;
++	size_t skb_capacity, payload_offset, payload_bytes;
++	u32 raw_tlv, word0 = 0, word35 = 0, word36 = 0;
++	u16 tlv_len;
++	int remaining;
++	bool header_bounds_valid;
++	bool payload_within_buffer;
++	bool word0_len_valid, word0_bounds_valid;
++	bool word35_len_valid, word35_bounds_valid;
++	bool word36_len_valid, word36_bounds_valid;
++	bool parser_start_seen, parser_mac_match, parser_context_valid;
++	bool parser_id_equal;
++
++	if (!READ_ONCE(ath11k_qcn6122_rssi_legacy_trace_enable) ||
++	    !of_machine_is_compatible("h3c,rt3000-rtl8367s") ||
++	    ab->hw_params.hw_rev != ATH11K_HW_QCN6122 || !skb || !tlv ||
++	    !tlv_data)
++		return;
++
++	/* DMA-filled monitor skbs can keep len at zero; use allocated capacity. */
++	skb_start = (unsigned long)skb->data;
++	skb_end = (unsigned long)skb_end_pointer(skb);
++	skb_capacity = skb->len + skb_tailroom(skb);
++	tlv_start = (unsigned long)tlv;
++	payload_start = (unsigned long)tlv_data;
++	header_bounds_valid = skb_end >= skb_start &&
++		tlv_start >= skb_start && tlv_start <= skb_end &&
++		skb_end - tlv_start >= sizeof(*tlv) &&
++		payload_start == tlv_start + sizeof(*tlv) &&
++		skb_end - skb_start == skb_capacity;
++	if (!header_bounds_valid)
++		return;
++
++	raw_tlv = le32_to_cpu(READ_ONCE(tlv->tl));
++	if (FIELD_GET(HAL_TLV_HDR_TAG, raw_tlv) != HAL_PHYRX_RSSI_LEGACY)
++		return;
++	tlv_len = FIELD_GET(HAL_TLV_HDR_LEN, raw_tlv);
++	payload_offset = payload_start - skb_start;
++	if (payload_offset > skb_capacity)
++		return;
++	payload_bytes = skb_capacity - payload_offset;
++	payload_within_buffer = tlv_len <= payload_bytes;
++
++	word0_len_valid = tlv_len >= sizeof(raw_word0_le);
++	word0_bounds_valid = payload_bytes >= sizeof(raw_word0_le);
++	word35_len_valid = tlv_len >= 36 * sizeof(raw_word35_le);
++	word35_bounds_valid = payload_bytes >= 36 * sizeof(raw_word35_le);
++	word36_len_valid = tlv_len >= 37 * sizeof(raw_word36_le);
++	word36_bounds_valid = payload_bytes >= 37 * sizeof(raw_word36_le);
++
++	if (word0_len_valid && word0_bounds_valid) {
++		memcpy(&raw_word0_le, tlv_data, sizeof(raw_word0_le));
++		word0 = le32_to_cpu(raw_word0_le);
++	}
++	if (word35_len_valid && word35_bounds_valid) {
++		memcpy(&raw_word35_le, tlv_data + 35 * sizeof(raw_word35_le),
++		       sizeof(raw_word35_le));
++		word35 = le32_to_cpu(raw_word35_le);
++	}
++	if (word36_len_valid && word36_bounds_valid) {
++		memcpy(&raw_word36_le, tlv_data + 36 * sizeof(raw_word36_le),
++		       sizeof(raw_word36_le));
++		word36 = le32_to_cpu(raw_word36_le);
++	}
++
++	remaining = atomic_dec_if_positive(
++		&ath11k_qcn6122_rssi_legacy_trace_remaining);
++	if (remaining < 0) {
++		WRITE_ONCE(ath11k_qcn6122_rssi_legacy_trace_enable, false);
++		return;
++	}
++
++	parser_start_seen = ppdu_info->qcn6122_vht_siga_ppdu_valid;
++	parser_mac_match = ppdu_info->qcn6122_vht_siga_mac_id == mac_id;
++	parser_context_valid = parser_start_seen && parser_mac_match;
++	parser_id_equal = parser_context_valid && word0_len_valid &&
++		word0_bounds_valid &&
++		FIELD_GET(GENMASK(31, 16), word0) == ppdu_info->ppdu_id;
++
++	dev_info(ab->dev,
++		 "qcn6122-rssi-legacy-622 sample=%u host_parse_ns=%llu mac=%d raw_tlv=0x%08x tag=%u len=%u userid=%u skb_len=%u skb_capacity=%zu payload_within_buffer=%u dword0_len_valid=%u dword0_bounds_valid=%u dword0=0x%08x reception_type=%u full_rx_bw=%u phy_ppdu_id=%u word35_len_valid=%u word35_bounds_valid=%u word35=0x%08x word36_len_valid=%u word36_bounds_valid=%u word36=0x%08x parser_start_seen=%u parser_mac_id=%u parser_mac_match=%u parser_context_valid=%u parser_ppdu_id=%u parser_id_equal_observation=%u same_ppdu_join_asserted=0\n",
++		 16 - remaining, (unsigned long long)ktime_get_ns(), mac_id,
++		 raw_tlv, (u32)FIELD_GET(HAL_TLV_HDR_TAG, raw_tlv), tlv_len,
++		 (u32)FIELD_GET(HAL_TLV_USR_ID, raw_tlv), skb->len, skb_capacity,
++		 payload_within_buffer, word0_len_valid, word0_bounds_valid, word0,
++		 (u32)FIELD_GET(GENMASK(3, 0), word0), (u32)FIELD_GET(GENMASK(7, 6), word0),
++		 (u32)FIELD_GET(GENMASK(31, 16), word0),
++		 word35_len_valid, word35_bounds_valid, word35,
++		 word36_len_valid, word36_bounds_valid, word36,
++		 parser_start_seen, ppdu_info->qcn6122_vht_siga_mac_id,
++		 parser_mac_match, parser_context_valid, ppdu_info->ppdu_id,
++		 parser_id_equal);
++	if (!remaining)
++		WRITE_ONCE(ath11k_qcn6122_rssi_legacy_trace_enable, false);
++}
+ 
+ static void ath11k_qcn6122_vht_siga_trace(struct ath11k_base *ab,
+ 					 struct hal_rx_mon_ppdu_info *ppdu_info,
+@@ -1709,6 +1841,10 @@
+ 		if (tlv_tag == HAL_RX_PPDU_END)
+ 			tlv_len = sizeof(struct hal_rx_rxpcu_classification_overview);
+ 
++		if (tlv_tag == HAL_PHYRX_RSSI_LEGACY)
++			ath11k_qcn6122_rssi_legacy_trace(ab, ppdu_info, mac_id,
++								 skb, tlv, ptr);
++
+ 		hal_status = ath11k_hal_rx_parse_mon_status_tlv(ab, mac_id,
+ 								ppdu_info,
+ 								tlv_tag, ptr, tlv_userid);

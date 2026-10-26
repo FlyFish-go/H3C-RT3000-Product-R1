@@ -35,6 +35,16 @@ endef
 EXTRA_CFLAGS+= \
 	-I$(STAGING_DIR)/usr/include/qca-ssdk
 
+# DSA finds the NSS-DP netdev by matching the MAC node's OF node to
+# netdev->dev.parent->of_node. In the explicit single-profile C RAM or C
+# read-only MTD-discovery RAM profile, MAC1 is a fixed-link NSS-DP device, so
+# upstream NSS-DP does not set its parent in the link-poll branch. Keep this
+# workaround out of B and multi-profile builds.
+NSS_DP_C_RAM_ONLY_SINGLE_PROFILE := $(shell test -f $(TOPDIR)/.config && grep -Eq '^CONFIG_TARGET_ipq50xx_arm_DEVICE_h3c_rt3000_rtl8367s_(ram|mtd_discovery_ram|native_slot1|installer_ram)=y' $(TOPDIR)/.config && ! grep -q '^CONFIG_TARGET_MULTI_PROFILE=y' $(TOPDIR)/.config && echo 1)
+ifeq ($(NSS_DP_C_RAM_ONLY_SINGLE_PROFILE),1)
+	EXTRA_CFLAGS+= -DNSS_DP_SET_NETDEV_DEV_FOR_DSA
+endif
+
 ifeq ($(CONFIG_TARGET_ipq),y)
 subtarget:=$(SUBTARGET)
 else
@@ -57,6 +67,7 @@ endef
 
 define Build/Compile
 	$(MAKE) -C "$(LINUX_DIR)" \
+		KCFLAGS="-fmacro-prefix-map=$(TOPDIR)/=" \
 		CROSS_COMPILE="$(TARGET_CROSS)" \
 		ARCH="$(LINUX_KARCH)" \
 		M="$(PKG_BUILD_DIR)" \

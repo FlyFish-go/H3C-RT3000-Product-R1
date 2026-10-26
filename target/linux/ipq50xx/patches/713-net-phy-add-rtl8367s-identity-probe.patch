@@ -1,0 +1,31 @@
+From: OpenAI Codex <noreply@openai.com>
+Subject: [PATCH] net: phy: add minimal RTL8367S identity probe
+
+Add a narrowly scoped MDIO device driver for reading RTL8367S ID/version.
+
+---
+ drivers/net/phy/Kconfig  | 8 ++++++++
+ drivers/net/phy/Makefile | 1 +
+ 2 files changed, 9 insertions(+)
+
+diff --git a/drivers/net/phy/Kconfig b/drivers/net/phy/Kconfig
+index f86cc41..67078aa 100644
+--- a/drivers/net/phy/Kconfig
++++ b/drivers/net/phy/Kconfig
+@@ -336,1 +336,9 @@
++config RTL8367S_PROBE
++	tristate "RTL8367S MDIO identity probe"
++	depends on OF && OF_MDIO && MDIO_DEVICE
++	help
++	  This driver reads the chip ID and revision of an RTL8367S attached
++	  to an MDIO bus. It does not configure switch ports or forwarding.
++	  The RT3000 Machine C DT selects the supported device instance.
++
+ comment "MII PHY device drivers"
+diff --git a/drivers/net/phy/Makefile b/drivers/net/phy/Makefile
+index 544633f..5451f10 100644
+--- a/drivers/net/phy/Makefile
++++ b/drivers/net/phy/Makefile
+@@ -40,1 +40,2 @@
++obj-$(CONFIG_RTL8367S_PROBE)	+= rtl8367s_probe.o
+ obj-$(CONFIG_MDIO_ASPEED)	+= mdio-aspeed.o

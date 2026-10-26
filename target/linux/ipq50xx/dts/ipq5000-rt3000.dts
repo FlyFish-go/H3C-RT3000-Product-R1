@@ -50,7 +50,7 @@
 	chosen {
 		bootargs-append = " coherent_pool=2M loglevel=7";
 		/* Applied after removing inherited storage selectors; ECC/console stay. */
-		h3c,storage-bootargs = "mtdparts=qcom_nand.0:0x80000@0(0:SBL1)ro,0x80000@0x80000(0:MIBIB)ro,0x40000@0x100000(0:BOOTCONFIG),0x40000@0x140000(0:BOOTCONFIG1),0x100000@0x180000(0:QSEE)ro,0x100000@0x280000(0:QSEE_1)ro,0x40000@0x380000(0:DEVCFG)ro,0x40000@0x3c0000(0:DEVCFG_1)ro,0x40000@0x400000(0:CDT)ro,0x40000@0x440000(0:CDT_1)ro,0x80000@0x480000(0:APPSBLENV)ro,0x140000@0x500000(0:APPSBL)ro,0x140000@0x640000(0:APPSBL_1)ro,0x100000@0x780000(0:ART)ro,0x80000@0x880000(0:TRAINING)ro,0x2800000@0x900000(oem_rootfs)ro,0x2800000@0x3100000(rootfs),0x600000@0x5900000(pdt_data)ro,0x600000@0x5f00000(pdt_data_1)ro,0x100000@0x6500000(exp)ro,0x1700000@0x6600000(plugin)ro ubi.mtd=rootfs ubi.block=0,1 root=/dev/ubiblock0_1 rootfstype=squashfs rootwait";
+		h3c,storage-bootargs = "mtdparts=qcom_nand.0:0x80000@0(0:SBL1)ro,0x80000@0x80000(0:MIBIB)ro,0x40000@0x100000(0:BOOTCONFIG)ro,0x40000@0x140000(0:BOOTCONFIG1)ro,0x100000@0x180000(0:QSEE)ro,0x100000@0x280000(0:QSEE_1)ro,0x40000@0x380000(0:DEVCFG)ro,0x40000@0x3c0000(0:DEVCFG_1)ro,0x40000@0x400000(0:CDT)ro,0x40000@0x440000(0:CDT_1)ro,0x80000@0x480000(0:APPSBLENV)ro,0x140000@0x500000(0:APPSBL)ro,0x140000@0x640000(0:APPSBL_1)ro,0x100000@0x780000(0:ART)ro,0x80000@0x880000(0:TRAINING)ro,0x2800000@0x900000(oem_rootfs)ro,0x2800000@0x3100000(rootfs),0x600000@0x5900000(pdt_data)ro,0x600000@0x5f00000(pdt_data_1)ro,0x100000@0x6500000(exp)ro,0x1700000@0x6600000(plugin)ro ubi.mtd=rootfs ubi.block=0,1 root=/dev/ubiblock0_1 rootfstype=squashfs rootwait";
 		stdout-path = "serial0:115200n8";
 	};
 
@@ -126,7 +126,18 @@
 		};
 	};
 
+	/* GPIO27 carries no key on this board, but the QCN6102 user PD only
+	 * comes up when GPIO27 is a pulled-up GPIO (r5 got this by mapping
+	 * RESET there).  Without it the PD stalls ("USER-PD DOG detects
+	 * stalled initialization") and the ath11k recovery panics. */
 	button_pins: button_pins {
+		gpio27_pullup {
+			pins = "gpio27";
+			function = "gpio";
+			drive-strength = <8>;
+			bias-pull-up;
+		};
+
 		button_reset {
 			pins = "gpio34";
 			function = "gpio";
@@ -196,10 +207,12 @@
 			partition@100000 {
 				label = "0:BOOTCONFIG";
 				reg = <0x100000 0x040000>;
+				read-only;
 			};
 			partition@140000 {
 				label = "0:BOOTCONFIG1";
 				reg = <0x140000 0x040000>;
+				read-only;
 			};
 			partition@180000 {
 				label = "0:QSEE";

@@ -1,0 +1,41 @@
+#!/bin/sh
+
+[ "$ACTION" = "add" ] || exit 0
+. /lib/functions.sh
+[ "$(board_name)" = "h3c,rt3000-rtl8367s" ] || exit 0
+
+. /lib/rt3000/mac.sh
+. /lib/rt3000/wifi-c.sh
+
+RT3_MODEL=$(tr -d '\000' < /proc/device-tree/model 2>/dev/null)
+if [ "$RT3_MODEL" = 'H3C Magic RT3000 (RTL8367S, persistent C native profile)' ]; then
+	[ -r /lib/rt3000/c-mac.sh ] || {
+		logger -t rt3000-wifi "C factory identity unavailable; hotplug policy unchanged"
+		exit 1
+	}
+	. /lib/rt3000/c-mac.sh
+	WAN=$(rt3000_c_factory_mac) || WAN=
+	if ! rt3000_mac_valid "$WAN"; then
+		logger -t rt3000-wifi "C factory identity unavailable; hotplug policy unchanged"
+		exit 1
+	fi
+else
+	WAN="$(cat /sys/class/net/eth0/address 2>/dev/null)"
+fi
+RT3000_ETHADDR_SOURCE="$WAN"
+MACMAP="$(rt3000_mac_map 2>/dev/null)" || {
+	[ "$RT3_MODEL" = 'H3C Magic RT3000 (RTL8367S, persistent C native profile)' ] && exit 1
+	MACMAP=""
+}
+W24="$(printf '%s\n' "$MACMAP" | sed -n 's/^wifi24 //p')"
+W5="$(printf '%s\n' "$MACMAP" | sed -n 's/^wifi5 //p')"
+
+# Serialize with uci-defaults and other PHY add events. The custom marker is
+# stored in the same atomic UCI commit as the default security settings.
+lock /var/lock/rt3000-c-wifi || exit 1
+trap 'lock -u /var/lock/rt3000-c-wifi >/dev/null 2>&1' 0
+trap 'exit 1' HUP INT TERM
+
+rt3000_c_wifi_apply "$W24" "$W5" || exit 1
+uci -q commit wireless || exit 1
+exit 0

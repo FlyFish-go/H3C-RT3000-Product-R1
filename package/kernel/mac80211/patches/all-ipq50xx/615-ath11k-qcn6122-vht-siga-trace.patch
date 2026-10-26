@@ -1,0 +1,187 @@
+--- a/drivers/net/wireless/ath/ath11k/dp_rx.c
++++ b/drivers/net/wireless/ath/ath11k/dp_rx.c
+@@ -4996,7 +4996,7 @@
+ 							   log_type, rx_buf_sz);
+ 		}
+ 
+-		hal_status = ath11k_hal_rx_parse_mon_status(ab, ppdu_info, skb);
++		hal_status = ath11k_hal_rx_parse_mon_status(ab, mac_id, ppdu_info, skb);
+ 
+ 		if (ar->monitor_started &&
+ 		    hal_status == HAL_RX_MON_STATUS_PPDU_DONE &&
+--- a/drivers/net/wireless/ath/ath11k/hal_rx.c
++++ b/drivers/net/wireless/ath/ath11k/hal_rx.c
+@@ -3,12 +3,77 @@
+  * Copyright (c) 2018-2019 The Linux Foundation. All rights reserved.
+  */
+ 
++#include <linux/atomic.h>
++#include <linux/moduleparam.h>
++#include <linux/of.h>
+ #include "debug.h"
+ #include "hal.h"
+ #include "hal_tx.h"
+ #include "hal_rx.h"
+ #include "hal_desc.h"
+ #include "hif.h"
++#include "qcn6122_vht_siga_trace_policy.h"
++
++static bool ath11k_qcn6122_vht_siga_trace_enable;
++static atomic_t ath11k_qcn6122_vht_siga_trace_remaining = ATOMIC_INIT(16);
++
++static int ath11k_qcn6122_vht_siga_trace_set(const char *val,
++					     const struct kernel_param *kp)
++{
++	bool enable;
++	int ret;
++
++	ret = kstrtobool(val, &enable);
++	if (ret)
++		return ret;
++	if (enable)
++		atomic_set(&ath11k_qcn6122_vht_siga_trace_remaining, 16);
++	WRITE_ONCE(*(bool *)kp->arg, enable);
++	return 0;
++}
++
++static const struct kernel_param_ops ath11k_qcn6122_vht_siga_trace_ops = {
++	.set = ath11k_qcn6122_vht_siga_trace_set,
++	.get = param_get_bool,
++};
++module_param_cb(qcn6122_vht_siga_trace,
++		&ath11k_qcn6122_vht_siga_trace_ops,
++		&ath11k_qcn6122_vht_siga_trace_enable, 0600);
++MODULE_PARM_DESC(qcn6122_vht_siga_trace,
++		 "Log at most 16 C/QCN6122 VHT SIG-A status samples");
++
++static void ath11k_qcn6122_vht_siga_trace(struct ath11k_base *ab,
++					 struct hal_rx_mon_ppdu_info *ppdu_info,
++					 int mac_id, u32 info0)
++{
++	int remaining;
++	u8 bw;
++
++	if (!READ_ONCE(ath11k_qcn6122_vht_siga_trace_enable) ||
++	    !ath11k_qcn6122_vht_siga_trace_claim(
++		of_machine_is_compatible("h3c,rt3000-rtl8367s"),
++		ab->hw_params.hw_rev == ATH11K_HW_QCN6122,
++		ppdu_info->qcn6122_vht_siga_ppdu_valid,
++		ppdu_info->qcn6122_vht_siga_logged,
++		ppdu_info->qcn6122_vht_siga_mac_id, mac_id))
++		return;
++
++	remaining = atomic_dec_if_positive(
++		&ath11k_qcn6122_vht_siga_trace_remaining);
++	if (remaining < 0) {
++		WRITE_ONCE(ath11k_qcn6122_vht_siga_trace_enable, false);
++		return;
++	}
++
++	ppdu_info->qcn6122_vht_siga_logged = true;
++	bw = FIELD_GET(HAL_RX_VHT_SIG_A_INFO_INFO0_BW, info0);
++	dev_info(ab->dev,
++		 "qcn6122-vht-siga-615 sample=%u mac=%d ppdu=%u chan=%u raw_info0=0x%08x siga_bw=%u\n",
++		 16 - remaining, mac_id, ppdu_info->ppdu_id,
++		 ppdu_info->chan_num, info0, bw);
++	if (!remaining)
++		WRITE_ONCE(ath11k_qcn6122_vht_siga_trace_enable, false);
++}
+ 
+ static void ath11k_hal_reo_set_desc_hdr(struct hal_desc_header *hdr,
+ 					u8 owner, u8 buffer_type, u32 magic)
+@@ -924,7 +989,7 @@
+ }
+ 
+ static enum hal_rx_mon_status
+-ath11k_hal_rx_parse_mon_status_tlv(struct ath11k_base *ab,
++ath11k_hal_rx_parse_mon_status_tlv(struct ath11k_base *ab, int mac_id,
+ 				   struct hal_rx_mon_ppdu_info *ppdu_info,
+ 				   u32 tlv_tag, u8 *tlv_data, u32 userid)
+ {
+@@ -942,6 +1007,10 @@
+ 				  __le32_to_cpu(ppdu_start->info0));
+ 		ppdu_info->chan_num = __le32_to_cpu(ppdu_start->chan_num);
+ 		ppdu_info->ppdu_ts = __le32_to_cpu(ppdu_start->ppdu_start_ts);
++		/* Do not associate a SIG-A TLV with an earlier status-buffer PPDU. */
++		ppdu_info->qcn6122_vht_siga_ppdu_valid = true;
++		ppdu_info->qcn6122_vht_siga_logged = false;
++		ppdu_info->qcn6122_vht_siga_mac_id = mac_id;
+ 
+ 		if (ppdu_info->ppdu_id != ppdu_info->last_ppdu_id) {
+ 			ppdu_info->last_ppdu_id = ppdu_info->ppdu_id;
+@@ -1153,6 +1222,7 @@
+ 		ppdu_info->nss = (nsts & VHT_SIG_SU_NSS_MASK) + 1;
+ 		ppdu_info->bw = FIELD_GET(HAL_RX_VHT_SIG_A_INFO_INFO0_BW,
+ 					  info0);
++		ath11k_qcn6122_vht_siga_trace(ab, ppdu_info, mac_id, info0);
+ 		ppdu_info->beamformed = info1 &
+ 					HAL_RX_VHT_SIG_A_INFO_INFO1_BEAMFORMED;
+ 		group_id = FIELD_GET(HAL_RX_VHT_SIG_A_INFO_INFO0_GROUP_ID,
+@@ -1613,7 +1683,7 @@
+ }
+ 
+ enum hal_rx_mon_status
+-ath11k_hal_rx_parse_mon_status(struct ath11k_base *ab,
++ath11k_hal_rx_parse_mon_status(struct ath11k_base *ab, int mac_id,
+ 			       struct hal_rx_mon_ppdu_info *ppdu_info,
+ 			       struct sk_buff *skb)
+ {
+@@ -1639,7 +1709,8 @@
+ 		if (tlv_tag == HAL_RX_PPDU_END)
+ 			tlv_len = sizeof(struct hal_rx_rxpcu_classification_overview);
+ 
+-		hal_status = ath11k_hal_rx_parse_mon_status_tlv(ab, ppdu_info,
++		hal_status = ath11k_hal_rx_parse_mon_status_tlv(ab, mac_id,
++								ppdu_info,
+ 								tlv_tag, ptr, tlv_userid);
+ 		ptr += tlv_len;
+ 		ptr = PTR_ALIGN(ptr, HAL_TLV_ALIGN);
+@@ -1647,6 +1718,9 @@
+ 		if ((ptr - skb->data) >= DP_RX_BUFFER_SIZE)
+ 			break;
+ 	} while (hal_status == HAL_RX_MON_STATUS_PPDU_NOT_DONE);
++
++	if (hal_status == HAL_RX_MON_STATUS_PPDU_DONE)
++		ppdu_info->qcn6122_vht_siga_ppdu_valid = false;
+ 
+ 	return hal_status;
+ }
+--- a/drivers/net/wireless/ath/ath11k/hal_rx.h
++++ b/drivers/net/wireless/ath/ath11k/hal_rx.h
+@@ -225,6 +225,10 @@
+ 	u8 userid;
+ 	u16 ampdu_id[HAL_MAX_UL_MU_USERS];
+ 	u32 rx_antenna;
++	/* Valid only after PPDU_START in this status-parser instance. */
++	bool qcn6122_vht_siga_ppdu_valid;
++	bool qcn6122_vht_siga_logged;
++	u8 qcn6122_vht_siga_mac_id;
+ };
+ 
+ #define HAL_RX_UL_OFDMA_USER_INFO_V0_W0_VALID			BIT(30)
+@@ -543,7 +547,7 @@
+ ath11k_hal_rx_sw_mon_ring_buf_paddr_get(void *rx_desc,
+ 					struct hal_sw_mon_ring_entries *sw_mon_entries);
+ enum hal_rx_mon_status
+-ath11k_hal_rx_parse_mon_status(struct ath11k_base *ab,
++ath11k_hal_rx_parse_mon_status(struct ath11k_base *ab, int mac_id,
+ 			       struct hal_rx_mon_ppdu_info *ppdu_info,
+ 			       struct sk_buff *skb);
+ 
+--- /dev/null
++++ b/drivers/net/wireless/ath/ath11k/qcn6122_vht_siga_trace_policy.h
+@@ -0,0 +1,14 @@
++/* SPDX-License-Identifier: BSD-3-Clause-Clear */
++#ifndef ATH11K_QCN6122_VHT_SIGA_TRACE_POLICY_H
++#define ATH11K_QCN6122_VHT_SIGA_TRACE_POLICY_H
++
++/* Require a PPDU_START on this same MAC and one record per PPDU. */
++static inline bool ath11k_qcn6122_vht_siga_trace_claim(bool c_board,
++		bool qcn6122, bool ppdu_valid, bool already_logged,
++		u8 start_mac_id, u8 current_mac_id)
++{
++	return c_board && qcn6122 && ppdu_valid && !already_logged &&
++	       start_mac_id == current_mac_id;
++}
++
++#endif

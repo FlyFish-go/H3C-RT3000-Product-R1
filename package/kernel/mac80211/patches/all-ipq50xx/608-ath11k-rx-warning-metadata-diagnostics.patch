@@ -1,0 +1,144 @@
+diff --git a/drivers/net/wireless/ath/ath11k/dp_rx.c b/drivers/net/wireless/ath/ath11k/dp_rx.c
+--- a/drivers/net/wireless/ath/ath11k/dp_rx.c
++++ b/drivers/net/wireless/ath/ath11k/dp_rx.c
+@@ -154,11 +154,122 @@
+ 	rx_ring->mon_owner_count = 0;
+ 	rx_ring->mon_owner_seq = 0;
+ }
++
++static DEFINE_RATELIMIT_STATE(ath11k_rx_warning_ratelimit,
++			      DEFAULT_RATELIMIT_INTERVAL,
++			      DEFAULT_RATELIMIT_BURST);
++
++static bool ath11k_rx_warning_desc_fits_skb(struct sk_buff *skb,
++					    struct hal_rx_desc *desc,
++					    u32 desc_size)
++{
++	unsigned long start, end, desc_addr;
++
++	if (!skb || !desc || !desc_size)
++		return false;
++
++	start = (unsigned long)skb->head;
++	end = (unsigned long)skb_end_pointer(skb);
++	desc_addr = (unsigned long)desc;
++
++	return end >= start && desc_addr >= start && desc_addr <= end &&
++		desc_size <= end - desc_addr;
++}
++
++static bool ath11k_rx_warning_qcn6122_info3(struct ath11k_base *ab,
++					   struct sk_buff *skb,
++					   struct hal_rx_desc *desc,
++					   u32 *info3)
++{
++	if (!ab || ab->hw_params.hw_rev != ATH11K_HW_QCN6122 || !desc || !info3)
++		return false;
++
++	/* When skb is supplied, prove the whole HAL descriptor is in its linear
++	 * allocation before reading the descriptor word. With no skb, callers
++	 * must already have read this QCN6122 info3 word through hw_ops.
++	 */
++	if (skb && !ath11k_rx_warning_desc_fits_skb(skb, desc,
++						     ab->hw_params.hal_desc_sz))
++		return false;
++
++	*info3 = le32_to_cpu(desc->u.qcn9074.msdu_start.info3);
++	return true;
++}
++
++static void ath11k_rx_warning_diag_msdu_done(struct ath11k_base *ab,
++					    struct sk_buff *msdu,
++					    struct sk_buff *last_buf,
++					    struct hal_rx_desc *rx_desc,
++					    struct hal_rx_desc *last_desc,
++					    struct rx_attention *attention)
++{
++	struct ath11k_skb_rxcb *rxcb = ATH11K_SKB_RXCB(msdu);
++	u32 first_info3 = 0, last_info3 = 0;
++	bool first_valid, last_valid;
++	u16 attn_info0 = 0, ppdu_id = 0;
++	u32 attn_info1 = 0, attn_info2 = 0;
++
++	if (ab->hw_params.hw_rev != ATH11K_HW_QCN6122 ||
++	    !__ratelimit(&ath11k_rx_warning_ratelimit))
++		return;
++
++	first_valid = ath11k_rx_warning_qcn6122_info3(ab, msdu, rx_desc,
++						      &first_info3);
++	last_valid = ath11k_rx_warning_qcn6122_info3(ab, last_buf, last_desc,
++						     &last_info3);
++	if (last_valid && attention) {
++		attn_info0 = le16_to_cpu(attention->info0);
++		ppdu_id = le16_to_cpu(attention->phy_ppdu_id);
++		attn_info1 = le32_to_cpu(attention->info1);
++		attn_info2 = le32_to_cpu(attention->info2);
++	}
++
++	dev_warn(ab->dev,
++		 "rx-warning metadata event=msdu_done mac=%u msdu=%p last=%p rx_desc=%p last_desc=%p cb_paddr=%pad first_valid=%u first_info3=0x%08x last_valid=%u last_info3=0x%08x attn_info0=0x%04x ppdu_id=0x%04x attn_info1=0x%08x attn_info2=0x%08x cookie=unavailable\n",
++		 rxcb->mac_id, msdu, last_buf, rx_desc, last_desc, &rxcb->paddr,
++		 first_valid, first_info3, last_valid, last_info3, attn_info0,
++		 ppdu_id, attn_info1, attn_info2);
++}
++
++static void ath11k_rx_warning_diag_invalid_vht(struct ath11k *ar,
++					      struct hal_rx_desc *desc,
++					      enum rx_msdu_start_pkt_type pkt_type,
++					      u8 rate_mcs, u8 nss, u8 bw, u8 sgi,
++					      struct ieee80211_rx_status *status)
++{
++	u32 info3 = 0;
++	u8 info_pkt_type = 0, info_mcs = 0, nss_bitmap = 0, info_nss = 0;
++	bool info3_valid;
++
++	if (ar->ab->hw_params.hw_rev != ATH11K_HW_QCN6122 ||
++	    !__ratelimit(&ath11k_rx_warning_ratelimit))
++		return;
++
++	/* h_rate has already fetched packet type/MCS/NSS from this descriptor via
++	 * hw_ops. Re-read only that same QCN6122 MSDU_START info3 word.
++	 */
++	info3_valid = ath11k_rx_warning_qcn6122_info3(ar->ab, NULL, desc,
++						      &info3);
++	if (info3_valid) {
++		info_pkt_type = FIELD_GET(RX_MSDU_START_INFO3_PKT_TYPE, info3);
++		info_mcs = FIELD_GET(RX_MSDU_START_INFO3_RATE_MCS, info3);
++		nss_bitmap = FIELD_GET(RX_MSDU_START_INFO3_MIMO_SS_BITMAP, info3);
++		info_nss = hweight8(nss_bitmap);
++	}
++
++	dev_warn(ar->ab->dev,
++		 "rx-warning metadata event=invalid_vht desc=%p info3_valid=%u info3=0x%08x pkt_type=%u info_pkt_type=%u rate_mcs=%u info_mcs=%u nss=%u nss_bitmap=0x%02x info_nss=%u bw=%u sgi=%u status_encoding=%u status_rate_idx=%u status_nss=%u\n",
++		 desc, info3_valid, info3, pkt_type, info_pkt_type, rate_mcs,
++		 info_mcs, nss, nss_bitmap, info_nss, bw, sgi, status->encoding,
++		 status->rate_idx, status->nss);
++}
+ #else
+ #define ath11k_mon_owner_event_locked(rx_ring, buf_id, state, skb, observed, cookie) do { } while (0)
+ #define ath11k_mon_owner_diag_mismatch(ab, srng, ring, mac, id, skb, desc, cb, cookie) do { } while (0)
+ #define ath11k_mon_owner_record(rx_ring, id, state, skb, paddr, cookie) do { } while (0)
+ #define ath11k_mon_owner_diag_free(rx_ring) do { } while (0)
++#define ath11k_rx_warning_diag_msdu_done(ab, msdu, last_buf, rx_desc, last_desc, attention) do { } while (0)
++#define ath11k_rx_warning_diag_invalid_vht(ar, desc, pkt_type, rate_mcs, nss, bw, sgi, status) do { } while (0)
+ #endif
+ 
+ 
+@@ -3123,6 +3234,8 @@
+ 		rx_status->encoding = RX_ENC_VHT;
+ 		rx_status->rate_idx = rate_mcs;
+ 		if (rate_mcs > ATH11K_VHT_MCS_MAX) {
++			ath11k_rx_warning_diag_invalid_vht(ar, rx_desc, pkt_type,
++							 rate_mcs, nss, bw, sgi, rx_status);
+ 			ath11k_warn(ar->ab,
+ 				    "Received with invalid mcs in VHT mode %d\n",
+ 				     rate_mcs);
+@@ -3324,6 +3437,8 @@
+ 	lrx_desc = (struct hal_rx_desc *)last_buf->data;
+ 	rx_attention = ath11k_dp_rx_get_attention(ab, lrx_desc);
+ 	if (!ath11k_dp_rx_h_attn_msdu_done(rx_attention)) {
++		ath11k_rx_warning_diag_msdu_done(ab, msdu, last_buf, rx_desc,
++						 lrx_desc, rx_attention);
+ 		ath11k_warn(ab, "msdu_done bit in attention is not set\n");
+ 		ret = -EIO;
+ 		goto free_out;

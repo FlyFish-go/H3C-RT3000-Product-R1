@@ -1,0 +1,109 @@
+From: FlyFish-go <2541290956@qq.com>
+Subject: [PATCH] mtd: rt3000-c: let the booted slot be rootfs in either position
+
+Patch 425 renames the C system slots by position (0x900000 rootfs,
+0x3100000 rootfs_1) and only opens slot 1 for writes. When the command
+line map already names the two slots rootfs and oem_rootfs (patch 030
+picks the orientation from U-Boot's h3c.boot_slot), keep those names and
+make only the rootfs one writable. Any other map keeps the 425 rules.
+
+---
+--- a/drivers/mtd/mtdpart.c
++++ b/drivers/mtd/mtdpart.c
+@@ -134,6 +134,27 @@
+ 	return true;
+ }
+ 
++/* Any-slot map: the two system slots arrive named rootfs and oem_rootfs (in
++ * either order) from the kernel's h3c.boot_slot mapping. Older maps keep the
++ * fixed rootfs/rootfs_1 names and the slot-1-only write window below.
++ */
++static bool rt3000_c_named_slots(const struct mtd_partition *parts, int count)
++{
++	int i, rootfs = 0, oem = 0;
++
++	for (i = 0; i < count; i++) {
++		if ((u64)parts[i].size != RT3000_C_SLOT_SIZE ||
++		    ((u64)parts[i].offset != RT3000_C_SLOT0_OFF &&
++		     (u64)parts[i].offset != RT3000_C_SLOT1_OFF))
++			continue;
++		if (!strcmp(parts[i].name, "rootfs"))
++			rootfs++;
++		else if (!strcmp(parts[i].name, "oem_rootfs"))
++			oem++;
++	}
++	return rootfs == 1 && oem == 1;
++}
++
+ static bool rt3000_c_write_window(u64 off, u64 size, bool installer)
+ {
+ 	if (off == RT3000_C_SLOT1_OFF && size == RT3000_C_SLOT_SIZE)
+@@ -596,7 +617,7 @@
+ static struct mtd_part *allocate_partition(struct mtd_info *parent,
+ 			const struct mtd_partition *part, int partno,
+ 			uint64_t cur_offset, bool c_map_valid, bool c_installer,
+-			bool d_map_valid, bool d_installer)
++			bool c_named, bool d_map_valid, bool d_installer)
+ {
+ 	int wr_alignment = (parent->flags & MTD_NO_ERASE) ? parent->writesize :
+ 							    parent->erasesize;
+@@ -832,8 +853,11 @@
+ out_register:
+ 	if (rt3000_c_nand(parent)) {
+ 		u64 abs_off = part_absolute_offset(parent) + slave->offset;
+-		bool permitted = c_map_valid &&
+-			rt3000_c_write_window(abs_off, slave->mtd.size, c_installer) &&
++		bool slot = slave->mtd.size == RT3000_C_SLOT_SIZE &&
++			(abs_off == RT3000_C_SLOT0_OFF || abs_off == RT3000_C_SLOT1_OFF);
++		bool window = c_named && slot ? !strcmp(part->name, "rootfs") :
++			rt3000_c_write_window(abs_off, slave->mtd.size, c_installer);
++		bool permitted = c_map_valid && window &&
+ 			(parent->orig_flags & MTD_WRITEABLE) &&
+ 			!(part->mask_flags & MTD_WRITEABLE);
+ 
+@@ -843,7 +867,9 @@
+ 			slave->mtd.flags &= ~MTD_WRITEABLE;
+ 		slave->mtd.orig_flags = slave->mtd.flags;
+ 
+-		if (c_map_valid && abs_off == RT3000_C_SLOT0_OFF &&
++		if (c_named) {
++			/* Keep the booted-slot names chosen from h3c.boot_slot. */
++		} else if (c_map_valid && abs_off == RT3000_C_SLOT0_OFF &&
+ 		    slave->mtd.size == RT3000_C_SLOT_SIZE) {
+ 			name = kstrdup("rootfs", GFP_KERNEL);
+ 			if (!name) {
+@@ -926,7 +952,8 @@
+ 	part.size = length;
+ 	part.offset = offset;
+ 
+-	new = allocate_partition(parent, &part, -1, offset, false, false, false, false);
++	new = allocate_partition(parent, &part, -1, offset, false, false, false,
++				 false, false);
+ 	if (IS_ERR(new))
+ 		return PTR_ERR(new);
+ 
+@@ -1101,6 +1128,7 @@
+ 	bool c_nand = rt3000_c_nand(master);
+ 	bool c_map_valid = false;
+ 	bool c_installer = false;
++	bool c_named = false;
+ 	bool d_nand = hwd_nand(master);
+ 	bool d_map_valid = false;
+ 	bool d_installer = false;
+@@ -1115,6 +1143,7 @@
+ 		}
+ 		c_map_valid = true;
+ 		c_installer = rt3000_c_installer_write_bc(master);
++		c_named = rt3000_c_named_slots(parts, nbparts);
+ 	}
+ 	if (d_nand && !mtd_is_partition(master)) {
+ 		if (!hwd_partition_map_valid(master, parts, nbparts)) {
+@@ -1129,7 +1158,7 @@
+ 
+ 	for (i = 0; i < nbparts; i++) {
+ 		slave = allocate_partition(master, parts + i, i, cur_offset,
+-					   c_map_valid, c_installer,
++					   c_map_valid, c_installer, c_named,
+ 					   d_map_valid, d_installer);
+ 		if (IS_ERR(slave)) {
+ 			ret = PTR_ERR(slave);

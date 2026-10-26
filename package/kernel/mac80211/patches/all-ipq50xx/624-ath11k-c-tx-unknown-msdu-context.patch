@@ -1,0 +1,280 @@
+--- a/drivers/net/wireless/ath/ath11k/dp.c
++++ b/drivers/net/wireless/ath/ath11k/dp.c
+@@ -13,6 +13,19 @@
+ #include "dp_rx.h"
+ #include "peer.h"
+ 
++#ifdef CPTCFG_ATH11K_RT3000_TX_UNKNOWN_DIAG
++static unsigned long ath11k_rt3000_tx_geometry_seen;
++
++static bool ath11k_rt3000_tx_diag_platform(struct ath11k_base *ab)
++{
++	u32 board_id = READ_ONCE(ab->qmi.target.board_id);
++
++	return of_machine_is_compatible("h3c,rt3000-rtl8367s") &&
++	       ((ab->hw_rev == ATH11K_HW_IPQ5018 && board_id == 0x23) ||
++		(ab->hw_rev == ATH11K_HW_QCN6122 && board_id == 0xb0));
++}
++#endif
++
+ u32 ath11k_dp_rxdma_buf_ring_size(struct ath11k_base *ab)
+ {
+ #if defined(CPTCFG_ATH11K_MEM_PROFILE_256M)
+@@ -397,6 +410,33 @@
+ 
+ 	ring->ring_id = ret;
+ 
++#ifdef CPTCFG_ATH11K_RT3000_TX_UNKNOWN_DIAG
++	if (type == HAL_WBM2SW_RELEASE && ring_num >= 0 &&
++	    ring_num < DP_TCL_NUM_RING_MAX &&
++	    ath11k_rt3000_tx_diag_platform(ab)) {
++		int seen_idx = ring_num +
++			(ab->hw_rev == ATH11K_HW_QCN6122 ?
++			 DP_TCL_NUM_RING_MAX : 0);
++
++		if (!test_and_set_bit(seen_idx,
++				       &ath11k_rt3000_tx_geometry_seen))
++			ath11k_info(ab,
++				    "rt3000 tx ring geometry hw_rev=%u board=%u "
++				    "ring=%d entries=%d entry_bytes=%d "
++				    "ring_bytes=%u cached=%u nss=%u align=%u "
++				    "base_mod64=%u base_mod_align=%u\n",
++				    (unsigned int)ab->hw_rev,
++				    READ_ONCE(ab->qmi.target.board_id),
++				    ring_num, num_entries, entry_sz,
++				    (unsigned int)ring->size,
++				    (unsigned int)!!ring->cached,
++				    (unsigned int)!!ab->nss.enabled,
++				    (unsigned int)align,
++				    (unsigned int)(ring->paddr % 64),
++				    (unsigned int)(ring->paddr % align));
++	}
++#endif
++
+ 	return 0;
+ }
+ 
+--- a/drivers/net/wireless/ath/ath11k/dp_tx.c
++++ b/drivers/net/wireless/ath/ath11k/dp_tx.c
+@@ -10,6 +10,106 @@
+ #include "hw.h"
+ #include "peer.h"
+ 
++#ifdef CPTCFG_ATH11K_RT3000_TX_UNKNOWN_DIAG
++#include <linux/module.h>
++#include <linux/of.h>
++
++#define ATH11K_RT3000_TX_UNKNOWN_MAX_SAMPLES 32
++
++static bool ath11k_rt3000_tx_unknown_diag;
++static atomic_t ath11k_rt3000_tx_unknown_samples = ATOMIC_INIT(0);
++
++static int ath11k_rt3000_tx_unknown_diag_set(const char *val,
++					     const struct kernel_param *kp)
++{
++	bool enable;
++	int ret;
++
++	ret = kstrtobool(val, &enable);
++	if (ret)
++		return ret;
++
++	ret = param_set_bool(val, kp);
++	if (!ret && enable)
++		atomic_set(&ath11k_rt3000_tx_unknown_samples, 0);
++
++	return ret;
++}
++
++static const struct kernel_param_ops ath11k_rt3000_tx_unknown_diag_ops = {
++	.set = ath11k_rt3000_tx_unknown_diag_set,
++	.get = param_get_bool,
++};
++module_param_cb(tx_unknown_msdu_diag,
++		&ath11k_rt3000_tx_unknown_diag_ops,
++		&ath11k_rt3000_tx_unknown_diag, 0600);
++MODULE_PARM_DESC(tx_unknown_msdu_diag,
++		 "Enable bounded RT3000 C unknown-TX-completion observations");
++
++static int ath11k_rt3000_tx_unknown_diag_take_sample(void)
++{
++	int old;
++
++	for (;;) {
++		old = atomic_read(&ath11k_rt3000_tx_unknown_samples);
++		if (old >= ATH11K_RT3000_TX_UNKNOWN_MAX_SAMPLES)
++			return 0;
++		if (atomic_cmpxchg(&ath11k_rt3000_tx_unknown_samples,
++				   old, old + 1) == old)
++			return old + 1;
++	}
++}
++
++static bool ath11k_rt3000_tx_unknown_diag_allowed(struct ath11k_base *ab)
++{
++	u32 board_id = READ_ONCE(ab->qmi.target.board_id);
++
++	return READ_ONCE(ath11k_rt3000_tx_unknown_diag) &&
++	       of_machine_is_compatible("h3c,rt3000-rtl8367s") &&
++	       ((ab->hw_rev == ATH11K_HW_IPQ5018 && board_id == 0x23) ||
++		(ab->hw_rev == ATH11K_HW_QCN6122 && board_id == 0xb0));
++}
++
++static void
++ath11k_rt3000_tx_unknown_diag_log(struct ath11k_base *ab, const char *path,
++				  int ring_id, u8 mac_id, u32 cookie,
++				  u32 msdu_id,
++				  enum hal_wbm_rel_src_module rel_src,
++				  enum hal_wbm_htt_tx_comp_status fw_status,
++				  struct dp_tx_ring *tx_ring,
++				  const struct hal_wbm_release_ring *desc)
++{
++	const u32 *words = (const u32 *)desc;
++	int sample, slot_id = -1;
++	bool slot_bit = false, slot_buf = false;
++
++	if (!ath11k_rt3000_tx_unknown_diag_allowed(ab))
++		return;
++
++	sample = ath11k_rt3000_tx_unknown_diag_take_sample();
++	if (!sample)
++		return;
++
++	BUILD_BUG_ON(sizeof(*desc) != 8 * sizeof(u32));
++	if (msdu_id < DP_TX_IDR_SIZE) {
++		slot_id = READ_ONCE(tx_ring->idr_pool[msdu_id].id);
++		slot_bit = test_bit(msdu_id, tx_ring->idrs);
++		slot_buf = !!READ_ONCE(tx_ring->idr_pool[msdu_id].buf);
++	}
++
++	ath11k_warn(ab,
++		    "tx unknown diag n=%d path=%s ring=%d mac=%u cookie=%08x "
++		    "msdu=%u rel=%u fw_status=%u "
++		    "wbm=%08x,%08x,%08x,%08x,%08x,%08x,%08x,%08x "
++		    "slot_id=%d slot_bit=%u slot_buf=%u\n",
++		    sample, path, ring_id, (unsigned int)mac_id, cookie, msdu_id,
++		    (unsigned int)rel_src, (unsigned int)fw_status,
++		    words[0], words[1], words[2], words[3], words[4], words[5],
++		    words[6], words[7], slot_id,
++		    (unsigned int)slot_bit, (unsigned int)slot_buf);
++}
++#endif
++
+ enum hal_tcl_encap_type
+ ath11k_dp_tx_get_encap_type(struct ath11k_vif *arvif, struct sk_buff *skb)
+ {
+@@ -478,7 +578,14 @@
+ 
+ static void ath11k_dp_tx_free_txbuf(struct ath11k_base *ab, u8 mac_id,
+ 				    u32 msdu_id,
+-				    struct dp_tx_ring *tx_ring)
++				    struct dp_tx_ring *tx_ring
++#ifdef CPTCFG_ATH11K_RT3000_TX_UNKNOWN_DIAG
++				    , int ring_id, u32 cookie,
++				    enum hal_wbm_htt_tx_comp_status fw_status,
++				    const char *path,
++				    struct hal_wbm_release_ring *desc
++#endif
++				    )
+ {
+ 	struct ath11k *ar;
+ 	struct sk_buff *msdu = NULL;
+@@ -492,6 +599,13 @@
+ 	}
+ 
+ 	if (!msdu) {
++#ifdef CPTCFG_ATH11K_RT3000_TX_UNKNOWN_DIAG
++		ath11k_rt3000_tx_unknown_diag_log(ab, path,
++						  ring_id, mac_id, cookie,
++						  msdu_id,
++						  HAL_WBM_REL_SRC_MODULE_FW,
++						  fw_status, tx_ring, desc);
++#endif
+ 		ath11k_warn(ab, "tx completion for unknown msdu_id %d\n",
+ 			    msdu_id);
+ 		return;
+@@ -588,7 +702,12 @@
+ static void
+ ath11k_dp_tx_process_htt_tx_complete(struct ath11k_base *ab,
+ 				     void *desc, u8 mac_id,
+-				     u32 msdu_id, struct dp_tx_ring *tx_ring)
++				     u32 msdu_id, struct dp_tx_ring *tx_ring
++#ifdef CPTCFG_ATH11K_RT3000_TX_UNKNOWN_DIAG
++				     , int ring_id, u32 cookie,
++				     struct hal_wbm_release_ring *wbm_desc
++#endif
++				     )
+ {
+ 	struct htt_tx_wbm_completion *status_desc;
+ 	struct ath11k_dp_htt_wbm_tx_status ts = {0};
+@@ -610,7 +729,13 @@
+ 		break;
+ 	case HAL_WBM_REL_HTT_TX_COMP_STATUS_REINJ:
+ 	case HAL_WBM_REL_HTT_TX_COMP_STATUS_INSPECT:
+-		ath11k_dp_tx_free_txbuf(ab, mac_id, msdu_id, tx_ring);
++		ath11k_dp_tx_free_txbuf(ab, mac_id, msdu_id, tx_ring
++#ifdef CPTCFG_ATH11K_RT3000_TX_UNKNOWN_DIAG
++					, ring_id, cookie, wbm_status,
++					(wbm_status == HAL_WBM_REL_HTT_TX_COMP_STATUS_REINJ ?
++					 "fw-reinj" : "fw-inspect"), wbm_desc
++#endif
++					);
+ 		break;
+ 	case HAL_WBM_REL_HTT_TX_COMP_STATUS_MEC_NOTIFY:
+ 		/* This event is to be handled only when the driver decides to
+@@ -957,8 +1082,11 @@
+ 		if (unlikely(buf_rel_source == HAL_WBM_REL_SRC_MODULE_FW)) {
+ 			ath11k_dp_tx_process_htt_tx_complete(ab,
+ 							     (void *)tx_status,
+-							     mac_id, msdu_id,
+-							     tx_ring);
++							     mac_id, msdu_id, tx_ring
++#ifdef CPTCFG_ATH11K_RT3000_TX_UNKNOWN_DIAG
++							     , ring_id, desc_id, tx_status
++#endif
++							     );
+ 			continue;
+ 		}
+ 
+@@ -970,6 +1098,14 @@
+ 		}
+ 
+ 		if (unlikely(!msdu)) {
++#ifdef CPTCFG_ATH11K_RT3000_TX_UNKNOWN_DIAG
++			ath11k_rt3000_tx_unknown_diag_log(ab, "ordinary-wbm",
++							  ring_id, mac_id,
++							  desc_id, msdu_id,
++							  buf_rel_source,
++							  0, tx_ring,
++							  tx_status);
++#endif
+ 			ath11k_warn(ab, "tx completion for unknown msdu_id %d\n",
+ 				    msdu_id);
+ 			continue;
+--- a/drivers/net/wireless/ath/ath11k/Kconfig
++++ b/drivers/net/wireless/ath/ath11k/Kconfig
+@@ -50,6 +50,14 @@
+ 	  History is per buffer, is frozen at first mismatch, and emits
+ 	  history only when a DMA metadata mismatch is detected.
+ 
++config ATH11K_RT3000_TX_UNKNOWN_DIAG
++	bool "Enable bounded RT3000 C ath11k TX completion diagnostics"
++	depends on ATH11K
++	default n
++	help
++	  Emit bounded, opt-in observations when a C IPQ5018/QCN6122 TX completion
++	  misses its tracked skb. This does not change completion ownership.
++
+ config ATH11K_RT3000_REO_IDR_CLAIM
+ 	bool "C IPQ5018 REO RX buffer ownership fix"
+ 	depends on ATH11K
+--- a/local-symbols
++++ b/local-symbols
+@@ -151,6 +151,7 @@
+ ATH11K_DEBUGFS=
+ ATH11K_RT3000_MON_OWNER_DIAG=
+ ATH11K_RT3000_REO_IDR_CLAIM=
++ATH11K_RT3000_TX_UNKNOWN_DIAG=
+ ATH11K_TRACING=
+ ATH11K_THERMAL=
+ ATH11K_SPECTRAL=

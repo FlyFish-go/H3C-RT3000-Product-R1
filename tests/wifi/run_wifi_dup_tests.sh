@@ -196,10 +196,15 @@ wifi5 2e:1c:f2:2a:33:76
 MAP
 }
 STUB
-	# The script sources /lib/rt3000/mac.sh, calls board_name, and reads the
-	# sysfs wifi tree.  Rewrite those three anchors to the mock equivalents.
+	# The shared C policy helper also supplies the physical paths used by B.
+	# Source the real helper in the same sandbox rather than host /lib.
+	sed -e "s#/sys/class/ieee80211#\$SYSROOT/class/ieee80211#g" \
+	    "$ROOT/target/linux/ipq50xx/base-files/lib/rt3000/wifi-c.sh" \
+	    > "$MOCK/bin/rt3000_wifi_c.sh"
+	# Rewrite the sources, board lookup and sysfs tree to mock equivalents.
 	# SYSROOT is exported so the paths stay resolvable at run time.
 	sed -e 's#^\. /lib/rt3000/mac\.sh$#. "$MOCK/bin/rt3000_mac_stub.sh"#' \
+	    -e 's#^\. /lib/rt3000/wifi-c\.sh$#. "$MOCK/bin/rt3000_wifi_c.sh"#' \
 	    -e 's#\bboard_name\b#"$MOCK/bin/board_name"#g' \
 	    -e "s#/sys/class/ieee80211#\$SYSROOT/class/ieee80211#g" \
 	    -e "s#/sys/devices/#\$SYSROOT/devices/#g" \
@@ -258,13 +263,13 @@ chk "T3.2 5G radio enabled" "$(state_get radio1.disabled)" "0"
 chk "T3.3 2.4G iface enabled" "$(state_get default_radio0.disabled)" "0"
 chk "T3.4 5G iface enabled" "$(state_get default_radio1.disabled)" "0"
 chk "T3.5 2.4G authentication policy" "$(state_get default_radio0.encryption)" "psk2"
-chk "T3.6 2.4G SSID" "$(state_get default_radio0.ssid)" "RT3000"
+chk "T3.6 2.4G SSID" "$(state_get default_radio0.ssid)" "OpenWrt"
 chk "T3.7 5G authentication policy" "$(state_get default_radio1.encryption)" "psk2"
-chk "T3.8 5G SSID" "$(state_get default_radio1.ssid)" "RT3000-5G"
+chk "T3.8 5G SSID" "$(state_get default_radio1.ssid)" "OpenWrt-5G"
 # The defect this guards: a shipped image must never broadcast an open AP.
 chk "T3.9 no encryption=none survives" "$(grep -c '\.encryption=none$' "$MOCK_STATE")" "0"
-chk "T3.10 no stock OpenWrt SSID survives" "$(grep -c '\.ssid=OpenWrt$' "$MOCK_STATE")" "0"
-chk "T3.11 both bands carry the shipped key" "$(grep -c '\.key=RTRCRWNX$' "$MOCK_STATE")" "2"
+chk "T3.10 only the 2.4G AP uses the OpenWrt SSID" "$(grep -c '\.ssid=OpenWrt$' "$MOCK_STATE")" "1"
+chk "T3.11 both bands carry the shipped key" "$(grep -c '\.key=12345678$' "$MOCK_STATE")" "2"
 chk "T3.12 inherited fixture key is gone" "$(grep -c 'fixture-old-key' "$MOCK_STATE")" "0"
 chk "T3.13 2.4G AP joins LAN" "$(state_get default_radio0.network)" "lan"
 chk "T3.14 2.4G interface is an AP" "$(state_get default_radio0.mode)" "ap"

@@ -1,0 +1,67 @@
+Source-Makefile: package/test/netfixture/Makefile
+
+Package: demo-parent
+Version: 1
+Depends: +PACKAGE_demo_parent_conntrack:conntrack-api +traffic
+Provides:
+Category: Base system
+Title: metadata regression parent
+Config:
+	if PACKAGE_demo-parent
+	config PACKAGE_demo_parent_conntrack
+		bool "Enable conntrack"
+		default y
+	endif
+@@
+
+Package: conntrack-api
+Version: 1
+Depends: +netlink-api
+Provides:
+Category: Base system
+Title: conntrack API
+@@
+
+Package: netlink-api
+Version: 1
+Depends: +tunnel-api
+Provides:
+Category: Base system
+Title: netlink API
+@@
+
+Package: tunnel-api
+Version: 1
+Depends: ppp-module
+Provides:
+Category: Base system
+Title: tunnel API
+@@
+
+Package: ppp-module
+Version: 1
+Depends:
+Provides:
+Category: Base system
+Title: PPP module
+@@
+
+Package: tc-tiny
+Version: 1
+Submenu: Traffic control
+Depends: +IPTABLES_CONNLABEL:conntrack-api
+Provides: traffic
+Build-Variant: tiny
+Default-Variant: tiny
+Category: Base system
+Title: tiny traffic control
+@@
+
+Package: tc-full
+Version: 1
+Submenu: Traffic control
+Provides: traffic
+Build-Variant: full
+Category: Base system
+Title: full traffic control
+@@

@@ -1,44 +1,26 @@
 #!/bin/sh
-# RT3000 Machine-B deterministic per-role MAC derivation.
+# RT3000 deterministic per-role MAC derivation shared by B and C.
 #
 # ---------------------------------------------------------------------------
-# Policy (frozen)
+# Policy
 # ---------------------------------------------------------------------------
-# The ONLY valid per-unit globally-administered factory identity on this device
-# is the U-Boot environment variable `ethaddr` (read from the APPSBLENV
-# partition).  Everything else in that environment is either a placeholder
-# (`ethaddr1=00:11:22:33:44:56`) or OEM bookkeeping, and the ART partition holds
-# generic Qualcomm placeholders.  Neither may be used as identity.
+# The caller supplies the per-unit WAN/factory identity. Machine-B normally
+# reads U-Boot `ethaddr` from APPSBLENV. Machine-C's RAM-only first-boot path
+# uses the live OEM WAN `eth0` address passed through by U-Boot because that
+# candidate has no MTD devices. Neither machine uses `ethaddr1` or ART
+# placeholders as identity.
 #
 #   WAN    = factory ethaddr, UNCHANGED
-#   LAN    = derived(factory, "rt3000/lan")
-#   WiFi24 = derived(factory, "rt3000/wifi24")
-#   WiFi5  = derived(factory, "rt3000/wifi5")
+#   LAN    = factory + 1
+#   WiFi24 = factory + 2
+#   WiFi5  = factory + 3
 #
-# ---------------------------------------------------------------------------
-# Derivation
-# ---------------------------------------------------------------------------
-# derived = sha256( factory_bytes || role_domain )[0..2]  with the first octet
-# forced to a valid locally-administered unicast value:
-#
-#     first = (first | 0x02) & 0xfe
-#
-#   | 0x02 -> set the locally-administered bit (no globally unique claim)
-#   & 0xfe -> clear the multicast bit (must be a unicast address)
-#
-# Using a hash rather than arithmetic guarantees:
-#   - different roles never collide with each other
-#   - no role can collide with the WAN address by construction (WAN keeps the
-#     factory value, and the derived first octet always has the local bit set
-#     while a real factory OUI does not)
-#   - the map is stable across reboots and factory resets: it depends only on
-#     the factory MAC and a constant string, never on boot state or RNG
-#
-# Note the role domain strings are part of the wire format.  Changing one
-# changes the derived MAC, so they are frozen here.
+# This is the OEM numbering observed on HW-C (OEM LAN = WAN+1) and HW-D
+# (WAN/LAN/radios = base..base+3, see hwd-factory-mac), so every H3C board
+# uses the same consecutive, globally administered block. The addition is
+# over all 48 bits, matching hwd-factory-mac.
 
 RT3000_ETHADDR_SOURCE=${RT3000_ETHADDR_SOURCE:-}
-RT3000_ROLE_DOMAINS="lan wifi24 wifi5"
 
 rt3000_mac_fail() {
 	echo "rt3000-mac: $*" >&2
@@ -51,7 +33,8 @@ rt3000_mac_fail() {
 RT3000_APPSBLENV=${RT3000_APPSBLENV:-/dev/mtd10}
 RT3000_APPSBLENV_SCAN=${RT3000_APPSBLENV_SCAN:-4096}
 
-# Read the factory MAC from the U-Boot environment.
+# Read the WAN/factory MAC supplied by the caller, then fall back to the
+# Machine-B U-Boot environment when no override is present.
 #
 # Order of preference:
 #   1. RT3000_ETHADDR_SOURCE  (test hook / explicit override)
@@ -137,41 +120,14 @@ rt3000_mac_valid() {
 	return 0
 }
 
-# sha256 of a byte string, hex.  Uses the first available tool.
-rt3000_sha256() {
-	if command -v sha256sum >/dev/null 2>&1; then
-		sha256sum | cut -d' ' -f1
-	elif command -v openssl >/dev/null 2>&1; then
-		openssl dgst -sha256 | sed 's/.*= *//'
-	else
-		return 1
-	fi
-}
+# rt3000_mac_add <mac> <n>: <mac> + <n> over all 48 bits, lower-case.
+rt3000_mac_add() {
+	local hex n
 
-# rt3000_derive_mac <factory_mac> <role_domain>
-rt3000_derive_mac() {
-	local factory="$1" domain="$2" hex b0 b1 b2 o1
-
-	# The domain string is part of the hashed input.  printf without a trailing
-	# newline keeps the byte string exactly reproducible.
-	hex=$(printf '%s%s' "$factory" "$domain" | rt3000_sha256) || return 1
-	[ ${#hex} -ge 6 ] || return 1
-
-	b0=$(printf '%s' "$hex" | cut -c1-2)
-	b1=$(printf '%s' "$hex" | cut -c3-4)
-	b2=$(printf '%s' "$hex" | cut -c5-6)
-
-	# force locally-administered unicast on the first octet
-	o1=$(printf '%02x' $(( (0x$b0 | 0x02) & 0xfe )))
-
-	printf '%s:%s:%s' "$o1" "$b1" "$b2"
-	# the remaining three octets come from a second slice of the hash
-	local hex2
-	hex2=$(printf '%s%s%s' "$factory" "$domain" "tail" | rt3000_sha256) || return 1
-	printf ':%s:%s:%s\n' \
-		"$(printf '%s' "$hex2" | cut -c1-2)" \
-		"$(printf '%s' "$hex2" | cut -c3-4)" \
-		"$(printf '%s' "$hex2" | cut -c5-6)"
+	hex=$(printf '%s' "$1" | tr -d ':')
+	n=$(( 0x$hex + $2 ))
+	[ "$n" -le $(( 0xffffffffffff )) ] || return 1
+	printf '%012x' "$n" | sed 's/../&:/g; s/:$//'
 }
 
 # Emit "<role> <mac>" lines for all roles.  Exits nonzero and prints a clear
@@ -191,10 +147,9 @@ rt3000_mac_map() {
 		return 1
 	fi
 
-	lan=$(rt3000_derive_mac "$factory" "rt3000/lan") || {
-		rt3000_mac_fail "hash tool unavailable"; return 1; }
-	wifi24=$(rt3000_derive_mac "$factory" "rt3000/wifi24") || return 1
-	wifi5=$(rt3000_derive_mac "$factory" "rt3000/wifi5") || return 1
+	lan=$(rt3000_mac_add "$factory" 1) || return 1
+	wifi24=$(rt3000_mac_add "$factory" 2) || return 1
+	wifi5=$(rt3000_mac_add "$factory" 3) || return 1
 
 	printf 'wan %s\n' "$factory"
 	printf 'lan %s\n' "$lan"

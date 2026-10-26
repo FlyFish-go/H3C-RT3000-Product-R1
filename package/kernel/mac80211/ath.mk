@@ -17,6 +17,9 @@ PKG_CONFIG_DEPENDS += \
 	CONFIG_ATH11K_MEM_PROFILE_1G \
 	CONFIG_ATH11K_THERMAL \
 	CONFIG_ATH11K_NSS_SUPPORT \
+	CONFIG_ATH11K_RT3000_MON_OWNER_DIAG \
+	CONFIG_ATH11K_RT3000_REO_IDR_CLAIM \
+	CONFIG_ATH11K_RT3000_TX_UNKNOWN_DIAG \
 	CONFIG_ATH_USER_REGD
 
 ifdef CONFIG_PACKAGE_MAC80211_DEBUGFS
@@ -40,7 +43,10 @@ ifdef CONFIG_PACKAGE_MAC80211_TRACING
 	WIL6210_TRACING
 endif
 
-config-$(call config_package,ath) += ATH_CARDS ATH_COMMON ATH_REG_DYNAMIC_USER_REG_HINTS
+config-$(call config_package,ath) += ATH_CARDS ATH_COMMON
+# Bool symbol: config_package yields m, which Kconfig drops, and ath11k then
+# rejects every user/hostapd country hint (wiphys stay at the firmware's US).
+config-$(if $(CONFIG_PACKAGE_kmod-ath),y) += ATH_REG_DYNAMIC_USER_REG_HINTS
 config-$(CONFIG_PACKAGE_ATH_DEBUG) += ATH_DEBUG ATH10K_DEBUG ATH11K_DEBUG ATH9K_STATION_STATISTICS
 config-$(CONFIG_PACKAGE_ATH_DFS) += ATH9K_DFS_CERTIFIED ATH10K_DFS_CERTIFIED
 config-$(CONFIG_PACKAGE_ATH_SPECTRAL) += ATH9K_COMMON_SPECTRAL ATH10K_SPECTRAL ATH11K_SPECTRAL
@@ -63,6 +69,9 @@ config-$(CONFIG_ATH11K_MEM_PROFILE_512M) += ATH11K_MEM_PROFILE_512M
 config-$(CONFIG_ATH11K_MEM_PROFILE_1G) += ATH11K_MEM_PROFILE_1G
 config-$(CONFIG_ATH11K_THERMAL) += ATH11K_THERMAL
 config-$(CONFIG_ATH11K_NSS_SUPPORT) += ATH11K_NSS_SUPPORT
+config-$(CONFIG_ATH11K_RT3000_TX_UNKNOWN_DIAG) += ATH11K_RT3000_TX_UNKNOWN_DIAG
+config-$(CONFIG_ATH11K_RT3000_MON_OWNER_DIAG) += ATH11K_RT3000_MON_OWNER_DIAG
+config-$(CONFIG_ATH11K_RT3000_REO_IDR_CLAIM) += ATH11K_RT3000_REO_IDR_CLAIM
 
 config-$(call config_package,ath9k-htc) += ATH9K_HTC
 config-$(call config_package,ath10k) += ATH10K ATH10K_PCI
@@ -346,6 +355,18 @@ define KernelPackage/ath11k/config
 
 	config ATH11K_THERMAL
 		bool "Enable thermal sensors and throttling support"
+
+	config ATH11K_RT3000_MON_OWNER_DIAG
+		bool "Enable bounded RT3000 C ath11k RX diagnostics"
+		default n
+
+	config ATH11K_RT3000_REO_IDR_CLAIM
+		bool "Enable C IPQ5018 REO descriptor ownership repair"
+		default n
+
+	config ATH11K_RT3000_TX_UNKNOWN_DIAG
+		bool "Enable bounded C TX completion diagnostic"
+		default n
 
   endif
 

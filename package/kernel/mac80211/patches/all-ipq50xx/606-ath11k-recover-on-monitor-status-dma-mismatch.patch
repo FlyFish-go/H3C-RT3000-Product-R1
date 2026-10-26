@@ -1,0 +1,160 @@
+From: RT3000 developers <noreply@openai.com>
+Subject: [PATCH] ath11k: quiesce on monitor status DMA mismatch
+
+Monitor status descriptors carry the DMA address and cookie that were
+published together by the host. The QSDK reaper currently trusts the skb
+control-block address for DMA sync/unmap even after the descriptor and skb
+addresses disagree. A zero or stale control-block address can therefore
+reach DMA API cache maintenance and panic the kernel.
+
+Treat a zero or mismatched address as corrupted ring ownership: do not sync,
+unmap, free, or advance the affected descriptor. Stop reaping and keep external
+NAPI IRQ groups disabled. Do not queue the existing reset_work: its crash
+reconfiguration frees RX IDR entries by unconditionally unmapping each skb's
+control-block DMA address, which is unsafe while ownership is unresolved.
+Require a controlled full device restart after recording the failure. Apply the
+same checks to the QSDK look-ahead probe, which performs its own DMA sync.
+
+This contains the immediate invalid DMA sync and fail-closes the external DP
+interrupt path; it intentionally does not attempt in-kernel recovery or release
+the possibly corrupted skb. It does not prove or repair the original
+owner/cookie corruption. A stability pass still requires zero mismatch events.
+
+--- a/drivers/net/wireless/ath/ath11k/core.h
++++ b/drivers/net/wireless/ath/ath11k/core.h
+@@ -232,6 +232,7 @@
+ 	ATH11K_FLAG_QMI_FAIL,
+ 	ATH11K_FLAG_HTC_SUSPEND_COMPLETE,
+ 	ATH11K_FLAG_FW_RESTART_FOR_HOST,
++	ATH11K_FLAG_MON_STATUS_DMA_ERROR,
+ };
+ 
+ #define ATH11K_STATS_MGMT_FRM_TYPE_MAX 16
+--- a/drivers/net/wireless/ath/ath11k/core.c
++++ b/drivers/net/wireless/ath/ath11k/core.c
+@@ -1361,6 +1361,9 @@
+ 		goto err_core_stop;
+ 	}
+ 
++	/* DP pdev and monitor-status rings are rebuilt before IRQs are enabled. */
++	clear_bit(ATH11K_FLAG_MON_STATUS_DMA_ERROR, &ab->dev_flags);
++
+ 	ath11k_hif_irq_enable(ab);
+ 
+ 	ath11k_config_qdss(ab);
+--- a/drivers/net/wireless/ath/ath11k/ahb.c
++++ b/drivers/net/wireless/ath/ath11k/ahb.c
+@@ -500,7 +500,8 @@
+ 	work_done = ath11k_dp_service_srng(ab, irq_grp, budget);
+ 	if (work_done < budget) {
+ 		napi_complete_done(napi, work_done);
+-		ath11k_ahb_ext_grp_enable(irq_grp);
++		if (!test_bit(ATH11K_FLAG_MON_STATUS_DMA_ERROR, &ab->dev_flags))
++			ath11k_ahb_ext_grp_enable(irq_grp);
+ 	}
+ 
+ 	if (work_done > budget)
+--- a/drivers/net/wireless/ath/ath11k/dp_rx.c
++++ b/drivers/net/wireless/ath/ath11k/dp_rx.c
+@@ -3848,6 +3848,15 @@
+ 	}
+ }
+ 
++static void ath11k_dp_rx_mon_status_dma_error(struct ath11k_base *ab)
++{
++	if (test_and_set_bit(ATH11K_FLAG_MON_STATUS_DMA_ERROR, &ab->dev_flags))
++		return;
++
++	ath11k_warn(ab, "monitor-status DMA metadata mismatch; quiescing DP until controlled restart\n");
++	/* Keep ownership intact; reset_work frees RX IDR entries unsafely here. */
++}
++
+ enum dp_mon_reap_status
+ dp_rx_mon_handle_status_buf_done(struct ath11k_base *ab, struct hal_srng *srng,
+ 				 struct dp_rxdma_ring *rx_ring)
+@@ -3866,6 +3875,9 @@
+ 		return DP_MON_STATUS_NO_DMA;
+ 
+ 	ath11k_hal_rx_buf_addr_info_get(status_desc, &paddr, &cookie, &rbm);
++	/* Empty look-ahead entries have no skb ownership to inspect. */
++	if (!paddr)
++		return DP_MON_STATUS_NO_DMA;
+ 
+ 	buf_id = FIELD_GET(DP_RXDMA_BUF_COOKIE_BUF_ID, cookie);
+ 
+@@ -3877,7 +3889,16 @@
+ 		return DP_MON_STATUS_NO_DMA;
+ 
+ 	rxcb = ATH11K_SKB_RXCB(skb);
+-	dma_sync_single_for_cpu(ab->dev, rxcb->paddr,
++	if (unlikely(!rxcb->paddr || paddr != rxcb->paddr)) {
++		dev_warn_ratelimited(ab->dev,
++			"mon status look-ahead DMA mismatch ring_id=%u cookie=0x%x "
++			"buf_id=%d desc_paddr=%pad cb_paddr=%pad skb=%p\n",
++			srng->ring_id, cookie, buf_id, &paddr, &rxcb->paddr, skb);
++		ath11k_dp_rx_mon_status_dma_error(ab);
++		return DP_MON_STATUS_NO_DMA;
++	}
++
++	dma_sync_single_for_cpu(ab->dev, paddr,
+ 			skb->len + skb_tailroom(skb),
+ 			DMA_FROM_DEVICE);
+ 
+@@ -3887,6 +3908,7 @@
+ 
+ 	return DP_MON_STATUS_REPLINISH;
+ }
++
+ 
+ static int ath11k_dp_rx_reap_mon_status_ring(struct ath11k_base *ab, int mac_id,
+ 					     int *budget, struct sk_buff_head *skb_list)
+@@ -3915,10 +3937,16 @@
+ 
+ 	srng = &ab->hal.srng_list[rx_ring->refill_buf_ring.ring_id];
+ 
++	if (test_bit(ATH11K_FLAG_MON_STATUS_DMA_ERROR, &ab->dev_flags))
++		return 0;
++
+ 	spin_lock_bh(&srng->lock);
+ 
+ 	ath11k_hal_srng_access_begin(ab, srng);
+ 	while (*budget) {
++		if (test_bit(ATH11K_FLAG_MON_STATUS_DMA_ERROR, &ab->dev_flags))
++			break;
++
+ 		*budget -= 1;
+ 		rx_mon_status_desc = ath11k_hal_srng_src_peek(ab, srng);
+ 		if (!rx_mon_status_desc) {
+@@ -3950,7 +3978,7 @@
+ 
+ 			rxcb = ATH11K_SKB_RXCB(skb);
+ 
+-			if (unlikely(!rxcb->paddr || paddr != rxcb->paddr))
++			if (unlikely(!rxcb->paddr || paddr != rxcb->paddr)) {
+ 				dev_warn_ratelimited(ab->dev,
+ 					"mon status DMA mismatch mac_id=%d srng_id=%d ring_id=%u "
+ 					"cookie=0x%x buf_id=%d desc_paddr=%pad cb_paddr=%pad "
+@@ -3958,8 +3986,11 @@
+ 					mac_id, srng_id, srng->ring_id, cookie, buf_id,
+ 					&paddr, &rxcb->paddr, skb, skb->len,
+ 					skb_tailroom(skb));
+-
+-			dma_sync_single_for_cpu(ab->dev, rxcb->paddr,
++				ath11k_dp_rx_mon_status_dma_error(ab);
++				break;
++			}
++
++			dma_sync_single_for_cpu(ab->dev, paddr,
+ 						skb->len + skb_tailroom(skb),
+ 						DMA_FROM_DEVICE);
+ 
+@@ -3986,6 +4017,9 @@
+ 				reap_status = dp_rx_mon_handle_status_buf_done(ab, srng,
+ 									       rx_ring);
+ 				if (reap_status == DP_MON_STATUS_NO_DMA) {
++					if (test_bit(ATH11K_FLAG_MON_STATUS_DMA_ERROR,
++						     &ab->dev_flags))
++						break;
+ 					continue;
+ 				} else if (reap_status == DP_MON_STATUS_REPLINISH) {
+ 					ath11k_warn(ab, "mon status DONE not set %lx, buf_id %d\n",

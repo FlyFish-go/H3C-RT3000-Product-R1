@@ -1,0 +1,152 @@
+--- a/drivers/net/wireless/ath/ath11k/dp_rx.c
++++ b/drivers/net/wireless/ath/ath11k/dp_rx.c
+@@ -9,6 +9,8 @@
+ #include <linux/skbuff.h>
+ #include <linux/slab.h>
+ #include <linux/ratelimit.h>
++#include <linux/moduleparam.h>
++#include <linux/of.h>
+ #include <crypto/hash.h>
+ #include "core.h"
+ #include "debug.h"
+@@ -204,6 +206,13 @@
+ 	rx_ring->mon_owner_seq = 0;
+ }
+ 
++static bool ath11k_qcn6122_rx_bw_trace_enable;
++module_param_named(qcn6122_rx_bw_trace, ath11k_qcn6122_rx_bw_trace_enable,
++		   bool, 0600);
++MODULE_PARM_DESC(qcn6122_rx_bw_trace,
++		 "C RT3000 QCN6122 RX bandwidth trace (max 16 records)");
++static atomic_t ath11k_qcn6122_rx_bw_trace_remaining = ATOMIC_INIT(16);
++
+ static DEFINE_RATELIMIT_STATE(ath11k_rx_warning_ratelimit,
+ 			      DEFAULT_RATELIMIT_INTERVAL,
+ 			      DEFAULT_RATELIMIT_BURST);
+@@ -842,6 +851,101 @@
+ 							struct hal_rx_desc *desc)
+ {
+ 	return ab->hw_params.hw_ops->rx_desc_mpdu_start_addr2(desc);
++}
++
++
++struct ath11k_qcn6122_rx_bw_trace_snapshot {
++	bool valid, ta_valid, seq_valid;
++	u8 mac_id, desc_nss, ta[ETH_ALEN];
++	u16 seq;
++	u32 info3, ppdu_id, freq_meta;
++	dma_addr_t rx_paddr;
++};
++
++/* The trace state and info3 helper only exist with the C monitor diagnostics. */
++#ifdef CPTCFG_ATH11K_RT3000_MON_OWNER_DIAG
++static void ath11k_qcn6122_rx_bw_trace_capture(
++	struct ath11k *ar, struct sk_buff *msdu, struct hal_rx_desc *desc,
++	struct ath11k_skb_rxcb *rxcb,
++	struct ath11k_qcn6122_rx_bw_trace_snapshot *snap)
++{
++	u32 info3;
++
++	if (!READ_ONCE(ath11k_qcn6122_rx_bw_trace_enable) ||
++	    ar->ab->hw_params.hw_rev != ATH11K_HW_QCN6122 ||
++	    !of_machine_is_compatible("h3c,rt3000-rtl8367s"))
++		return;
++	if (!ath11k_rx_warning_qcn6122_info3(ar->ab, msdu, desc, &info3) ||
++	    FIELD_GET(RX_MSDU_START_INFO3_PKT_TYPE, info3) !=
++		    RX_MSDU_START_PKT_TYPE_11AC)
++		return;
++
++	/* Called before skb pull/coalesce; helper validates descriptor bounds. */
++	snap->info3 = info3;
++	snap->desc_nss = ath11k_dp_rx_h_msdu_start_nss(ar->ab, desc);
++	snap->ppdu_id = ath11k_dp_rxdesc_get_ppduid(ar->ab, desc);
++	snap->freq_meta = ath11k_dp_rx_h_msdu_start_freq(ar->ab, desc);
++	snap->mac_id = rxcb->mac_id;
++	snap->rx_paddr = rxcb->paddr;
++	snap->ta_valid = ath11k_dp_rxdesc_mac_addr2_valid(ar->ab, desc);
++	if (snap->ta_valid)
++		ether_addr_copy(snap->ta,
++				 ath11k_dp_rxdesc_get_mpdu_start_addr2(ar->ab, desc));
++	snap->seq_valid = ath11k_dp_rx_h_mpdu_start_seq_ctrl_valid(ar->ab, desc);
++	if (snap->seq_valid)
++		snap->seq = ath11k_dp_rx_h_mpdu_start_seq_no(ar->ab, desc);
++	snap->valid = true;
++}
++
++static void ath11k_qcn6122_rx_bw_trace_emit(
++	struct ath11k *ar,
++	const struct ath11k_qcn6122_rx_bw_trace_snapshot *snap,
++	const struct ieee80211_rx_status *status)
++{
++	u8 raw_bw;
++	int remaining;
++
++	if (!snap->valid ||
++	    !READ_ONCE(ath11k_qcn6122_rx_bw_trace_enable) ||
++	    status->encoding != RX_ENC_VHT)
++		return;
++	raw_bw = FIELD_GET(RX_MSDU_START_INFO3_RECV_BW, snap->info3);
++	if (raw_bw != RX_MSDU_START_RECV_BW_160MHZ &&
++	    status->bw != RATE_INFO_BW_160)
++		return;
++	remaining = atomic_dec_if_positive(
++		&ath11k_qcn6122_rx_bw_trace_remaining);
++	if (remaining < 0)
++		return;
++	if (!remaining)
++		WRITE_ONCE(ath11k_qcn6122_rx_bw_trace_enable, false);
++
++	dev_info(ar->ab->dev,
++		 "qcn6122-rx-bw-trace sample=%u mac=%u ppdu=%u rx_dma=%pad info3=0x%08x raw_bw=%u raw_pkt=%u raw_mcs=%u desc_nss=%u raw_nss_bitmap=0x%02x status_enc=%u status_bw=%u status_mcs=%u status_nss=%u primary_mhz=%u meta_center_mhz=%u meta_channel=%u ta_valid=%u ta=%pM seq_valid=%u seq=%u\n",
++		 16 - remaining, snap->mac_id, snap->ppdu_id, &snap->rx_paddr,
++		 snap->info3, raw_bw,
++		 (unsigned int)FIELD_GET(RX_MSDU_START_INFO3_PKT_TYPE, snap->info3),
++		 (unsigned int)FIELD_GET(RX_MSDU_START_INFO3_RATE_MCS, snap->info3),
++		 snap->desc_nss,
++		 (unsigned int)FIELD_GET(RX_MSDU_START_INFO3_MIMO_SS_BITMAP, snap->info3),
++		 status->encoding, status->bw, status->rate_idx, status->nss,
++		 status->freq, snap->freq_meta >> 16, snap->freq_meta & 0xffff,
++		 snap->ta_valid, snap->ta, snap->seq_valid, snap->seq);
+ }
++#else
++static inline void ath11k_qcn6122_rx_bw_trace_capture(
++	struct ath11k *ar, struct sk_buff *msdu, struct hal_rx_desc *desc,
++	struct ath11k_skb_rxcb *rxcb,
++	struct ath11k_qcn6122_rx_bw_trace_snapshot *snap)
++{
++}
++
++static inline void ath11k_qcn6122_rx_bw_trace_emit(
++	struct ath11k *ar,
++	const struct ath11k_qcn6122_rx_bw_trace_snapshot *snap,
++	const struct ieee80211_rx_status *status)
++{
++}
++#endif
+ 
+ #ifndef CPTCFG_ATH11K_MEM_PROFILE_1G
+@@ -3703,6 +3807,7 @@
+ 	struct rx_attention *rx_attention;
+ 	struct ath11k_skb_rxcb *rxcb;
+ 	struct sk_buff *last_buf;
++	struct ath11k_qcn6122_rx_bw_trace_snapshot bw_trace = {};
+ 	u8 l3_pad_bytes;
+ 	u8 *hdr_status;
+ 	u16 msdu_len;
+@@ -3749,6 +3854,8 @@
+ 
+ 	rxcb = ATH11K_SKB_RXCB(msdu);
+ 	rxcb->rx_desc = rx_desc;
++	ath11k_qcn6122_rx_bw_trace_capture(ar, msdu, rx_desc, rxcb,
++					   &bw_trace);
+ 	msdu_len = ath11k_dp_rx_h_msdu_start_msdu_len(ab, rx_desc);
+ 	l3_pad_bytes = ath11k_dp_rx_h_msdu_end_l3pad(ab, lrx_desc);
+ 
+@@ -3784,6 +3891,7 @@
+ 		return 0;
+ 
+ 	ath11k_dp_rx_h_ppdu(ar, rx_desc, rx_status);
++	ath11k_qcn6122_rx_bw_trace_emit(ar, &bw_trace, rx_status);
+ 
+ 	rx_status->flag |= RX_FLAG_SKIP_MONITOR | RX_FLAG_DUP_VALIDATED;
+ 

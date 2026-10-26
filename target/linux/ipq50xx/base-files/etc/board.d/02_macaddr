@@ -1,8 +1,8 @@
 #!/bin/sh
-# RT3000 Machine-B — apply the deterministic per-role MAC policy.
+# RT3000 Machine-B/C — apply a deterministic per-role MAC policy.
 #
 # WAN   keeps the factory ethaddr.
-# LAN / WiFi24 / WiFi5 get role-derived locally-administered unicast MACs.
+# LAN / WiFi24 / WiFi5 are factory +1 / +2 / +3 (OEM numbering).
 #
 # The derivation lives in /lib/rt3000/mac.sh so it can be exercised offline by
 # the test suite.  When the factory MAC is missing or invalid the helper exits
@@ -17,7 +17,7 @@ board_config_update
 board=$(board_name)
 
 case $board in
-	h3c,rt3000)
+	h3c,rt3000|h3c,rw3000-hw-a)
 		MACMAP=$(rt3000_mac_map) || {
 			logger -t rt3000-mac "factory MAC unusable; leaving kernel defaults"
 			board_config_flush
@@ -66,6 +66,54 @@ case $board in
 		# as well; the radio device entries keep the per-radio identity.
 		for r in $W24; do ucidef_set_network_device_mac wlan0 "$r"; done
 		for r in $W5;  do ucidef_set_network_device_mac wlan1 "$r"; done
+		;;
+	h3c,rt3000-rtl8367s)
+		RT3_MODEL=$(tr -d '\000' < /proc/device-tree/model 2>/dev/null)
+		if [ "$RT3_MODEL" = 'H3C Magic RT3000 (RTL8367S, persistent C native profile)' ]; then
+			# Persistent native must use the protected, physically identified C ENV.
+			# Never fall back to ART/U-Boot eth0 if that read or validation fails.
+			if [ ! -r /lib/rt3000/c-mac.sh ]; then
+				logger -t rt3000-mac "C factory identity unavailable; MAC policy skipped"
+				board_config_flush
+				exit 0
+			fi
+			. /lib/rt3000/c-mac.sh
+			WAN=$(rt3000_c_factory_mac) || WAN=
+			if ! rt3000_mac_valid "$WAN"; then
+				logger -t rt3000-mac "C factory identity unavailable; MAC policy skipped"
+				board_config_flush
+				exit 0
+			fi
+			RT3000_ETHADDR_SOURCE="$WAN"
+			MACMAP=$(rt3000_mac_map) || {
+				logger -t rt3000-mac "C factory identity unusable; MAC policy skipped"
+				board_config_flush
+				exit 0
+			}
+			WAN=$(printf '%s\n' "$MACMAP" | sed -n 's/^wan //p')
+			LAN=$(printf '%s\n' "$MACMAP" | sed -n 's/^lan //p')
+			[ -n "$WAN" ] && {
+				ucidef_set_interface_macaddr wan "$WAN"
+				ucidef_set_network_device_mac eth0 "$WAN"
+			}
+			[ -n "$LAN" ] && {
+				ucidef_set_interface_macaddr lan "$LAN"
+				ucidef_set_network_device_mac eth1 "$LAN"
+				ucidef_set_network_device_mac br-lan "$LAN"
+			}
+		else
+			# C RAM/installer has no persistent ENV identity; retain verified live WAN.
+			WAN=$(cat /sys/class/net/eth0/address 2>/dev/null)
+			if rt3000_mac_valid "$WAN"; then
+				LAN=$(rt3000_mac_add "$WAN" 1) || LAN=
+				if [ -n "$LAN" ]; then
+					ucidef_set_interface_macaddr lan "$LAN"
+					ucidef_set_network_device_mac br-lan "$LAN"
+				fi
+			else
+				logger -t rt3000-mac "C WAN MAC unusable; LAN address unchanged"
+			fi
+		fi
 		;;
 esac
 

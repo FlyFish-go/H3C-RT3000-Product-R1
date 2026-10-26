@@ -1,0 +1,40 @@
+/* Proposal only: merge into the RT3000 board DTS after source review. */
+#include <dt-bindings/gpio/gpio.h>
+
+&tlmm {
+	rt3000_sysled_pins: rt3000_sysled_pins {
+		green24 {
+			pins = "gpio24";
+			function = "gpio";
+		};
+		green19 {
+			pins = "gpio19";
+			function = "gpio";
+			drive-strength = <8>;
+			bias-pull-up;
+		};
+		red23 {
+			pins = "gpio23";
+			function = "gpio";
+		};
+		red17 {
+			pins = "gpio17";
+			function = "gpio";
+		};
+	};
+};
+
+/ {
+	rt3000_sysleds {
+		compatible = "h3c,rt3000-paired-sysleds";
+		pinctrl-names = "default";
+		pinctrl-0 = <&rt3000_sysled_pins>;
+		green-gpios = <&tlmm 24 GPIO_ACTIVE_HIGH>,
+			      <&tlmm 19 GPIO_ACTIVE_HIGH>;
+		red-gpios = <&tlmm 23 GPIO_ACTIVE_HIGH>,
+		     <&tlmm 17 GPIO_ACTIVE_HIGH>;
+		/* Green stays on once Linux owns the GPIOs; red is left to userspace. */
+		green-default-trigger = "default-on";
+		status = "okay";
+	};
+};

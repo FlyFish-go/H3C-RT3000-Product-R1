@@ -12,6 +12,7 @@ case "$FIRMWARE" in
 			cmcc,rax3000q|\
 			redmi,ax3000|\
 			h3c,rt3000|\
+			h3c,rw3000-hw-a|\
 			xiaomi,cr881x)
 				caldata_extract "0:ART" 0x1000 0x20000
 				;;
@@ -22,6 +23,7 @@ case "$FIRMWARE" in
 			cmcc,rax3000q|\
 			redmi,ax3000|\
 			h3c,rt3000|\
+			h3c,rw3000-hw-a|\
 			xiaomi,cr881x)
 				caldata_extract "0:ART" 0x26800 0x20000
 				;;

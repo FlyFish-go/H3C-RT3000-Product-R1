@@ -1,0 +1,28 @@
+--- a/include/net/dsa.h
++++ b/include/net/dsa.h
+@@ -486,5 +486,7 @@ struct dsa_switch_ops {
+ 	 * VLAN support
+ 	 */
++	int (*port_vlan_filtering_prepare)(struct dsa_switch *ds, int port,
++					   bool vlan_filtering);
+ 	int	(*port_vlan_filtering)(struct dsa_switch *ds, int port,
+ 				       bool vlan_filtering);
+ 	int (*port_vlan_prepare)(struct dsa_switch *ds, int port,
+--- a/net/dsa/port.c
++++ b/net/dsa/port.c
+@@ -212,7 +212,12 @@ int dsa_port_vlan_filtering(struct dsa_port *dp, bool vlan_filtering,
+ 	int err;
+ 
+-	/* bridge skips -EOPNOTSUPP, so skip the prepare phase */
++	/* Legacy drivers skip prepare; an explicit hook may still veto. */
+-	if (switchdev_trans_ph_prepare(trans))
++	if (switchdev_trans_ph_prepare(trans)) {
++		if (ds->ops->port_vlan_filtering_prepare)
++			return ds->ops->port_vlan_filtering_prepare(ds, dp->index,
++							   vlan_filtering);
++
+ 		return 0;
++	}
+ 
+ 	if (!ds->ops->port_vlan_filtering)
+ 		return 0;

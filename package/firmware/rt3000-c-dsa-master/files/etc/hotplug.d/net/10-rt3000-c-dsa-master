@@ -1,0 +1,5 @@
+#!/bin/sh
+# Trigger only when native C's NSS dp2 master has been registered.
+[ "${ACTION:-}" = add ] || exit 0
+[ "${INTERFACE:-}" = eth1 ] || exit 0
+/usr/libexec/rt3000-c-dsa-master-bind 0

@@ -36,10 +36,11 @@ Repeated single-stream 800 Mbps Wi-Fi upload has not been established for this r
 - **LEDs and buttons are not supported.** The device tree does not wire them.
 - **No OEM web-OTA integration.** Use the slot workflow described in
   [RECOVERY.md](RECOVERY.md).
-- **Per-unit LAN/Wi-Fi MAC addresses are derived, not factory.** Only the WAN
-  address is the factory-assigned value. LAN and Wi-Fi addresses are derived
-  deterministically from it so that they are stable across reboots and factory
-  resets; they are locally-administered addresses and carry no vendor claim.
+- **LAN/Wi-Fi MAC addresses follow the OEM numbering.** WAN is the factory
+  `ethaddr`; LAN, 2.4 GHz and 5 GHz are factory +1, +2 and +3 (as observed on
+  OEM firmware for HW-C and HW-D). Releases before 2026-10-23 used hashed
+  locally-administered LAN/Wi-Fi addresses, so upgrading changes those three
+  addresses: DHCP leases and MAC-based rules on the upstream side change too.
 - **The WAN address is the only globally unique per-unit identity.** If the
   factory environment is missing or invalid, the system refuses to invent one
   and falls back to kernel defaults rather than generating addresses.

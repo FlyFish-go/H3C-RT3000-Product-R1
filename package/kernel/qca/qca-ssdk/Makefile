@@ -97,6 +97,15 @@ QCASSDK_CONFIG_OPTS+= TOOL_PATH=$(TOOLCHAIN_BIN_PATH) \
 		GCC_VERSION=$(GCC_VERSION) \
 		CFLAGS=-I$(STAGING_DIR)/usr/include
 
+# qca-nss-dp in the C RAM experiment references these management control
+# APIs. MINI_SSDK disables their objects by default, so enable them only for
+# the explicit single-profile C RAM, read-only MTD-discovery, persistent-native, or network-installer profile.
+# Keep the B and multi-profile SSDK defaults unchanged.
+QCA_SSDK_C_RAM_ONLY_SINGLE_PROFILE := $(shell test -f $(TOPDIR)/.config && grep -Eq '^CONFIG_TARGET_ipq50xx_arm_DEVICE_h3c_rt3000_rtl8367s_(ram|mtd_discovery_ram|native_slot1|installer_ram)=y' $(TOPDIR)/.config && ! grep -q '^CONFIG_TARGET_MULTI_PROFILE=y' $(TOPDIR)/.config && echo 1)
+ifeq ($(QCA_SSDK_C_RAM_ONLY_SINGLE_PROFILE),1)
+	QCASSDK_CONFIG_OPTS+= IN_CTRLPKT=TRUE
+endif
+
 ifeq ($(LOCAL_VARIANT),hnat)
     QCASSDK_CONFIG_OPTS+= HNAT_FEATURE=enable
     ifeq ($(CONFIG_TARGET_ar71xx),)

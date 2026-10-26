@@ -1,0 +1,30 @@
+#!/bin/sh
+# HW-A 5 GHz BDF switch. Takes effect on the next boot (Q6 reads board-2.bin
+# once). Calibration always comes from this unit's 0:ART.
+#   oem-axis0  this board's OEM bdwlan.b90 with 0x45c cleared (image default)
+#   hybrid     HW-B no-FEM hybrid (same as ipq-wifi-h3c_rt3000), 16-19 dBm cap
+#   status     show which one is active
+D=/lib/firmware/ath11k/qcn6122/hw1.0
+
+name() {
+	case "$(sha256sum "$1" | cut -d' ' -f1)" in
+	085a6cca54714ed8387341869bbf1f75b257198e87bd590ddf58f7d155c772fb) echo hybrid ;;
+	e5bd210bfb572ceae15eb132fc5f9950578f171268e5230bed026dbb539c73e3) echo oem-axis0 ;;
+	*) echo unknown ;;
+	esac
+}
+
+case "$1" in
+hybrid)
+	SRC=$D/board-2.bin.hybrid ;;
+oem-axis0)
+	SRC=$D/board-2.bin.b90-axis0 ;;
+status|"")
+	echo "active: $(name $D/board-2.bin)"; exit 0 ;;
+*)
+	echo "usage: hwa-bdf oem-axis0|hybrid|status" >&2; exit 1 ;;
+esac
+[ "$(name "$SRC")" = "$1" ] || { echo "$SRC missing or modified" >&2; exit 1; }
+cmp -s "$SRC" "$D/board-2.bin" || cp "$SRC" "$D/board-2.bin"
+sync
+echo "next boot: $(name $D/board-2.bin) (reboot to apply)"

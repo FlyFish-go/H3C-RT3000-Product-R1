@@ -1,0 +1,15 @@
+--- a/nss_dp_main.c
++++ b/nss_dp_main.c
+@@ -810,6 +810,12 @@
+ 
+ 	dp_priv->drv_flags |= NSS_DP_PRIV_FLAG(INIT_DONE);
+ 
++#if defined(NSS_DP_SET_NETDEV_DEV_FOR_DSA)
++	/* The C board's fixed-link MAC1 has no link-poll branch to set parent. */
++	if (dp_priv->macid == 2 && !dp_priv->link_poll)
++		SET_NETDEV_DEV(netdev, &pdev->dev);
++#endif
++
+ 	if (dp_priv->link_poll) {
+ 		dp_priv->miibus = nss_dp_mdio_attach(pdev);
+ 		if (!dp_priv->miibus) {

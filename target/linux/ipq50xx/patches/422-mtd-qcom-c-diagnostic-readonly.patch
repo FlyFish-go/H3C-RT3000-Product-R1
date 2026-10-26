@@ -1,0 +1,100 @@
+From 7d9be64c8f8ef2426234a6f1eb9920018a0d108e Mon Sep 17 00:00:00 2001
+From: Codex <codex@openai.com>
+Date: Sun, 4 Oct 2026 00:00:00 +0000
+Subject: [PATCH] mtd: qcom_nandc: make C diagnostic probe read-only
+
+The C MTD discovery RAM profile opts in with a dedicated root compatible
+and controller property. Set NAND_ROM before nand_scan so the MTD is
+read-only during scan and remains so when registered. Keep BBT scanning
+disabled and force serial NAND reads to x1 without probing/enabling QE or
+running training. Clear MTD_WRITEABLE again immediately before registration
+as a defense in depth. Fail closed if the diagnostic compatible lacks its
+controller opt-in property.
+
+---
+ drivers/mtd/nand/raw/qcom_nandc.c | 35 ++++++++++++++++++++++++++++++++
+ 1 file changed, 35 insertions(+)
+
+diff --git a/drivers/mtd/nand/raw/qcom_nandc.c b/drivers/mtd/nand/raw/qcom_nandc.c
+--- a/drivers/mtd/nand/raw/qcom_nandc.c
++++ b/drivers/mtd/nand/raw/qcom_nandc.c
+@@ -3592,6 +3592,7 @@ static int qcom_nand_host_init_and_register(struct qcom_nand_controller *nandc,
+ 	struct nand_chip *chip = &host->chip;
+ 	struct mtd_info *mtd = nand_to_mtd(chip);
+ 	struct device *dev = nandc->dev;
++	bool c_mtd_discovery = false;
+ 	int ret;
+ 
+ 	ret = of_property_read_u32(dn, "reg", &host->cs);
+@@ -3627,6 +3628,17 @@ static int qcom_nand_host_init_and_register(struct qcom_nand_controller *nandc,
+ 	chip->legacy.block_bad		= qcom_nandc_block_bad;
+ 	chip->legacy.block_markbad	= qcom_nandc_block_markbad;
+ 
++	if (of_machine_is_compatible("h3c,rt3000-rtl8367s-mtd-discovery")) {
++		if (!of_property_read_bool(nandc->dev->of_node,
++					   "h3c,rt3000-mtd-discovery-read-only")) {
++			dev_err(dev, "C MTD discovery read-only opt-in missing\n");
++			return -EPERM;
++		}
++		c_mtd_discovery = true;
++		chip->options |= NAND_ROM | NAND_SKIP_BBTSCAN;
++		chip->bbt_options &= ~NAND_BBT_USE_FLASH;
++	}
++
+ 	chip->controller = &nandc->controller;
+ 	chip->options |= NAND_NO_SUBPAGE_WRITE | NAND_USE_BOUNCE_BUFFER |
+ 			 NAND_SKIP_BBTSCAN;
+@@ -3646,6 +3659,9 @@ static int qcom_nand_host_init_and_register(struct qcom_nand_controller *nandc,
+ 		return ret;
+ 	}
+ 
++	if (c_mtd_discovery)
++		host->quad_mode = false;
++
+ 	if (nandc->props->is_bam) {
+ 		free_bam_transaction(nandc);
+ 		nandc->bam_txn = alloc_bam_transaction(nandc);
+@@ -3673,21 +3689,31 @@ static int qcom_nand_host_init_and_register(struct qcom_nand_controller *nandc,
+ 	 */
+ 	if (nandc->props->is_serial_nand) {
+-		ret = qspi_nand_device_config(nandc, host, mtd);
+-		if (ret)
+-			dev_err(nandc->dev, "qspi_nand device config failed\n");
+-		if (nandc->props->is_serial_training) {
+-			if (nandc->boot_layout) {
+-				dev_info(nandc->dev,
+-				"Skip serial training in boot layout\n");
+-			} else {
+-				ret = qspi_execute_training(nandc, host, mtd);
+-				if (ret)
+-					dev_err(nandc->dev,
+-					"failed to enable serial training\n");
++		if (!c_mtd_discovery) {
++			ret = qspi_nand_device_config(nandc, host, mtd);
++			if (ret)
++				dev_err(nandc->dev, "qspi_nand device config failed\n");
++			if (nandc->props->is_serial_training) {
++				if (nandc->boot_layout) {
++					dev_info(nandc->dev,
++					"Skip serial training in boot layout\n");
++				} else {
++					ret = qspi_execute_training(nandc, host, mtd);
++					if (ret)
++						dev_err(nandc->dev,
++						"failed to enable serial training\n");
++				}
+ 			}
++		} else {
++			dev_info(dev, "C MTD discovery: x1 reads; no QE or training writes\n");
+ 		}
+ 	}
+ 
++	if (c_mtd_discovery) {
++		/* Keep the master read-only before registration snapshots flags. */
++		mtd->flags &= ~MTD_WRITEABLE;
++		dev_info(dev, "C-MTD-DISCOVERY-READONLY: master MTD write disabled\n");
++	}
++
+ 	ret = mtd_device_register(mtd, NULL, 0);
+ 	if (ret)
+ 		nand_cleanup(chip);

@@ -1,11 +1,11 @@
 #!/bin/sh
-# RT3000 Machine-B — deterministic MAC policy test suite.
+# RT3000 B/C — OEM-numbered MAC policy test suite.
 #
 # Runs entirely offline against the shipped derivation script; no device, no
 # network.  Set RT3000_ETHADDR_SOURCE to inject a factory value.
 
 HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-SCRIPT="$HERE/rt3000-mac.sh"
+SCRIPT="${1:-$HERE/../../../target/linux/ipq50xx/base-files/lib/rt3000/mac.sh}"
 PASS=0; FAIL=0; FAILED=""
 
 ok()   { PASS=$((PASS+1)); printf 'PASS  %s\n' "$1"; }
@@ -13,7 +13,7 @@ bad()  { FAIL=$((FAIL+1)); FAILED="$FAILED
   $1"; printf 'FAIL  %s   -- %s\n' "$1" "${2:-}"; }
 
 # run with an injected factory MAC
-run_mac() { RT3000_ETHADDR_SOURCE="$1" sh "$SCRIPT" 2>&1; }
+run_mac() { RT3000_ETHADDR_SOURCE="$1" sh -c '. "$1"; rt3000_mac_map' sh "$SCRIPT" 2>&1; }
 
 # field <role> <output>
 field() { printf '%s\n' "$2" | sed -n "s/^$1 //p" | head -n1; }
@@ -45,88 +45,30 @@ while [ $i -lt 5 ]; do
 done
 [ $same -eq 1 ] && ok "stable across 5 repeated runs" || bad "stability" "varied output"
 
-# different factory MACs must give different derived sets
-OTHER="00:11:22:33:44:99"
-OUT_OTHER=$(run_mac "$OTHER")
-if [ "$(field lan "$OUT1")" != "$(field lan "$OUT_OTHER")" ]; then
-	ok "different factory MAC -> different LAN MAC"
-else
-	bad "factory sensitivity" "same derived MAC for different factory"
-fi
-
-##############################################################################
-echo
-echo "--- group B: per-role properties ---"
-##############################################################################
-
-LAN=$(field lan "$OUT1")
-W24=$(field wifi24 "$OUT1")
-W5=$(field wifi5 "$OUT1")
+# OEM numbering: LAN/WiFi24/WiFi5 = factory +1/+2/+3
+LAN=$(field lan "$OUT1"); W24=$(field wifi24 "$OUT1"); W5=$(field wifi5 "$OUT1")
 WAN=$(field wan "$OUT1")
-
-# roles unique
-if [ "$LAN" != "$W24" ] && [ "$LAN" != "$W5" ] && [ "$W24" != "$W5" ]; then
-	ok "three roles produce three distinct MACs"
+if [ "$WAN" = "$FACTORY" ] && [ "$LAN" = "00:11:22:33:44:56" ] && \
+   [ "$W24" = "00:11:22:33:44:57" ] && [ "$W5" = "00:11:22:33:44:58" ]; then
+	ok "wan unchanged, lan/wifi24/wifi5 = factory +1/+2/+3"
 else
-	bad "role uniqueness" "lan=$LAN wifi24=$W24 wifi5=$W5"
+	bad "OEM numbering" "wan=$WAN lan=$LAN wifi24=$W24 wifi5=$W5"
 fi
 
-# locally administered + unicast
-check_local_unicast() {
-	local name="$1" mac="$2" o1
-	case "$mac" in
-		[0-9a-fA-F][0-9a-fA-F]:*) ;;
-		*) bad "$name locally administered" "malformed '$mac'"; return ;;
-	esac
-	o1=$(printf '%s' "$mac" | cut -d: -f1)
-	[ $(( 0x$o1 & 0x02 )) -ne 0 ] && ok "$name locally administered (first=0x$o1)" \
-		|| bad "$name locally administered" "first=0x$o1"
-	[ $(( 0x$o1 & 0x01 )) -eq 0 ] && ok "$name unicast" \
-		|| bad "$name unicast" "multicast bit set (first=0x$o1)"
-}
-check_local_unicast lan "$LAN"
-check_local_unicast wifi24 "$W24"
-check_local_unicast wifi5 "$W5"
+# HW-C reference unit: OEM firmware showed LAN dc:65:55:bb:d9:68
+OUTC=$(run_mac "DC:65:55:BB:D9:67")
+[ "$(field lan "$OUTC")" = "dc:65:55:bb:d9:68" ] && ok "HW-C LAN matches OEM (WAN+1)" \
+	|| bad "HW-C OEM LAN" "lan=$(field lan "$OUTC")"
 
-# WAN preserved exactly
-if [ "$WAN" = "$FACTORY" ]; then
-	ok "WAN keeps the factory MAC unchanged"
-else
-	bad "WAN preservation" "wan=$WAN factory=$FACTORY"
-fi
+# carry crosses octets over all 48 bits, like hwd-factory-mac
+OUTK=$(run_mac "00:11:22:ff:ff:fe")
+[ "$(field wifi24 "$OUTK")" = "00:11:23:00:00:00" ] && ok "carry propagates across octets" \
+	|| bad "carry" "wifi24=$(field wifi24 "$OUTK")"
 
-# no derived MAC collides with WAN
-if [ "$LAN" != "$WAN" ] && [ "$W24" != "$WAN" ] && [ "$W5" != "$WAN" ]; then
-	ok "no derived role collides with WAN"
-else
-	bad "WAN collision" "a role equals the WAN MAC"
-fi
-
-# no multicast anywhere
-mc=0
-for m in "$WAN" "$LAN" "$W24" "$W5"; do
-	o1=$(printf '%s' "$m" | cut -d: -f1)
-	[ $(( 0x$o1 & 0x01 )) -ne 0 ] && mc=1
-done
-[ $mc -eq 0 ] && ok "no multicast address in any role" || bad "multicast" "one role is multicast"
-
-# not simple arithmetic increments of the factory MAC
-FLAST=$(printf '%s' "$FACTORY" | cut -d: -f6)
-LLASt=$(printf '%s' "$LAN" | cut -d: -f6)
-if [ "$LLASt" != "$(printf '%02X' $(( 0x$FLAST + 1 )) )" ]; then
-	ok "derivation is not a simple +1 of the factory MAC"
-else
-	bad "arithmetic derivation" "LAN looks like factory+1"
-fi
-
-# derived addressing is independent of the factory OUI (local bit set)
-F1=$(printf '%s' "$FACTORY" | cut -d: -f1)
-L1=$(printf '%s' "$LAN" | cut -d: -f1)
-if [ $(( 0x$L1 & 0x02 )) -ne 0 ] && [ $(( 0x$F1 & 0x02 )) -eq 0 ]; then
-	ok "derived MACs are in the locally-administered space, factory is not"
-else
-	bad "admin space" "factory first=0x$F1 lan first=0x$L1"
-fi
+# different factory MACs must give different role MACs
+OUT_OTHER=$(run_mac "00:11:22:33:44:65")
+[ "$(field lan "$OUT1")" != "$(field lan "$OUT_OTHER")" ] && ok "role MACs follow the factory MAC" \
+	|| bad "factory sensitivity" "same LAN MAC for different factory"
 
 ##############################################################################
 echo
@@ -165,23 +107,6 @@ if [ "$OUTA" = "$OUTB" ] && [ -z "$(field lan "$OUTA")" ]; then
 else
 	bad "no invented identity" "$OUTA / $OUTB"
 fi
-
-##############################################################################
-echo
-echo "--- group D: explicit role-domain definition ---"
-##############################################################################
-
-if grep -q 'rt3000/lan' "$SCRIPT" && grep -q 'rt3000/wifi24' "$SCRIPT" && \
-   grep -q 'rt3000/wifi5' "$SCRIPT"; then
-	ok "role-domain strings are explicit in the implementation"
-else
-	bad "role domains" "expected rt3000/lan, rt3000/wifi24, rt3000/wifi5"
-fi
-
-# domains must be distinct constants (a typo collapsing two roles would show up
-# as identical derived MACs, already covered above)
-nd=$(grep -c 'rt3000/' "$SCRIPT")
-[ "$nd" -ge 3 ] && ok "each role has its own domain string" || bad "domain count" "found $nd"
 
 ##############################################################################
 echo
@@ -242,15 +167,15 @@ E24=$(printf '%s\n' "$MAP"  | sed -n 's/^wifi24 //p')
 E5=$(printf '%s\n' "$MAP"   | sed -n 's/^wifi5 //p')
 EWAN=$(printf '%s\n' "$MAP" | sed -n 's/^wan //p')
 
-if [ "$EWAN" = "00:11:22:33:44:55" ] && [ "$ELAN" = "9e:a7:ce:69:5e:6a" ] && \
-   [ "$E24" = "da:96:3b:3f:c7:c2" ] && [ "$E5" = "2e:1c:f2:2a:33:76" ]; then
-	ok "production path yields the four frozen role MACs from the raw environment"
+if [ "$EWAN" = "00:11:22:33:44:55" ] && [ "$ELAN" = "00:11:22:33:44:56" ] && \
+   [ "$E24" = "00:11:22:33:44:57" ] && [ "$E5" = "00:11:22:33:44:58" ]; then
+	ok "production path yields the four OEM-numbered role MACs from the raw environment"
 else
 	bad "production role MACs" "wan=$EWAN lan=$ELAN w24=$E24 w5=$E5"
 fi
 
 # E5: the shipped image must actually carry the MAC policy implementation
-if [ -f "$SCRIPT" ] && grep -q 'rt3000_derive_mac' "$SCRIPT"; then
+if [ -f "$SCRIPT" ] && grep -q 'rt3000_mac_add' "$SCRIPT"; then
 	ok "MAC policy implementation present for packaging"
 else
 	bad "policy present" "$SCRIPT"

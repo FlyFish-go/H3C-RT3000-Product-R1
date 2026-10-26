@@ -1,0 +1,11 @@
+case "$(board_name)" in
+	h3c,rt3000|h3c,rt3000-rtl8367s|h3c,rw3000-hw-a|h3c,nx30-hw-d) ;;
+	*) exit 0 ;;
+esac
+
+# Default to China Standard Time; an operator-set zone is left alone.
+[ "$(uci -q get system.@system[0].timezone)" = "UTC" ] || exit 0
+uci -q set system.@system[0].timezone='CST-8'
+uci -q set system.@system[0].zonename='Asia/Shanghai'
+uci -q commit system
+exit 0
