@@ -4,20 +4,22 @@
 
 **H3C RT3000 / RW3000 / RC3000 / NX30 的高通 QSDK 11.5 OpenWrt 固件**
 
-四种主板全部实机跑通 · NSS 硬件加速有线 NAT 约 940 Mbps · Wi-Fi 6 双频 · 与原厂系统共存
+r6 四板实机基线 · r7 WAN 链路修复 · NSS 硬件加速有线 NAT 约 940 Mbps · Wi-Fi 6 双频 · 与原厂系统共存
 
-[![Release](https://img.shields.io/badge/release-r6-e76f51)](https://github.com/FlyFish-go/H3C-RT3000-Product-R1/releases/tag/r6)
+[![Release](https://img.shields.io/badge/release-r7-e76f51)](https://github.com/FlyFish-go/H3C-RT3000-Product-R1/releases/tag/r7)
 [![QSDK](https://img.shields.io/badge/QSDK-11.5-2a9d8f)](#)
 [![OpenWrt](https://img.shields.io/badge/OpenWrt-21.02.7-00a3e0)](#)
 [![Kernel](https://img.shields.io/badge/Linux-5.4.164-555)](#)
 [![QQ群](https://img.shields.io/badge/QQ群-1131957442-12b7f5)](#交流与反馈)
 [![Stars](https://img.shields.io/github/stars/FlyFish-go/H3C-RT3000-Product-R1?style=social)](https://github.com/FlyFish-go/H3C-RT3000-Product-R1/stargazers)
 
-### [⬇️ 下载 r6 固件](https://github.com/FlyFish-go/H3C-RT3000-Product-R1/releases/tag/r6)
+### [⬇️ 下载 r7 固件](https://github.com/FlyFish-go/H3C-RT3000-Product-R1/releases/tag/r7)
 
 [安装教程](#安装) · [先装 U-Boot（BootBridge）](https://github.com/FlyFish-go/H3C-NX30-Uboot) · [性能](#性能) · [QQ 群 1131957442](#交流与反馈) · [English](README_EN.md)
 
 </div>
+
+> **r7 更新：**修复 HW-A/B/D 的 WAN PHY 链路与速率跟踪。HW-B 单独修复构建已有用户恢复反馈；新四板公开镜像不继承 r6 的硬件验收。详见 [r7 发布说明](rt3000-machine-b/release/RELEASE-NOTES-r7.md)。
 
 <table>
 <tr>
@@ -42,12 +44,12 @@ RT3000 这一系列用的是高通 IPQ50xx（IPQ5018 / IPQ5000）+ QCN6102。本
 
 ## 支持的设备
 
-| 主板 | 商品型号 | 芯片 / 交换机 | r6 镜像 | 实机测试 |
+| 主板 | 商品型号 | 芯片 / 交换机 | r7 镜像 | r6 实机基线 |
 |---|---|---|---|:---:|
-| **HW-A** | RW3000 / RC3000 | IPQ5018 · QCA8337 | `H3C-Magic-r6-HW-A-*` | ✅ RW3000 |
-| **HW-B** | RT3000 | IPQ5000 · QCA8337 | `H3C-Magic-r6-HW-B-*` | ✅ RT3000 |
-| **HW-C** | RT3000 | IPQ5018 · RTL8367S | `H3C-Magic-r6-HW-C-*` | ✅ RT3000 |
-| **HW-D** | NX30 / RX3000 | IPQ5000 · QCA8337 | `H3C-Magic-r6-HW-D-*` | ✅ NX30 |
+| **HW-A** | RW3000 / RC3000 | IPQ5018 · QCA8337 | `H3C-Magic-r7-HW-A-*` | ✅ RW3000 |
+| **HW-B** | RT3000 | IPQ5000 · QCA8337 | `H3C-Magic-r7-HW-B-*` | ✅ RT3000 |
+| **HW-C** | RT3000 | IPQ5018 · RTL8367S | `H3C-Magic-r7-HW-C-*` | ✅ RT3000 |
+| **HW-D** | NX30 / RX3000 | IPQ5000 · QCA8337 | `H3C-Magic-r7-HW-D-*` | ✅ NX30 |
 
 <p align="center"><img src="docs/images/hardware-research-v1/rt3000-abc-board-front-comparison.webp" alt="三台 RT3000 的主板对比" width="90%"><br><sub>三台都是 RT3000，拆开后是三种主板：IPQ5018 + QCA8337（HW-A）、IPQ5000 + QCA8337（HW-B）、IPQ5018 + RTL8367S（HW-C）</sub></p>
 
@@ -77,10 +79,10 @@ r6 正式镜像，每种主板一台样机。iperf3 4 流，客户端为 MT7921�
 
 | 主板 | 首次写入（救援页） | 系统内升级（LuCI） |
 |---|---|---|
-| HW-A | `H3C-Magic-r6-HW-A-nand-factory.ubi` | `H3C-Magic-r6-HW-A-sysupgrade.bin` |
-| HW-B | `H3C-Magic-r6-HW-B-nand-factory.ubi` | `H3C-Magic-r6-HW-B-sysupgrade.bin` |
-| HW-C | `H3C-Magic-r6-HW-C-nand-factory.ubi` | `H3C-Magic-r6-HW-C-sysupgrade.bin` |
-| HW-D | `H3C-Magic-r6-HW-D-nand-factory.ubi` | `H3C-Magic-r6-HW-D-sysupgrade.bin` |
+| HW-A | `H3C-Magic-r7-HW-A-nand-factory.ubi` | `H3C-Magic-r7-HW-A-sysupgrade.bin` |
+| HW-B | `H3C-Magic-r7-HW-B-nand-factory.ubi` | `H3C-Magic-r7-HW-B-sysupgrade.bin` |
+| HW-C | `H3C-Magic-r7-HW-C-nand-factory.ubi` | `H3C-Magic-r7-HW-C-sysupgrade.bin` |
+| HW-D | `H3C-Magic-r7-HW-D-nand-factory.ubi` | `H3C-Magic-r7-HW-D-sysupgrade.bin` |
 
 1. 断电后按住 Reset 再通电，进入救援页；电脑用网线接 **LAN** 口，打开 `http://192.168.10.1`。
 2. 在「闪存备份」先备份两个系统槽。
@@ -117,7 +119,7 @@ git clone https://github.com/FlyFish-go/H3C-RT3000-Product-R1.git
 cd H3C-RT3000-Product-R1
 ```
 
-先阅读[公开源码构建说明](rt3000-machine-b/docs/BUILD_PUBLIC.md)。r6 镜像用 [`configs/h3c-magic.config`](configs/h3c-magic.config) 构建：复制为 `.config`，按文件头说明追加一行机型（HW-C 另加两行），再执行 `make defconfig && make`。
+先阅读[公开源码构建说明](rt3000-machine-b/docs/BUILD_PUBLIC.md)。r7 镜像用 [`configs/h3c-magic.config`](configs/h3c-magic.config) 构建：复制为 `.config`，按文件头说明追加一行机型（HW-C 另加两行），再执行 `make defconfig && make`。固定 feeds 中三个未选用应用存在旧版 Kconfig 菜单依赖环；本次常规构建先执行 `export IGNORE_PACKAGES="asu luci-app-samba4 keepalived"`，不影响发布配置选中的软件包。
 
 | 路径 | 内容 |
 |---|---|

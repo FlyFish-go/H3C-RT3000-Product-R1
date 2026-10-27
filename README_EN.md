@@ -4,19 +4,21 @@
 
 **Qualcomm QSDK 11.5 OpenWrt firmware for the H3C RT3000 / RW3000 / RC3000 / NX30**
 
-All four board variants running on real hardware · NSS-offloaded wired NAT at ~940 Mbps · dual-band Wi-Fi 6 · coexists with the stock firmware
+r6 four-board hardware baseline · r7 WAN link fix · NSS-offloaded wired NAT at ~940 Mbps · dual-band Wi-Fi 6 · coexists with the stock firmware
 
-[![Release](https://img.shields.io/badge/release-r6-e76f51)](https://github.com/FlyFish-go/H3C-RT3000-Product-R1/releases/tag/r6)
+[![Release](https://img.shields.io/badge/release-r7-e76f51)](https://github.com/FlyFish-go/H3C-RT3000-Product-R1/releases/tag/r7)
 [![QSDK](https://img.shields.io/badge/QSDK-11.5-2a9d8f)](#)
 [![OpenWrt](https://img.shields.io/badge/OpenWrt-21.02.7-00a3e0)](#)
 [![Kernel](https://img.shields.io/badge/Linux-5.4.164-555)](#)
 [![Stars](https://img.shields.io/github/stars/FlyFish-go/H3C-RT3000-Product-R1?style=social)](https://github.com/FlyFish-go/H3C-RT3000-Product-R1/stargazers)
 
-### [⬇️ Download r6](https://github.com/FlyFish-go/H3C-RT3000-Product-R1/releases/tag/r6)
+### [⬇️ Download r7](https://github.com/FlyFish-go/H3C-RT3000-Product-R1/releases/tag/r7)
 
 [Install](#install) · [Install U-Boot first (BootBridge)](https://github.com/FlyFish-go/H3C-NX30-Uboot) · [Performance](#performance) · [Community](#community-and-feedback) · [简体中文](README.md)
 
 </div>
+
+> **r7 update:** fix WAN PHY link/speed tracking on HW-A/B/D. A separate HW-B fix build received positive user feedback; this does not establish hardware acceptance for the four new public images. See the [r7 release notes](rt3000-machine-b/release/RELEASE-NOTES-r7.md).
 
 <table>
 <tr>
@@ -41,12 +43,12 @@ These routers use Qualcomm IPQ50xx (IPQ5018 / IPQ5000) with a QCN6102 5 GHz radi
 
 ## Supported devices
 
-| Board | Retail model | SoC / switch | r6 image | Tested |
+| Board | Retail model | SoC / switch | r7 image | r6 hardware baseline |
 |---|---|---|---|:---:|
-| **HW-A** | RW3000 / RC3000 | IPQ5018 · QCA8337 | `H3C-Magic-r6-HW-A-*` | ✅ RW3000 |
-| **HW-B** | RT3000 | IPQ5000 · QCA8337 | `H3C-Magic-r6-HW-B-*` | ✅ RT3000 |
-| **HW-C** | RT3000 | IPQ5018 · RTL8367S | `H3C-Magic-r6-HW-C-*` | ✅ RT3000 |
-| **HW-D** | NX30 / RX3000 | IPQ5000 · QCA8337 | `H3C-Magic-r6-HW-D-*` | ✅ NX30 |
+| **HW-A** | RW3000 / RC3000 | IPQ5018 · QCA8337 | `H3C-Magic-r7-HW-A-*` | ✅ RW3000 |
+| **HW-B** | RT3000 | IPQ5000 · QCA8337 | `H3C-Magic-r7-HW-B-*` | ✅ RT3000 |
+| **HW-C** | RT3000 | IPQ5018 · RTL8367S | `H3C-Magic-r7-HW-C-*` | ✅ RT3000 |
+| **HW-D** | NX30 / RX3000 | IPQ5000 · QCA8337 | `H3C-Magic-r7-HW-D-*` | ✅ NX30 |
 
 <p align="center"><img src="docs/images/hardware-research-v1/rt3000-abc-board-front-comparison.webp" alt="Board comparison of three RT3000 units" width="90%"><br><sub>Three RT3000 units, three different boards: IPQ5018 + QCA8337 (HW-A), IPQ5000 + QCA8337 (HW-B), IPQ5018 + RTL8367S (HW-C)</sub></p>
 
@@ -76,10 +78,10 @@ Wireless numbers are limited by the test client (2×2, HE80), not the router. An
 
 | Board | First install (rescue page) | Upgrade (LuCI) |
 |---|---|---|
-| HW-A | `H3C-Magic-r6-HW-A-nand-factory.ubi` | `H3C-Magic-r6-HW-A-sysupgrade.bin` |
-| HW-B | `H3C-Magic-r6-HW-B-nand-factory.ubi` | `H3C-Magic-r6-HW-B-sysupgrade.bin` |
-| HW-C | `H3C-Magic-r6-HW-C-nand-factory.ubi` | `H3C-Magic-r6-HW-C-sysupgrade.bin` |
-| HW-D | `H3C-Magic-r6-HW-D-nand-factory.ubi` | `H3C-Magic-r6-HW-D-sysupgrade.bin` |
+| HW-A | `H3C-Magic-r7-HW-A-nand-factory.ubi` | `H3C-Magic-r7-HW-A-sysupgrade.bin` |
+| HW-B | `H3C-Magic-r7-HW-B-nand-factory.ubi` | `H3C-Magic-r7-HW-B-sysupgrade.bin` |
+| HW-C | `H3C-Magic-r7-HW-C-nand-factory.ubi` | `H3C-Magic-r7-HW-C-sysupgrade.bin` |
+| HW-D | `H3C-Magic-r7-HW-D-nand-factory.ubi` | `H3C-Magic-r7-HW-D-sysupgrade.bin` |
 
 1. Power off, hold Reset, power on to enter the rescue page; connect to a **LAN** port and open `http://192.168.10.1`.
 2. Back up both system slots under "Flash Backup".
@@ -116,7 +118,7 @@ git clone https://github.com/FlyFish-go/H3C-RT3000-Product-R1.git
 cd H3C-RT3000-Product-R1
 ```
 
-Read the [public build guide](rt3000-machine-b/docs/BUILD_PUBLIC.md) first. r6 images are built from [`configs/h3c-magic.config`](configs/h3c-magic.config): copy it to `.config`, append the device line described in its header (two more lines for HW-C), then run `make defconfig && make`.
+Read the [public build guide](rt3000-machine-b/docs/BUILD_PUBLIC.md) first. r7 images are built from [`configs/h3c-magic.config`](configs/h3c-magic.config): copy it to `.config`, append the device line described in its header (two more lines for HW-C), then run `make defconfig && make`. Before building, export `IGNORE_PACKAGES="asu luci-app-samba4 keepalived"` to omit legacy Kconfig menu cycles in those three unselected feed applications; the release package selection is unchanged.
 
 | Path | Contents |
 |---|---|
