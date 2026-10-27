@@ -12,6 +12,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      - name: WAN PHY link polling contract
+        run: python3 tests/test_wan_link_poll.py
       - name: MAC derivation and configuration fixtures
         run: |
           bash rt3000-machine-b/tests/mac/run_mac_tests.sh

@@ -425,6 +425,7 @@
 		local-mac-address = [000000000000];
 		mdio-bus = <&mdio0>;
 		qcom,phy-mdio-addr = <7>;
+		qcom,link-poll = <1>;
 		phy-mode = "sgmii";
 		qcom,rx-page-mode = <0>;
 	};
