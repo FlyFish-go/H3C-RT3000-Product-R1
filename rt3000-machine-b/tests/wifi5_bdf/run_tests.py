@@ -5,11 +5,14 @@ import hashlib
 from functools import reduce
 from pathlib import Path
 import struct
+import subprocess
 import sys
+import tempfile
 
 
 ROOT = Path(__file__).resolve().parents[3]
 H3C = ROOT / "package/firmware/ipq-wifi/board-h3c_rt3000.qcn6122"
+GENERATOR = ROOT / "rt3000-machine-b/tools/build_qcn6122_hybrid_bdf.py"
 PATCH = ROOT / "rt3000-machine-b/bdf/qcn6122-oem-power-table.hex"
 DONOR = ROOT / "rt3000-machine-b/bdf/board-elecom_wrc-x3000gs2.qcn6122"
 HEADER_SIZE = 84
@@ -18,6 +21,7 @@ PATCH_END = 0x2758
 BDF_CHECKSUM_OFFSET = 0x000A
 EXPECTED_BDF_CHECKSUM = 0x38F0
 EXPECTED_H3C_SHA256 = "085a6cca54714ed8387341869bbf1f75b257198e87bd590ddf58f7d155c772fb"
+EXPECTED_SOURCE_H3C_SHA256 = "e5bd210bfb572ceae15eb132fc5f9950578f171268e5230bed026dbb539c73e3"
 EXPECTED_PATCH_SHA256 = "894f180fceaa856707758c24142e7d3ec7c1ad485a6ca1b6803302c57324f713"
 EXPECTED_DONOR_SHA256 = "5ca4e0151b0801f3dd23a87a41e3679122359e68e5144bd668200ab0ca245811"
 EXPECTED_DONOR_BODY_SHA256 = "0382db72a67618f725f4b60b75de027d611f50fcccbb2fc85abb43bb2b43fe80"
@@ -49,13 +53,32 @@ def extract_bdf_body(container: bytes) -> bytes:
 
 
 def main() -> None:
-    h3c = H3C.read_bytes()
+    source_h3c = H3C.read_bytes()
+    check(
+        digest(source_h3c) == EXPECTED_SOURCE_H3C_SHA256,
+        "published H3C source BDF hash",
+    )
     donor = DONOR.read_bytes()
     patch_hex = "".join(
         line.split("#", 1)[0].strip()
         for line in PATCH.read_text(encoding="ascii").splitlines()
     )
     patch = bytes.fromhex(patch_hex)
+
+    with tempfile.TemporaryDirectory(prefix="rt3000-wifi5-bdf-") as temp_dir:
+        candidate_path = Path(temp_dir) / H3C.name
+        subprocess.run(
+            [
+                sys.executable,
+                str(GENERATOR),
+                str(H3C),
+                str(candidate_path),
+                str(PATCH),
+                str(DONOR),
+            ],
+            check=True,
+        )
+        h3c = candidate_path.read_bytes()
 
     check(len(h3c) == 131156, "RT3000 container size unchanged")
     check(h3c.startswith(b"QCA-ATH11K-BOARD\0"), "ath11k container magic")
