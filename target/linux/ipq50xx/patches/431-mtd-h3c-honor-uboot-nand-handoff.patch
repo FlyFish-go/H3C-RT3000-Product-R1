@@ -1,0 +1,195 @@
+From: FlyFish-go <2541290956@qq.com>
+Subject: [PATCH] mtd: h3c: use the NAND spare/ECC that U-Boot identified
+
+The H3C U-Boot identifies the NAND against its reviewed catalog and passes
+the physical spare size and the ECC this unit was written with on the
+command line (nandspare=64|128 nandeccbits=4|8), as the OEM kernel
+expects. QSDK ignored them and took both from nand_ids.c, which cannot
+tell the cases apart: the same GD5F1GQ5REYIG (c8:41) ships written with
+ECC4 or ECC8, DS35M1GA (e5:21) and GD5F4GQ6 (c8:45) have spare128 but
+are listed as 64, and six parts were missing. Such units could not mount
+rootfs on any board.
+
+- qcom_nandc: when a valid pair is given (64/4, 128/4, 128/8), use it for
+  the OOB size and ECC strength.
+- nand_ids: add TC58CYG0S3HRAIG (98:d2), TC58CYG1S3HRAIJ (98:db),
+  FM25LS01 (a1:a5), GD5F1GM7REYIG (c8:81), DS35Q2GA (e5:72) and DS35M4GM
+  (e5:a4) with the catalog's geometry.
+- HW-D gate: with the handoff, require the geometry U-Boot verified
+  instead of the fixed ID list and OOB64/ECC4; without it, behave as
+  before. The HW-C and HW-D physical-map checks accept the same layouts
+  and NANDs larger than 128 MiB (only the first 128 MiB is mapped).
+
+---
+--- a/drivers/mtd/nand/raw/nand_ids.c
++++ b/drivers/mtd/nand/raw/nand_ids.c
+@@ -116,6 +116,29 @@
+ 	{"GD5F2GQ5REYIG SPI NAND 2G",
+ 		{ .id = {0xc8, 0x42} },
+ 		SZ_2K, SZ_256, SZ_128K, 0, 2, 128, NAND_ECC_INFO(8, SZ_512), 0},
++	/*
++	 * Parts used in H3C NX30-family routers, geometry from the H3C U-Boot
++	 * NAND catalog. U-Boot passes the spare size and ECC each unit was
++	 * written with (nandspare=/nandeccbits=), which overrides these.
++	 */
++	{"TC58CYG0S3HRAIG SPI NAND 1G 1.8V",
++		{ .id = {0x98, 0xd2} },
++		SZ_2K, SZ_128, SZ_128K, 0, 2, 128, NAND_ECC_INFO(8, SZ_512), 0},
++	{"TC58CYG1S3HRAIJ SPI NAND 1.8V",
++		{ .id = {0x98, 0xdb} },
++		SZ_2K, SZ_128, SZ_128K, 0, 2, 64, NAND_ECC_INFO(4, SZ_512), 0},
++	{"FM25LS01 SPI NAND 1G 1.8V",
++		{ .id = {0xa1, 0xa5} },
++		SZ_2K, SZ_128, SZ_128K, 0, 2, 128, NAND_ECC_INFO(8, SZ_512), 0},
++	{"GD5F1GM7REYIG SPI NAND 1G 1.8V",
++		{ .id = {0xc8, 0x81} },
++		SZ_2K, SZ_128, SZ_128K, 0, 2, 128, NAND_ECC_INFO(8, SZ_512), 0},
++	{"DS35Q2GA SPI NAND 1.8V",
++		{ .id = {0xe5, 0x72} },
++		SZ_2K, SZ_128, SZ_128K, 0, 2, 64, NAND_ECC_INFO(4, SZ_512), 0},
++	{"DS35M4GM SPI NAND 1.8V",
++		{ .id = {0xe5, 0xa4} },
++		SZ_2K, SZ_128, SZ_128K, 0, 2, 128, NAND_ECC_INFO(8, SZ_512), 0},
+ 
+ 	LEGACY_ID_NAND("NAND 4MiB 5V 8-bit",   0x6B, 4, SZ_8K, SP_OPTIONS),
+ 	LEGACY_ID_NAND("NAND 4MiB 3,3V 8-bit", 0xE3, 4, SZ_8K, SP_OPTIONS),
+--- a/drivers/mtd/nand/raw/qcom_nandc.c
++++ b/drivers/mtd/nand/raw/qcom_nandc.c
+@@ -2831,6 +2831,37 @@
+ NAND_ECC_CAPS_SINGLE(qcom_nandc_ecc_caps, qcom_nandc_calc_ecc_bytes,
+ 		     NANDC_STEP_SIZE, 4, 8);
+ 
++/*
++ * H3C U-Boot passes the physical spare size and the ECC strength it
++ * identified and verified for this unit: nandspare=64|128 and
++ * nandeccbits=4|8. The NAND ID alone cannot tell them apart (the same
++ * GD5F1GQ5REYIG ships written with ECC4 or ECC8), so use them when given.
++ */
++static unsigned int h3c_nand_spare, h3c_nand_ecc;
++
++static int __init h3c_nandspare_setup(char *s)
++{
++	if (kstrtouint(s, 10, &h3c_nand_spare))
++		h3c_nand_spare = 0;
++	return 1;
++}
++__setup("nandspare=", h3c_nandspare_setup);
++
++static int __init h3c_nandeccbits_setup(char *s)
++{
++	if (kstrtouint(s, 10, &h3c_nand_ecc))
++		h3c_nand_ecc = 0;
++	return 1;
++}
++__setup("nandeccbits=", h3c_nandeccbits_setup);
++
++static bool h3c_nand_handoff(void)
++{
++	return (h3c_nand_spare == 64 && h3c_nand_ecc == 4) ||
++	       (h3c_nand_spare == 128 &&
++		(h3c_nand_ecc == 4 || h3c_nand_ecc == 8));
++}
++
+ static int qcom_nand_attach_chip(struct nand_chip *chip)
+ {
+ 	struct mtd_info *mtd = nand_to_mtd(chip);
+@@ -2854,6 +2885,18 @@
+ 	 */
+ 	if (chip->base.eccreq.strength >= 8)
+ 		ecc->strength = 8;
++	if (h3c_nand_handoff() && mtd->writesize == 2048) {
++		if (mtd->oobsize != h3c_nand_spare)
++			dev_info(nandc->dev,
++				 "H3C NAND handoff: spare %u (table %u)\n",
++				 h3c_nand_spare, mtd->oobsize);
++		mtd->oobsize = h3c_nand_spare;
++		chip->base.memorg.oobsize = h3c_nand_spare;
++		ecc->strength = h3c_nand_ecc;
++		chip->base.eccreq.strength = h3c_nand_ecc;
++		dev_info(nandc->dev, "H3C NAND handoff: spare %u, ECC %u\n",
++			 h3c_nand_spare, h3c_nand_ecc);
++	}
+ 	/*
+ 	 * Each CW has 4 available OOB bytes which will be protected with ECC
+ 	 * so remaining bytes can be used for ECC.
+@@ -3779,11 +3822,20 @@
+ 	}
+ 
+ 	if (hwd_native_safe) {
++		/*
++		 * With the U-Boot handoff the geometry must match what U-Boot
++		 * verified; without it only the parts listed above, as OOB64
++		 * and ECC4.
++		 */
++		bool handoff = h3c_nand_handoff();
++
+ 		if (!nandc->hwd_nand_id_valid ||
+-		    !hwd_nand_jedec_valid(&nandc->hwd_nand_id) ||
+-		    mtd->type != MTD_NANDFLASH || mtd->size != 0x08000000ULL ||
++		    mtd->type != MTD_NANDFLASH || mtd->size < 0x08000000ULL ||
+ 		    mtd->writesize != 2048 || mtd->erasesize != 131072 ||
+-		    mtd->oobsize != 64 || mtd->ecc_strength != 4) {
++		    (handoff ? (mtd->oobsize != h3c_nand_spare ||
++				mtd->ecc_strength != h3c_nand_ecc) :
++		     (!hwd_nand_jedec_valid(&nandc->hwd_nand_id) ||
++		      mtd->oobsize != 64 || mtd->ecc_strength != 4))) {
+ 			dev_err(dev,
+ 				"HW-D NAND rejected: raw-id=%02x:%02x:%02x:%02x/%u "
+ 				"table-id=%02x:%02x/%u type=%u size=%llu page=%u "
+@@ -3800,10 +3852,13 @@
+ 			nand_cleanup(chip);
+ 			return -ENODEV;
+ 		}
+-		dev_info(dev, "HW-D NAND JEDEC %02X:%02X:%02X, 128MiB, page2048, erase131072, OOB64, ECC4; x1/no-write-probe\n",
++		dev_info(dev, "HW-D NAND JEDEC %02X:%02X:%02X, %lluMiB, page2048, erase131072, OOB%u, ECC%u (%s); x1/no-write-probe\n",
+ 			 nandc->hwd_nand_id.data[0],
+ 			 nandc->hwd_nand_id.data[1],
+-			 nandc->hwd_nand_id.data[2]);
++			 nandc->hwd_nand_id.data[2],
++			 (unsigned long long)(mtd->size >> 20),
++			 mtd->oobsize, mtd->ecc_strength,
++			 handoff ? "U-Boot handoff" : "ID list");
+ 	}
+ 
+ 	if (c_mtd_discovery || c_native_safe || hwd_native_safe)
+--- a/drivers/mtd/mtdpart.c
++++ b/drivers/mtd/mtdpart.c
+@@ -62,6 +62,14 @@
+  * scoped and validates the complete child map before registering any child.
+  */
+ #define RT3000_C_NAND_SIZE 0x08000000ULL
++
++/* Spare/ECC pairs the H3C U-Boot writes: OOB64+ECC4, OOB128+ECC4/8. */
++static bool h3c_nand_layout_ok(const struct mtd_info *master)
++{
++	return (master->oobsize == 64 && master->ecc_strength == 4) ||
++	       (master->oobsize == 128 &&
++		(master->ecc_strength == 4 || master->ecc_strength == 8));
++}
+ #define RT3000_C_SLOT0_OFF 0x00900000ULL
+ #define RT3000_C_SLOT1_OFF 0x03100000ULL
+ #define RT3000_C_SLOT_SIZE 0x02800000ULL
+@@ -124,9 +132,9 @@
+ 	int i;
+ 	unsigned int j;
+ 
+-	if (mtd_is_partition(master) || master->size != RT3000_C_NAND_SIZE ||
++	if (mtd_is_partition(master) || master->size < RT3000_C_NAND_SIZE ||
+ 	    master->writesize != 2048 || master->erasesize != 131072 ||
+-	    master->oobsize != 64 || master->ecc_strength != 4 ||
++	    !h3c_nand_layout_ok(master) ||
+ 	    !rt3000_c_nand_safe_node(master) ||
+ 	    count != (int)ARRAY_SIZE(expected) - single || !parts)
+ 		return false;
+@@ -251,9 +259,9 @@
+ 	for (i = 0; parts && i < count; i++)
+ 		single += (u64)parts[i].offset == HWD_A_OFF &&
+ 			(u64)parts[i].size == HWD_SINGLE_SIZE;
+-	if (mtd_is_partition(master) || master->size != HWD_NAND_SIZE ||
++	if (mtd_is_partition(master) || master->size < HWD_NAND_SIZE ||
+ 	    master->writesize != 2048 || master->erasesize != 131072 ||
+-	    master->oobsize != 64 || master->ecc_strength != 4 ||
++	    !h3c_nand_layout_ok(master) ||
+ 	    !hwd_nand_safe_node(master) || single > 1 ||
+ 	    count != (int)ARRAY_SIZE(expected) - single || !parts)
+ 		return false;
