@@ -4,8 +4,9 @@
  * Uses QSDK 11.5 IPQ5018/ath11k bindings, with only same-device OEM facts
  * ported after fresh FDT and switch inspection. The WPS key is modelled
  * from the same-device OEM FDT (tlmm gpio38, KEY_WPS_BUTTON, active-low,
- * 60 ms debounce). No LED pin has OEM evidence, so LEDs stay unmodelled
- * rather than guessed.
+ * 60 ms debounce). The status LED is the same as on HW-B: red on gpio23,
+ * green on gpio24, both active-high (checked by eye on an NX30, 2026-11-02;
+ * the OEM FDT has no LED nodes).
  * The installed D U-Boot accepts the OEM-shaped config@mp02.1 FIT route;
  * therefore rootfs extent/label nodes are intentionally absent. Linux owns
  * the explicit physical A/B map through the early storage-bootargs hook.
@@ -30,6 +31,11 @@
 
 		ethernet0 = &mac0;
 		ethernet1 = &mac1;
+
+		led-boot = &led_system_green;
+		led-running = &led_system_green;
+		led-failsafe = &led_system_red;
+		led-upgrade = &led_system_red;
 	};
 
 	/* WPS key, straight from the same-device OEM FDT: tlmm gpio38,
@@ -47,6 +53,22 @@
 			linux,input-type = <EV_KEY>;
 			gpios = <&tlmm 38 GPIO_ACTIVE_LOW>;
 			debounce-interval = <60>;
+		};
+	};
+
+	leds {
+		compatible = "gpio-leds";
+
+		led_system_green: system_green {
+			label = "green:system";
+			gpios = <&tlmm 24 GPIO_ACTIVE_HIGH>;
+			default-state = "on";
+		};
+
+		led_system_red: system_red {
+			label = "red:system";
+			gpios = <&tlmm 23 GPIO_ACTIVE_HIGH>;
+			default-state = "off";
 		};
 	};
 
