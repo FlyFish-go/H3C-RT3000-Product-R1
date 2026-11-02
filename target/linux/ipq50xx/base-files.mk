@@ -42,16 +42,7 @@ endef
 endif
 endif
 
-# HW-D: remove the Machine-B ENV service, B/C Wi-Fi hooks and the SSDK pin.
-# The target build is isolated to the D profile; RAM FITs share this safe root.
-ifneq ($(filter y,$(CONFIG_TARGET_DEVICE_ipq50xx_arm_DEVICE_h3c_nx30_hw_d) $(CONFIG_TARGET_DEVICE_ipq50xx_arm_DEVICE_h3c_nx30_hw_d_ram) $(CONFIG_TARGET_DEVICE_ipq50xx_arm_DEVICE_h3c_nx30_hw_d_installer_ram)),)
-define Package/base-files/install-target
-	rm -f \
-		$(1)/etc/init.d/uboot_env \
-		$(1)/etc/rc.d/S99uboot_env \
-		$(1)/etc/uci-defaults/99-rt3000-wifi \
-		$(1)/etc/hotplug.d/ieee80211/20-rt3000-c-wifi \
-		$(1)/lib/rt3000/pin/qca-ssdk.ko.b64
-	rm -rf $(1)/lib/rt3000/pin
-endef
-endif
+# HW-D used to strip the B/C Wi-Fi hooks here. Removed: base-files is not
+# rebuilt when the selected device changes, so a D build leaked the stripped
+# package into the next A/B/C build (r8 shipped A/B/C without
+# 99-rt3000-wifi). The hooks check board_name and do nothing on D.
