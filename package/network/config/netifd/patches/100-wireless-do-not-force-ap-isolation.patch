@@ -1,0 +1,14 @@
+--- a/scripts/netifd-wireless.sh
++++ b/scripts/netifd-wireless.sh
+@@ -297,7 +297,10 @@
+ 	json_get_vars isolate proxy_arp
+ 
+ 	[ ${isolate:-0} -gt 0 -o -z "$network_bridge" ] && return
+-	[ ${multicast_to_unicast:-1} -gt 0 -o ${proxy_arp:-0} -gt 0 ] && json_add_boolean isolate 1
++	# Do not force ap_isolate for multicast_to_unicast/proxy_arp: that relies
++	# on bridge hairpin to pass client-to-client traffic, which the NSS Wi-Fi
++	# offload bypasses, so clients of the same AP could not reach each other.
++	# An explicit "isolate" option is still honoured above.
+ }
+ 
+ for_each_interface() {
