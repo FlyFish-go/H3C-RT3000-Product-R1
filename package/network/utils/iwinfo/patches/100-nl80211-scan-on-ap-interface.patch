@@ -1,0 +1,35 @@
+--- a/iwinfo_nl80211.c
++++ b/iwinfo_nl80211.c
+@@ -2559,8 +2559,22 @@
+ static int nl80211_get_scanlist_nl(const char *ifname, char *buf, int *len)
+ {
+ 	struct nl80211_scanlist sl = { .e = (struct iwinfo_scanlist_entry *)buf };
++	struct nl80211_msg_conveyor *req;
++	int mode = -1;
+ 
+-	if (nl80211_request(ifname, NL80211_CMD_TRIGGER_SCAN, 0, NULL, NULL))
++	/* Query the mode first: nl80211_msg() hands out a shared conveyor. */
++	nl80211_get_mode(ifname, &mode);
++
++	req = nl80211_msg(ifname, NL80211_CMD_TRIGGER_SCAN, 0);
++	if (!req)
++		goto out;
++
++	/* A beaconing AP interface may only scan with NL80211_SCAN_FLAG_AP,
++	 * otherwise this mac80211 rejects the scan with -EOPNOTSUPP. */
++	if (mode == IWINFO_OPMODE_MASTER)
++		NLA_PUT_U32(req->msg, NL80211_ATTR_SCAN_FLAGS, NL80211_SCAN_FLAG_AP);
++
++	if (nl80211_send(req, NULL, NULL))
+ 		goto out;
+ 
+ 	if (nl80211_wait("nl80211", "scan",
+@@ -2574,6 +2588,8 @@
+ 	*len = sl.len * sizeof(struct iwinfo_scanlist_entry);
+ 	return 0;
+ 
++nla_put_failure:
++	nl80211_free(req);
+ out:
+ 	*len = 0;
+ 	return -1;
