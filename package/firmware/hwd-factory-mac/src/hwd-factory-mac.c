@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /* HW-D: read factory ethaddr from CRC-checked ENV without modifying it.
  * Fresh OEM observation establishes WAN=base, LAN=base+1, radios=base+2/+3.
+ * OOB size is 64 with the OEM ECC4 layout and 128 once U-Boot hands ECC8 /
+ * spare 128 to the kernel (r8+); only the data area is read, so both are fine.
  */
 #define _FILE_OFFSET_BITS 64
 #include <errno.h>
@@ -105,7 +107,8 @@ int main(int argc, char **argv)
     if (fstat(fd, &st) || !S_ISCHR(st.st_mode) || major(st.st_rdev) != 90 ||
         minor(st.st_rdev) != 20 || ioctl(fd, MEMGETINFO, &info) ||
         info.type != MTD_NANDFLASH || info.size != 524288 ||
-        info.writesize != 2048 || info.erasesize != 131072 || info.oobsize != 64) {
+        info.writesize != 2048 || info.erasesize != 131072 ||
+        (info.oobsize != 64 && info.oobsize != 128)) {
         close(fd); goto reject;
     }
     for (off = 0; off < ENV_SIZE; off += 131072) {

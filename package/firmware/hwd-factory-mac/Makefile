@@ -1,6 +1,6 @@
 include $(TOPDIR)/rules.mk
 PKG_NAME:=hwd-factory-mac
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 PKG_LICENSE:=GPL-2.0-only
 PKG_FILE_DEPENDS:=./src/ ./files/
 PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_NAME)
