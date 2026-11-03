@@ -107,6 +107,9 @@ UCI
 echo "logger: $*" >> "$MOCK_LOG"
 LOG
 	chmod +x "$MOCK/bin/logger"
+	# busybox lock(1): the policy serialises against the C hotplug hook.
+	printf '#!/bin/sh\nexit 0\n' > "$MOCK/bin/lock"
+	chmod +x "$MOCK/bin/lock"
 	printf '#!/bin/bash\necho "h3c,rt3000"\n' > "$MOCK/bin/board_name"
 	chmod +x "$MOCK/bin/board_name"
 
@@ -162,6 +165,10 @@ radio0.band=2g
 radio0.disabled=1
 default_radio0=wifi-iface
 default_radio0.device=radio0
+default_radio0.network=lan
+default_radio0.mode=ap
+default_radio0.ssid=OpenWrt
+default_radio0.encryption=none
 radio1=wifi-device
 radio1.type=mac80211
 radio1.path=platform/soc/c000000.wifi+1
@@ -169,6 +176,10 @@ radio1.band=5g
 radio1.disabled=1
 default_radio1=wifi-iface
 default_radio1.device=radio1
+default_radio1.network=lan
+default_radio1.mode=ap
+default_radio1.ssid=OpenWrt
+default_radio1.encryption=none
 radio2=wifi-device
 radio2.type=mac80211
 radio2.path=platform/soc/soc:wifi1@c000000
@@ -176,6 +187,8 @@ radio2.band=5g
 radio2.disabled=1
 default_radio2=wifi-iface
 default_radio2.device=radio2
+default_radio2.network=lan
+default_radio2.mode=ap
 default_radio2.ssid=OpenWrt
 default_radio2.encryption=none
 EOF
@@ -322,6 +335,10 @@ radio0.band=5g
 radio0.disabled=1
 default_radio0=wifi-iface
 default_radio0.device=radio0
+default_radio0.network=lan
+default_radio0.mode=ap
+default_radio0.ssid=OpenWrt
+default_radio0.encryption=none
 radio1=wifi-device
 radio1.type=mac80211
 radio1.path=platform/soc/c000000.wifi
@@ -329,6 +346,10 @@ radio1.band=2g
 radio1.disabled=1
 default_radio1=wifi-iface
 default_radio1.device=radio1
+default_radio1.network=lan
+default_radio1.mode=ap
+default_radio1.ssid=OpenWrt
+default_radio1.encryption=none
 EOF
 run_script
 chk "T6.1 5G radio (now radio0) got the WiFi5 MAC" "$(state_get radio0.macaddr)" "2e:1c:f2:2a:33:76"

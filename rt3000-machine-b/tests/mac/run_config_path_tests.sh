@@ -101,7 +101,11 @@ if [ -f "$WIFIDEF" ]; then
 else
 	bad "wifi uci-defaults" "missing $WIFIDEF"
 fi
-if [ -f "$WIFIDEF" ] && grep -Eq 'wireless\.\$(radio|section)\.macaddr|wireless\.radio' "$WIFIDEF"; then
+# Since r9 the per-radio writes live in the shared helper that the step sources.
+WIFIHELPER="$TOP/target/linux/ipq50xx/base-files/lib/rt3000/wifi-c.sh"
+MACKEY='wireless\.\$(radio|section)\.macaddr|wireless\.radio'
+if [ -f "$WIFIDEF" ] && { grep -Eq "$MACKEY" "$WIFIDEF" ||
+	{ grep -q '^\. /lib/rt3000/wifi-c\.sh$' "$WIFIDEF" && grep -Eq "$MACKEY" "$WIFIHELPER"; }; }; then
 	ok "Wi-Fi step writes wireless.radioN.macaddr (the key mac80211 reads)"
 else
 	bad "wifi macaddr key" "step does not set wireless.radioN.macaddr"
