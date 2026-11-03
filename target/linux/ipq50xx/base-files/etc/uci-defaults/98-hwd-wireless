@@ -52,21 +52,30 @@ while :; do
 	hwd_wait=$((hwd_wait + 1))
 	sleep 1
 done
-uci -q set "wireless.$hwd_section_2g.macaddr=$hwd_mac_2g" || exit 1
-uci -q set "wireless.$hwd_section_5g.macaddr=$hwd_mac_5g" || exit 1
-# Same first-boot Wi-Fi as the other boards: both bands up, WPA2, shared defaults.
-for hwd_s in "$hwd_section_2g:$RT3000_WIFI_SSID_2G" "$hwd_section_5g:$RT3000_WIFI_SSID_5G"; do
-	uci -q set "wireless.${hwd_s%%:*}.ssid=${hwd_s#*:}" &&
-	uci -q set "wireless.${hwd_s%%:*}.encryption=psk2" &&
-	uci -q set "wireless.${hwd_s%%:*}.key=$RT3000_WIFI_DEFAULT_KEY" &&
-	uci -q set "wireless.${hwd_s%%:*}.disabled=0" || exit 1
-done
-uci -q set "wireless.$hwd_radio_2g.htmode=HE20" || exit 1
-uci -q set "wireless.$hwd_radio_5g.htmode=HE80" || exit 1
-uci -q set "wireless.$hwd_radio_2g.disabled=0" || exit 1
-uci -q set "wireless.$hwd_radio_5g.disabled=0" || exit 1
-# ath11k wiphys are self-managed; without a country the firmware default
-# (US) stays in force. NX30 is a CN-market unit.
-uci -q set "wireless.$hwd_radio_2g.country=CN" || exit 1
-uci -q set "wireless.$hwd_radio_5g.country=CN" || exit 1
+# uci-defaults also runs after a keep-settings sysupgrade: convert only the
+# untouched mac80211 template (radio disabled, SSID OpenWrt, no encryption),
+# otherwise just give an AP without an address its factory MAC.
+hwd_apply() {
+	local radio="$1" iface="$2" ssid="$3" mac="$4" htmode="$5"
+
+	if [ "$(uci -q get "wireless.$radio.disabled")" = "1" ] &&
+	   [ "$(uci -q get "wireless.$iface.ssid")" = "OpenWrt" ] &&
+	   [ "$(uci -q get "wireless.$iface.encryption")" = "none" ]; then
+		uci -q set "wireless.$iface.macaddr=$mac" &&
+		uci -q set "wireless.$iface.ssid=$ssid" &&
+		uci -q set "wireless.$iface.encryption=psk2" &&
+		uci -q set "wireless.$iface.key=$RT3000_WIFI_DEFAULT_KEY" &&
+		uci -q set "wireless.$iface.disabled=0" &&
+		uci -q set "wireless.$radio.htmode=$htmode" &&
+		uci -q set "wireless.$radio.disabled=0" &&
+		# ath11k wiphys are self-managed; without a country the firmware
+		# default (US) stays in force. NX30 is a CN-market unit.
+		uci -q set "wireless.$radio.country=CN" || return 1
+	elif [ -z "$(uci -q get "wireless.$iface.macaddr")" ]; then
+		uci -q set "wireless.$iface.macaddr=$mac" || return 1
+	fi
+	return 0
+}
+hwd_apply "$hwd_radio_2g" "$hwd_section_2g" "$RT3000_WIFI_SSID_2G" "$hwd_mac_2g" HE20 || exit 1
+hwd_apply "$hwd_radio_5g" "$hwd_section_5g" "$RT3000_WIFI_SSID_5G" "$hwd_mac_5g" HE80 || exit 1
 uci -q commit wireless

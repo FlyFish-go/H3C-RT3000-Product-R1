@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the real Machine-C firstboot and PHY-add policy in a temporary sandbox.
+"""Run the real HW-A/B/C firstboot and HW-C PHY-add policy in a temporary sandbox.
 
 Only absolute runtime file paths are redirected into a temporary tree.  The
 policy scripts themselves are otherwise copied verbatim.  UCI, board_name,
@@ -23,6 +23,8 @@ WIFI_SH = BASE / "lib/rt3000/wifi-c.sh"
 UCI_DEFAULTS = BASE / "etc/uci-defaults/99-rt3000-wifi"
 HOTPLUG = BASE / "etc/hotplug.d/ieee80211/20-rt3000-c-wifi"
 WAN_MAC = "00:11:22:33:44:55"
+AB_ETHADDR = "34:ca:81:ba:e2:5e"
+AB_BOARD = "h3c,rw3000-hw-a"
 
 UCI_STUB = r'''#!/usr/bin/env python3
 import json, os, sys
@@ -108,6 +110,7 @@ class FirstbootPolicyChecks(unittest.TestCase):
             "board_name": '#!/bin/sh\nprintf "%s\\n" "$TEST_BOARD"\n',
             "logger": "#!/bin/sh\nexit 0\n",
             "lock": '#!/bin/sh\n[ "${LOCK_FAIL:-0}" != 1 ]\n',
+            "fw_printenv": '#!/bin/sh\nprintf "%s\\n" "$TEST_ETHADDR"\n',
         }.items():
             path = self.bin / name
             path.write_text(body)
@@ -184,6 +187,7 @@ class FirstbootPolicyChecks(unittest.TestCase):
             "ACTION": action,
             "LOCK_FAIL": "1" if lock_fail else "0",
             "FAIL_COMMIT": fail_commit,
+            "TEST_ETHADDR": AB_ETHADDR,
         })
         return subprocess.run(["/bin/sh", str(script)], env=env,
                               capture_output=True, text=True)
@@ -213,9 +217,9 @@ class FirstbootPolicyChecks(unittest.TestCase):
         result = self.policy()
         self.assertEqual(result.returncode, 0, result.stderr)
         out = self.state()["wireless"]["sections"]
-        self.assertEqual(out["default_radio0"]["options"]["ssid"], "RT3000")
+        self.assertEqual(out["default_radio0"]["options"]["ssid"], "OpenWrt")
         self.assertEqual(out["radio0"]["options"]["band"], "2g")
-        self.assertEqual(out["default_radio1"]["options"]["ssid"], "RT3000-5G")
+        self.assertEqual(out["default_radio1"]["options"]["ssid"], "OpenWrt-5G")
         self.assertEqual(out["radio1"]["options"]["band"], "5g")
 
     def test_2g_first_then_late_5g_hotplug(self):
@@ -226,7 +230,7 @@ class FirstbootPolicyChecks(unittest.TestCase):
         result = self.policy()
         self.assertEqual(result.returncode, 0, result.stderr)
         after_first = self.state()["wireless"]["sections"]
-        self.assertEqual(after_first["default_radio0"]["options"]["ssid"], "RT3000")
+        self.assertEqual(after_first["default_radio0"]["options"]["ssid"], "OpenWrt")
         self.assertNotIn("radio1", after_first)
 
         self.add_phy("phy1", "soc:wifi1@c000000")
@@ -241,7 +245,7 @@ class FirstbootPolicyChecks(unittest.TestCase):
         result = self.run_script(self.hotplug_copy)
         self.assertEqual(result.returncode, 0, result.stderr)
         out = self.state()["wireless"]["sections"]
-        self.assertEqual(out["default_radio1"]["options"]["ssid"], "RT3000-5G")
+        self.assertEqual(out["default_radio1"]["options"]["ssid"], "OpenWrt-5G")
         self.assertEqual(out["radio1"]["options"]["band"], "5g")
 
     def test_unknown_board_and_no_phy_do_not_create_sections(self):
@@ -259,7 +263,7 @@ class FirstbootPolicyChecks(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.state()["wireless"]["sections"], before["wireless"]["sections"])
 
-    def test_stock_templates_become_disabled_psk2_with_key(self):
+    def test_stock_templates_become_enabled_psk2_with_key(self):
         self.add_phy("phy0", "c000000.wifi")
         self.add_phy("phy1", "soc:wifi1@c000000")
         cfg = self.config(
@@ -269,10 +273,11 @@ class FirstbootPolicyChecks(unittest.TestCase):
         result = self.policy()
         self.assertEqual(result.returncode, 0, result.stderr)
         for radio in ("radio0", "radio1"):
-            self.assertEqual(self.state()["wireless"]["sections"][radio]["options"]["disabled"], "1")
+            self.assertEqual(self.state()["wireless"]["sections"][radio]["options"]["disabled"], "0")
+            self.assertEqual(self.state()["wireless"]["sections"][radio]["options"]["country"], "CN")
         for section in ("default_radio0", "default_radio1"):
             iface = self.state()["wireless"]["sections"][section]["options"]
-            self.assertEqual(iface["disabled"], "1")
+            self.assertEqual(iface["disabled"], "0")
             self.assertEqual(iface["encryption"], "psk2")
             self.assertTrue(iface["key"])
             self.assertGreaterEqual(len(iface["key"]), 8)
@@ -311,8 +316,8 @@ class FirstbootPolicyChecks(unittest.TestCase):
             result = self.run_script(self.hotplug_copy)
             self.assertEqual(result.returncode, 0, result.stderr)
             state = self.state()
-            self.assertEqual(state["wireless"]["sections"]["radio0"]["options"]["disabled"], "1")
-            self.assertEqual(state["wireless"]["sections"]["default_radio0"]["options"]["disabled"], "1")
+            self.assertEqual(state["wireless"]["sections"]["radio0"]["options"]["disabled"], "0")
+            self.assertEqual(state["wireless"]["sections"]["default_radio0"]["options"]["disabled"], "0")
         self.assertEqual(self.state()["wireless"]["sections"], first["wireless"]["sections"])
 
     def test_managed_macs_refresh_but_preserved_mac_is_untouched(self):
@@ -358,6 +363,84 @@ class FirstbootPolicyChecks(unittest.TestCase):
         self.assertNotEqual(hotplug.returncode, 0)
         hotplug_commit = self.run_script(self.hotplug_copy, fail_commit="wireless")
         self.assertNotEqual(hotplug_commit.returncode, 0)
+
+    # HW-A/B: uci-defaults runs again after every keep-settings sysupgrade.
+
+    def ab_both_radios(self, **user):
+        self.add_phy("phy0", "c000000.wifi")
+        self.add_phy("phy1", "soc:wifi1@c000000")
+        return self.config(
+            *self.stock_radio("radio0", "platform/soc/c000000.wifi", "default_radio0", **user),
+            *self.stock_radio("radio1", "platform/soc/soc:wifi1@c000000", "default_radio1", **user))
+
+    def test_ab_stock_template_gets_product_defaults(self):
+        self.write_config(self.ab_both_radios())
+        result = self.policy(board=AB_BOARD)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        out = self.state()["wireless"]["sections"]
+        for radio, iface, ssid, htmode, mac in (
+                ("radio0", "default_radio0", "OpenWrt", "HE20", "34:ca:81:ba:e2:60"),
+                ("radio1", "default_radio1", "OpenWrt-5G", "HE80", "34:ca:81:ba:e2:61")):
+            dev, opt = out[radio]["options"], out[iface]["options"]
+            self.assertEqual(dev["disabled"], "0")
+            self.assertEqual(dev["country"], "CN")
+            self.assertEqual(dev["htmode"], htmode)
+            self.assertEqual(opt["ssid"], ssid)
+            self.assertEqual(opt["encryption"], "psk2")
+            self.assertEqual(opt["key"], "12345678")
+            self.assertEqual(opt["disabled"], "0")
+            self.assertEqual(opt["macaddr"], mac)
+            self.assertEqual(opt["rt3000_c_policy"], "default")
+        self.assertNotIn("network", self.state())
+
+    def test_ab_user_settings_survive_upgrade_and_gain_factory_mac(self):
+        # r8 left the template; the user then fixed Wi-Fi by hand (no MAC).
+        user_dev = {"disabled": "0", "country": "US", "channel": "149", "htmode": "HE40"}
+        user_if = {"ssid": "userset", "encryption": "psk2", "key": "testkey123", "disabled": "0"}
+        self.write_config(self.ab_both_radios(extra_device=user_dev, extra_iface=user_if))
+        result = self.policy(board=AB_BOARD)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        out = self.state()["wireless"]["sections"]
+        for radio, iface, mac in (("radio0", "default_radio0", "34:ca:81:ba:e2:60"),
+                                  ("radio1", "default_radio1", "34:ca:81:ba:e2:61")):
+            for key, value in user_dev.items():
+                self.assertEqual(out[radio]["options"][key], value)
+            for key, value in user_if.items():
+                self.assertEqual(out[iface]["options"][key], value)
+            self.assertEqual(out[iface]["options"]["macaddr"], mac)
+            self.assertEqual(out[iface]["options"]["rt3000_c_policy"], "preserve")
+
+    def test_ab_rerun_after_defaults_keeps_later_user_edits(self):
+        self.write_config(self.ab_both_radios())
+        self.assertEqual(self.policy(board=AB_BOARD).returncode, 0)
+        state = self.state()
+        sec = state["wireless"]["sections"]
+        sec["default_radio1"]["options"].update(ssid="mine", key="secret-key", macaddr="02:aa:bb:cc:dd:ee")
+        sec["radio1"]["options"].update(country="US", htmode="HE40", channel="149")
+        self.db.write_text(json.dumps(state))
+        result = self.policy(board=AB_BOARD)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        out = self.state()["wireless"]["sections"]
+        self.assertEqual(out["default_radio1"]["options"]["ssid"], "mine")
+        self.assertEqual(out["default_radio1"]["options"]["key"], "secret-key")
+        self.assertEqual(out["radio1"]["options"]["country"], "US")
+        self.assertEqual(out["radio1"]["options"]["htmode"], "HE40")
+        self.assertEqual(out["radio1"]["options"]["channel"], "149")
+
+    def test_ab_r7_style_config_without_marker_is_preserved(self):
+        # r7 policy output: enabled, CN, psk2, MAC, no marker option.
+        dev = {"disabled": "0", "country": "CN", "htmode": "HE80", "macaddr": "34:ca:81:ba:e2:61"}
+        iface = {"ssid": "home", "encryption": "psk2", "key": "home-key-1", "disabled": "0",
+                 "macaddr": "34:ca:81:ba:e2:61"}
+        self.write_config(self.ab_both_radios(extra_device=dev, extra_iface=iface))
+        before = copy.deepcopy(self.state()["wireless"]["sections"])
+        result = self.policy(board=AB_BOARD)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        out = self.state()["wireless"]["sections"]
+        for name in before:
+            opts = dict(out[name]["options"])
+            opts.pop("rt3000_c_policy", None)
+            self.assertEqual(opts, before[name]["options"], name)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 #!/bin/sh
-# Wi-Fi defaults shared by the HW-A/B/C/D first-boot scripts, plus the C
-# policy helpers used by first-boot defaults and hotplug.
+# Wi-Fi defaults shared by the HW-A/B/C/D first-boot scripts, plus the
+# first-boot policy helpers (HW-A/B/C uci-defaults, HW-C hotplug).
 
 RT3000_WIFI24_PATH="platform/soc/c000000.wifi"
 RT3000_WIFI5_PATH="platform/soc/soc:wifi1@c000000"
@@ -34,10 +34,26 @@ rt3000_wifi_section_is_path() {
 	[ "${path##*/}" = "${want##*/}" ]
 }
 
-# Apply defaults only to mac80211's untouched, disabled AP template. This
-# brings a new C radio up with the shared WPA2 defaults while preserving any operator-owned
-# configuration. The policy marker is committed with the settings, so later
-# PHY add events refresh only the stable device/AP MAC addresses.
+# Give an operator-owned AP the factory MAC only when it has no address of its
+# own; without one mac80211 derives 00:03:7f:.. from the ART placeholder.
+rt3000_wifi_fill_mac() {
+	local section="$1" iface="$2" mac="$3"
+
+	[ -n "$mac" ] || return 0
+	[ -n "$(uci -q get "wireless.$iface.macaddr")" ] ||
+		uci -q set "wireless.$iface.macaddr=$mac"
+	[ -n "$(uci -q get "wireless.$section.macaddr")" ] ||
+		uci -q set "wireless.$section.macaddr=$mac"
+	return 0
+}
+
+# Apply defaults only to mac80211's untouched, disabled AP template (radio
+# disabled, AP on lan, SSID OpenWrt, no encryption). That template is what a
+# fresh overlay gets, and also what r8 left behind on HW-A/B/C. Everything else
+# is operator-owned: it is marked "preserve" and only gets the factory MAC when
+# it has none, so a keep-settings sysupgrade never resets SSID, key, country,
+# channel width or radio state. The marker is committed with the settings, so
+# later runs (uci-defaults after sysupgrade, PHY add events) do not re-apply.
 rt3000_c_wifi_apply_radio() {
 	local want="$1" band="$2" ssid="$3" mac="$4" htmode="$5"
 	local phy section iface radio_disabled found=0
@@ -64,7 +80,10 @@ rt3000_c_wifi_apply_radio() {
 				[ -n "$mac" ] && uci -q set "wireless.$iface.macaddr=$mac"
 				continue
 			fi
-			[ "$managed" = "preserve" ] && continue
+			if [ "$managed" = "preserve" ]; then
+				rt3000_wifi_fill_mac "$section" "$iface" "$mac"
+				continue
+			fi
 
 			network="$(uci -q get "wireless.$iface.network")"
 			iface_ssid="$(uci -q get "wireless.$iface.ssid")"
@@ -94,6 +113,7 @@ rt3000_c_wifi_apply_radio() {
 				uci -q set "wireless.$iface.rt3000_c_policy=default"
 			else
 				uci -q set "wireless.$iface.rt3000_c_policy=preserve"
+				rt3000_wifi_fill_mac "$section" "$iface" "$mac"
 			fi
 		done
 	done

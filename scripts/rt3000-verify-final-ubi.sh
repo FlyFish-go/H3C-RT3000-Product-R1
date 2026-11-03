@@ -95,8 +95,8 @@ HOOK="$R/etc/uci-defaults/99-rt3000-wifi"
 if [ -s "$HOOK" ]; then
 	fix_detail="${fix_detail}path-driven hook present"
 	# The hook must key off real device paths, not radioN indices.
-	grep -q 'platform/soc/c000000.wifi' "$HOOK" || { fix_ok=1; fix_detail="${fix_detail}; 2.4G path missing"; }
-	grep -q 'soc:wifi1@c000000' "$HOOK" || { fix_ok=1; fix_detail="${fix_detail}; 5G path missing"; }
+	grep -q "platform/soc/c000000.wifi" "$HOOK" "$R/lib/rt3000/wifi-c.sh" || { fix_ok=1; fix_detail="${fix_detail}; 2.4G path missing"; }
+	grep -q "soc:wifi1@c000000" "$HOOK" "$R/lib/rt3000/wifi-c.sh" || { fix_ok=1; fix_detail="${fix_detail}; 5G path missing"; }
 else
 	fix_ok=1; fix_detail="${fix_detail}path-driven hook ABSENT"
 fi

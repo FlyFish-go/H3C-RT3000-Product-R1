@@ -50,121 +50,6 @@ case "$board" in
 	*) exit 0 ;;
 esac
 
-# Physical identity of each radio, as exposed by the kernel under
-# /sys/devices/.  These are the device-tree node paths, not UCI names.
-WIFI24_PATH="$RT3000_WIFI24_PATH"                # IPQ5018 integrated, 2.4 GHz
-WIFI5_PATH="$RT3000_WIFI5_PATH"                  # external QCN6102, 5 GHz
-
-# Resolve a section's configured path to the PHY the kernel actually bound.
-# Prints the phy name (phy0, phy1, ...) or nothing when the path matches no
-# live PHY -- i.e. exactly the phantom case this change exists to prevent.
-#
-# The comparison is made on the device-tree node name (the last path element,
-# e.g. "c000000.wifi" or "soc:wifi1@c000000") rather than on the whole sysfs
-# path.  That is deliberate: the directory prefix depends on how /sys is
-# mounted and on host symlink resolution, whereas the node name is the stable
-# identity from which mac80211 itself derives the UCI path.
-phy_for_path() {
-	local want="$1" phy dev node
-
-	want="${want##*/}"
-
-	for phy in /sys/class/ieee80211/*; do
-		[ -e "$phy" ] || continue
-		dev="$(readlink -f "$phy/device" 2>/dev/null)" || continue
-		[ -n "$dev" ] || continue
-		node="${dev##*/}"
-		[ "$node" = "$want" ] && { echo "${phy##*/}"; return 0; }
-	done
-
-	return 1
-}
-
-# Is this wifi-device section the one bound to $1?
-section_is_path() {
-	local section="$1" want="$2" path
-
-	path="$(uci -q get "wireless.$section.path")" || return 1
-	[ -n "$path" ] || return 1
-	# Same node-name comparison as phy_for_path.
-	[ "${path##*/}" = "${want##*/}" ]
-}
-
-# Apply the product policy to whichever section owns the given physical path.
-# Returns nonzero (and changes nothing) when no live radio matches, so a board
-# without that radio simply skips the rule instead of inventing a section.
-apply_radio_policy() {
-	local want="$1" band="$2" ssid="$3" mac="$4" disabled="$5" encryption="$6"
-	local key="$7" htmode="$8"
-	local section iface found=0
-
-	phy_for_path "$want" >/dev/null 2>&1 || {
-		logger -t rt3000-wifi "no live PHY at $want; skipping ${band} policy"
-		return 1
-	}
-
-	# Iterate declared wifi-device sections and select by path.
-	for section in $(uci show wireless 2>/dev/null | sed -n "s/^wireless\.\([^.=]*\)=wifi-device$/\1/p"); do
-		section_is_path "$section" "$want" || continue
-		found=1
-
-		uci -q set "wireless.$section.band=$band"
-		# ath11k wiphys are self-managed; without a country the firmware
-		# default (US) stays in force. These are CN-market units.
-		uci -q set "wireless.$section.country=CN"
-		uci -q set "wireless.$section.disabled=$disabled"
-
-		# Channel width.  5 GHz is pinned to HE80 rather than HE160: a 160 MHz
-		# channel on this board must span 36-64, which includes the DFS bands
-		# 52-64, so the AP only comes up after a ~45 s CAC and can be forced
-		# off-channel by radar detection.  HE80 on ch36 stays inside the
-		# non-DFS 36-48 block and starts immediately.
-		[ -n "$htmode" ] && uci -q set "wireless.$section.htmode=$htmode"
-
-		# Keep the device-level macaddr as well: it is the value
-		# /lib/wifi/mac80211.sh lookup_phy() uses to re-find the PHY when a
-		# path is absent, so keeping it consistent with the path is correct.
-		# It is NOT what programs the interface -- see the iface block below.
-		[ -n "$mac" ] && uci -q set "wireless.$section.macaddr=$mac"
-
-		# Replace stock interface defaults with the requested per-band policy.
-		for iface in $(uci show wireless 2>/dev/null | sed -n "s/^wireless\.\([^.=]*\)=wifi-iface$/\1/p"); do
-			[ "$(uci -q get "wireless.$iface.device")" = "$section" ] || continue
-
-			uci -q set "wireless.$iface.network=lan"
-			uci -q set "wireless.$iface.mode=ap"
-			uci -q set "wireless.$iface.ssid=$ssid"
-			uci -q set "wireless.$iface.encryption=$encryption"
-			# A psk2 interface with an empty key cannot be brought up at all:
-			# hostapd reports INVALID_WPA_PSK and the AP silently stays down.
-			# Only write a key when the mode actually uses one.
-			if [ "$encryption" = "none" ]; then
-				uci -q delete "wireless.$iface.key"
-			else
-				[ -n "$key" ] && uci -q set "wireless.$iface.key=$key"
-			fi
-			uci -q set "wireless.$iface.disabled=$disabled"
-
-			# THIS is the setting that actually programs the interface.
-			#
-			# A macaddr on the wifi-device section is only a PHY-lookup
-			# hint in this tree; nothing writes it to hardware.  For
-			# 'mode ap' the address comes from the interface section:
-			# /lib/netifd/wireless/mac80211.sh mac80211_prepare_vif()
-			# reads the iface's macaddr and passes it to
-			# mac80211_hostapd_setup_bss(), which sets the BSS address.
-			# Without it, mac80211_generate_mac() derives an address from
-			# the PHY's ART placeholder and the interface runs as
-			# 00:03:7f:xx:xx:xx -- which is exactly the defect this line
-			# fixes.
-			[ -n "$mac" ] && uci -q set "wireless.$iface.macaddr=$mac"
-		done
-	done
-
-	[ "$found" -eq 1 ] || logger -t rt3000-wifi "no section for $want; nothing to apply"
-	return 0
-}
-
 # A usable factory MAC is required before any identity is written.  When it is
 # unusable the helper fails and we leave the kernel defaults alone rather than
 # inventing an identity -- same fail-closed rule as the wired policy.
@@ -199,10 +84,6 @@ MACMAP=$(rt3000_mac_map) || {
 W24=$(printf '%s\n' "$MACMAP" | sed -n 's/^wifi24 //p')
 W5=$(printf '%s\n'  "$MACMAP" | sed -n 's/^wifi5 //p')
 
-# The shared default is published in the image, not a deployment secret. C
-# radios remain disabled until the operator supplies validated RF settings.
-RT3_WIFI_KEY="${RT3_WIFI_KEY:-$RT3000_WIFI_DEFAULT_KEY}"
-
 if [ "$board" = "h3c,rt3000-rtl8367s" ]; then
 	lock /var/lock/rt3000-c-wifi || exit 1
 	trap 'lock -u /var/lock/rt3000-c-wifi >/dev/null 2>&1' 0
@@ -219,21 +100,23 @@ if [ "$board" = "h3c,rt3000-rtl8367s" ]; then
 		uci -q commit network || exit 1
 	fi
 
-	# C starts with secure AP defaults but keeps both radios disabled. A
-	# persistent ieee80211 hotplug hook applies the same policy if a PHY appears
-	# after this one-shot uci-defaults script has completed.
+	# A persistent ieee80211 hotplug hook applies the same policy if a C PHY
+	# appears after this one-shot uci-defaults script has completed.
 	rt3000_c_wifi_apply "$W24" "$W5" || exit 1
 	uci -q commit wireless || exit 1
 	exit 0
 fi
 
-# Applied once by uci-defaults during image initialization, including a
-# factory reset. This is not a service that reconfigures a running radio.
-# Both bands are enabled and secured, with 5 GHz limited to non-DFS HE80.
-# Field order: <phy path> <band> <ssid> <mac> <disabled> <encryption> <key> <htmode>
-apply_radio_policy "$WIFI24_PATH" "2g" "$RT3000_WIFI_SSID_2G" "$W24" "0" "psk2" "$RT3_WIFI_KEY" "HE20"
-apply_radio_policy "$WIFI5_PATH"  "5g" "$RT3000_WIFI_SSID_5G" "$W5"  "0" "psk2" "$RT3_WIFI_KEY" "HE80"
+# uci-defaults runs on the first boot of every new image, including after a
+# keep-settings sysupgrade, so only the untouched mac80211 template is
+# converted to the product defaults (both bands up, WPA2, CN, 5 GHz non-DFS
+# HE80); operator-owned radios keep their settings and only gain a missing
+# factory MAC. See rt3000_c_wifi_apply_radio() in /lib/rt3000/wifi-c.sh.
+lock /var/lock/rt3000-c-wifi || exit 1
+trap 'lock -u /var/lock/rt3000-c-wifi >/dev/null 2>&1' 0
+trap 'exit 1' HUP INT TERM
 
-uci -q commit wireless
+rt3000_c_wifi_apply "$W24" "$W5" || exit 1
+uci -q commit wireless || exit 1
 
 exit 0
