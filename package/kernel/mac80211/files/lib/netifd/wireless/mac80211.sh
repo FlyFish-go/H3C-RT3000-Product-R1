@@ -529,6 +529,22 @@ mac80211_generate_mac() {
 	local ref="$(cat /sys/class/ieee80211/${phy}/macaddress)"
 	local mask="$(cat /sys/class/ieee80211/${phy}/address_mask)"
 
+	# H3C Magic: these radios report the ART placeholder 00:03:7f:.. as their
+	# address, the same on every unit, so interfaces without a macaddr (e.g. a
+	# repeater/STA) got an address that says nothing about the unit and moves
+	# with the interface order. When the radio has its factory MAC
+	# (wifi-device macaddr), derive from it instead, starting at index 1 so a
+	# generated address can never equal the factory MAC an AP interface uses.
+	case "$ref" in
+	00:03:7f:*|00:03:7F:*)
+		[ -n "$h3c_dev_macaddr" ] && {
+			ref="$h3c_dev_macaddr"
+			mask="ff:ff:ff:ff:ff:ff"
+			id=$((id + 1))
+		}
+		;;
+	esac
+
 	[ "$mask" = "00:00:00:00:00:00" ] && {
 		mask="ff:ff:ff:ff:ff:ff";
 
@@ -1042,6 +1058,7 @@ drv_mac80211_setup() {
 	json_get_values basic_rate_list basic_rate
 	json_get_values scan_list scan_list
 	json_select ..
+	h3c_dev_macaddr="$macaddr"
 
 	find_phy || {
 		echo "Could not find PHY for device '$1'"

@@ -74,6 +74,13 @@ hwd_apply() {
 	elif [ -z "$(uci -q get "wireless.$iface.macaddr")" ]; then
 		uci -q set "wireless.$iface.macaddr=$mac" || return 1
 	fi
+	# Record the factory MAC on the radio too (as HW-A/B/C do): mac80211.sh
+	# derives repeater/extra interface addresses from it. Only with a path,
+	# since find_phy falls back to matching this address without one.
+	if [ -n "$(uci -q get "wireless.$radio.path")" ] &&
+	   [ -z "$(uci -q get "wireless.$radio.macaddr")" ]; then
+		uci -q set "wireless.$radio.macaddr=$mac" || return 1
+	fi
 	return 0
 }
 hwd_apply "$hwd_radio_2g" "$hwd_section_2g" "$RT3000_WIFI_SSID_2G" "$hwd_mac_2g" HE20 || exit 1
