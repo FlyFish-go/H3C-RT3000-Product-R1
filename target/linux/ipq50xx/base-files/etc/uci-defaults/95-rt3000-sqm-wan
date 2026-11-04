@@ -1,0 +1,20 @@
+#!/bin/sh
+# H3C Magic - point the SQM template queue at this unit's WAN device.
+#
+# sqm-scripts ships one disabled example queue on "eth1", which is not the
+# WAN port on these boards. Retarget only that untouched example; it stays
+# disabled. Enabling SQM pauses NSS acceleration (see rt3000-sqm-nss).
+
+[ -f /etc/config/sqm ] || exit 0
+[ "$(uci -q get sqm.eth1)" = "queue" ] || exit 0
+[ "$(uci -q get sqm.eth1.interface)" = "eth1" ] || exit 0
+[ "$(uci -q get sqm.eth1.enabled)" = "1" ] && exit 0
+
+wan="$(uci -q get network.wan.device)"
+[ -n "$wan" ] || wan="$(uci -q get network.wan.ifname)"
+[ -n "$wan" ] || exit 0
+
+uci -q set sqm.eth1.interface="$wan"
+uci -q set sqm.eth1.enabled='0'
+uci -q commit sqm
+exit 0

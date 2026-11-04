@@ -720,7 +720,8 @@ define KernelPackage/sched-core
 	CONFIG_NET_EMATCH=y \
 	CONFIG_NET_EMATCH_U32
   FILES:=$(SCHED_FILES)
-  AUTOLOAD:=$(call AutoLoad,70, $(SCHED_MODULES_CORE))
+  # H3C Magic: not loaded at boot (RAM on 256 MiB units); sqm-scripts and
+  # tc users load the schedulers they need.
 endef
 
 define KernelPackage/sched-core/description
@@ -736,7 +737,6 @@ define KernelPackage/sched-cake
   DEPENDS:=+kmod-sched-core
   KCONFIG:=CONFIG_NET_SCH_CAKE
   FILES:=$(LINUX_DIR)/net/sched/sch_cake.ko
-  AUTOLOAD:=$(call AutoProbe,sch_cake)
 endef
 
 define KernelPackage/sched-cake/description
