@@ -36,7 +36,7 @@ define KernelPackage/qca-nss-ecm/Default
   SUBMENU:=Network Support
   DEPENDS:=@(TARGET_ipq50xx||TARGET_ipq60xx||TARGET_ipq806x||TARGET_ipq807x) \
 	+kmod-ipt-conntrack +iptables-mod-extra \
-	+kmod-qca-nss-drv \
+	+kmod-qca-nss-drv +kmod-br-netfilter \
 	+kmod-pppoe \
 	+PACKAGE_kmod-qca-ovsmgr:kmod-qca-ovsmgr
   TITLE:=QCA NSS Enhanced Connection Manager (ECM)
