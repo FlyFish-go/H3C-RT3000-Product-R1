@@ -1,0 +1,63 @@
+#!/bin/sh
+# H3C Magic - IPv6 firewall migration (r10).
+#
+# Up to r9 the product firewall (/etc/config/firewall) had no ICMPv6 rules and
+# its wan zone did not list wan6, so router advertisements and neighbour
+# discovery from WAN were rejected and IPv6 never came up. A keep-settings
+# upgrade keeps that old file, so add only what is missing:
+#   - wan6 to the wan zone, when network.wan6 exists;
+#   - the OpenWrt default Allow-ICMPv6-Input / Allow-ICMPv6-Forward rules,
+#     unless a rule with that name already exists.
+# Nothing else in the operator's firewall is changed.
+
+. /lib/functions.sh
+
+wan_zone=
+find_wan_zone() {
+	local name
+	config_get name "$1" name
+	[ "$name" = "wan" ] && [ -z "$wan_zone" ] && wan_zone="$1"
+}
+has_icmpv6_in=0
+has_icmpv6_fwd=0
+find_rules() {
+	local name
+	config_get name "$1" name
+	[ "$name" = "Allow-ICMPv6-Input" ] && has_icmpv6_in=1
+	[ "$name" = "Allow-ICMPv6-Forward" ] && has_icmpv6_fwd=1
+}
+
+config_load firewall
+config_foreach find_wan_zone zone
+config_foreach find_rules rule
+[ -n "$wan_zone" ] || exit 0
+
+if uci -q get network.wan6 >/dev/null; then
+	case " $(uci -q get firewall.$wan_zone.network) " in
+		*" wan6 "*) ;;
+		*) uci -q add_list firewall.$wan_zone.network='wan6' ;;
+	esac
+fi
+
+add_icmpv6_rule() {
+	local name="$1" dest="$2" types="$3" r t
+	r="$(uci -q add firewall rule)" || return 1
+	uci -q set firewall.$r.name="$name"
+	uci -q set firewall.$r.src='wan'
+	[ -n "$dest" ] && uci -q set firewall.$r.dest="$dest"
+	uci -q set firewall.$r.proto='icmp'
+	for t in $types; do
+		uci -q add_list firewall.$r.icmp_type="$t"
+	done
+	uci -q set firewall.$r.limit='1000/sec'
+	uci -q set firewall.$r.family='ipv6'
+	uci -q set firewall.$r.target='ACCEPT'
+}
+
+common='echo-request echo-reply destination-unreachable packet-too-big time-exceeded bad-header unknown-header-type'
+[ "$has_icmpv6_in" = 1 ] || add_icmpv6_rule Allow-ICMPv6-Input '' \
+	"$common router-solicitation neighbour-solicitation router-advertisement neighbour-advertisement"
+[ "$has_icmpv6_fwd" = 1 ] || add_icmpv6_rule Allow-ICMPv6-Forward '*' "$common"
+
+uci -q commit firewall
+exit 0
