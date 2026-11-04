@@ -470,9 +470,18 @@ ifneq ($(CONFIG_ATH11K_NSS_SUPPORT),)
 		-I$(STAGING_DIR)/usr/include/qca-nss-clients
 endif
 
+# Keep build-host paths out of __FILE__ strings in the modules (and in the
+# initramfs that embeds them). build_dir may be a symlink, so map both the
+# configured and the resolved location.
+BACKPORTS_PREFIX_MAP:= \
+	-fmacro-prefix-map=$(PKG_BUILD_DIR)/=backports/ \
+	-fmacro-prefix-map=$(realpath $(PKG_BUILD_DIR))/=backports/ \
+	-fmacro-prefix-map=$(TOPDIR)/= \
+	-fmacro-prefix-map=$(realpath $(TOPDIR))/=
+
 MAKE_OPTS:= -C "$(PKG_BUILD_DIR)" \
 	$(KERNEL_MAKE_FLAGS) \
-	EXTRA_CFLAGS="-I$(PKG_BUILD_DIR)/include $(IREMAP_CFLAGS) $(C_DEFINES)" \
+	EXTRA_CFLAGS="-I$(PKG_BUILD_DIR)/include $(IREMAP_CFLAGS) $(C_DEFINES) $(BACKPORTS_PREFIX_MAP)" \
 	KLIB_BUILD="$(LINUX_DIR)" \
 	MODPROBE=true \
 	KLIB=$(TARGET_MODULES_DIR) \
