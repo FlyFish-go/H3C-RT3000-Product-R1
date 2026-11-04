@@ -1,0 +1,9 @@
+#!/bin/sh
+# H3C Magic - hardware acceleration switch, on by default (see rt3000-accel).
+[ -f /etc/config/ecm ] || exit 0
+uci -q get ecm.global >/dev/null || exit 0
+[ -n "$(uci -q get ecm.global.enabled)" ] || {
+	uci -q set ecm.global.enabled='1'
+	uci -q commit ecm
+}
+exit 0

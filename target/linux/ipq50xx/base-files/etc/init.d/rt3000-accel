@@ -1,0 +1,75 @@
+#!/bin/sh /etc/rc.common
+# H3C Magic - NSS hardware acceleration control.
+#
+# Acceleration runs unless
+#   - it is switched off (ecm.global.enabled = 0, LuCI: Network > Hardware
+#     acceleration), or
+#   - any SQM queue is enabled: SQM shapes in the Linux qdisc layer and
+#     NSS-accelerated flows never reach it.
+# Pausing stops ECM from accelerating new flows and defuncts the accelerated
+# ones; resuming clears the stop flags. The ECM module stays loaded, so a
+# change takes effect at once without a reboot. Only acceleration that this
+# service paused is resumed.
+
+START=99
+USE_PROCD=1
+
+ECM=/sys/kernel/debug/ecm
+MARK=/var/run/rt3000-accel.paused
+
+sqm_queue_enabled() {
+	local enabled
+	config_get_bool enabled "$1" enabled 0
+	[ "$enabled" = 1 ] && sqm_on=1
+}
+
+# Prints "on", "off" (switched off) or "sqm" (paused for SQM).
+want_state() {
+	local enabled
+	config_load ecm
+	config_get_bool enabled global enabled 1
+	[ "$enabled" = 1 ] || { echo off; return; }
+	sqm_on=0
+	[ -f /etc/config/sqm ] && {
+		config_load sqm
+		config_foreach sqm_queue_enabled queue
+	}
+	[ "$sqm_on" = 1 ] && echo sqm || echo on
+}
+
+set_stop() {
+	local f
+	for f in "$ECM/front_end_ipv4_stop" "$ECM/front_end_ipv6_stop"; do
+		[ -e "$f" ] && echo "$1" > "$f"
+	done
+}
+
+apply() {
+	local state
+
+	[ -d "$ECM" ] || return 0
+	state="$(want_state)"
+	if [ "$state" != on ]; then
+		[ "$(cat "$MARK" 2>/dev/null)" = "$state" ] && return 0
+		set_stop 1
+		[ -e "$ECM/ecm_db/defunct_all" ] && echo 1 > "$ECM/ecm_db/defunct_all"
+		echo "$state" > "$MARK"
+		logger -t rt3000-accel "NSS acceleration paused ($state)"
+	elif [ -e "$MARK" ]; then
+		set_stop 0
+		rm -f "$MARK"
+		logger -t rt3000-accel "NSS acceleration resumed"
+	fi
+}
+
+start_service() {
+	apply
+}
+
+reload_service() {
+	apply
+}
+
+service_triggers() {
+	procd_add_reload_trigger "ecm" "sqm"
+}

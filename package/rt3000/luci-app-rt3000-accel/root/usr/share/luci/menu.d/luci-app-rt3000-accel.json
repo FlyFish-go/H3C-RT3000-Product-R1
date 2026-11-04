@@ -1,0 +1,14 @@
+{
+	"admin/network/rt3000-accel": {
+		"title": "Hardware Acceleration",
+		"order": 65,
+		"action": {
+			"type": "view",
+			"path": "rt3000/accel"
+		},
+		"depends": {
+			"acl": [ "luci-app-rt3000-accel" ],
+			"uci": { "ecm": true }
+		}
+	}
+}

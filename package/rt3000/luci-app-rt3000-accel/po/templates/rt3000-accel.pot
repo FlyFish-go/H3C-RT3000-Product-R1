@@ -1,0 +1,38 @@
+msgid ""
+msgstr "Content-Type: text/plain; charset=UTF-8\n"
+
+msgid "Hardware Acceleration"
+msgstr ""
+
+msgid "Not available: the NSS acceleration module is not loaded."
+msgstr ""
+
+msgid "Off: all traffic is handled by the CPU."
+msgstr ""
+
+msgid "Paused while SQM (QoS) is enabled: SQM cannot shape accelerated traffic."
+msgstr ""
+
+msgid "Running"
+msgstr ""
+
+msgid "accelerated connections"
+msgstr ""
+
+msgid "tracked connections"
+msgstr ""
+
+msgid "NSS offloads routed and bridged traffic from the CPU. Keep it on for full speed. Switch it off only to troubleshoot or to compare; SQM (QoS) pauses it automatically while enabled."
+msgstr ""
+
+msgid "Status"
+msgstr ""
+
+msgid "Enable hardware acceleration"
+msgstr ""
+
+msgid "Takes effect at once, no reboot needed. Default: on."
+msgstr ""
+
+msgid "Grant access to the NSS hardware acceleration switch"
+msgstr ""

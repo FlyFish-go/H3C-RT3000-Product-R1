@@ -1,0 +1,14 @@
+{
+	"luci-app-rt3000-accel": {
+		"description": "Grant access to the NSS hardware acceleration switch",
+		"read": {
+			"uci": [ "ecm", "sqm" ],
+			"file": {
+				"/usr/libexec/rt3000-accel-status": [ "exec" ]
+			}
+		},
+		"write": {
+			"uci": [ "ecm" ]
+		}
+	}
+}

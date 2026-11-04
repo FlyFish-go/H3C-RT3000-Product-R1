@@ -3,7 +3,7 @@
 #
 # sqm-scripts ships one disabled example queue on "eth1", which is not the
 # WAN port on these boards. Retarget only that untouched example; it stays
-# disabled. Enabling SQM pauses NSS acceleration (see rt3000-sqm-nss).
+# disabled. Enabling SQM pauses NSS acceleration (see /etc/init.d/rt3000-accel).
 
 [ -f /etc/config/sqm ] || exit 0
 [ "$(uci -q get sqm.eth1)" = "queue" ] || exit 0

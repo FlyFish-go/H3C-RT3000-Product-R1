@@ -1,0 +1,38 @@
+msgid ""
+msgstr "Content-Type: text/plain; charset=UTF-8\n"
+
+msgid "Hardware Acceleration"
+msgstr "硬件加速"
+
+msgid "Not available: the NSS acceleration module is not loaded."
+msgstr "不可用：NSS 加速模块未加载。"
+
+msgid "Off: all traffic is handled by the CPU."
+msgstr "已关闭：所有流量由 CPU 处理。"
+
+msgid "Paused while SQM (QoS) is enabled: SQM cannot shape accelerated traffic."
+msgstr "已暂停：SQM（QoS）开启时自动暂停，因为 SQM 无法整形被加速的流量。"
+
+msgid "Running"
+msgstr "运行中"
+
+msgid "accelerated connections"
+msgstr "已加速连接"
+
+msgid "tracked connections"
+msgstr "跟踪的连接"
+
+msgid "NSS offloads routed and bridged traffic from the CPU. Keep it on for full speed. Switch it off only to troubleshoot or to compare; SQM (QoS) pauses it automatically while enabled."
+msgstr "NSS 加速芯片替 CPU 转发路由和桥接流量。保持开启才能跑满速度；只在排查问题或做对比时关闭。开启 SQM（QoS）时会自动暂停。"
+
+msgid "Status"
+msgstr "状态"
+
+msgid "Enable hardware acceleration"
+msgstr "启用硬件加速"
+
+msgid "Takes effect at once, no reboot needed. Default: on."
+msgstr "立即生效，无需重启。默认开启。"
+
+msgid "Grant access to the NSS hardware acceleration switch"
+msgstr "允许访问 NSS 硬件加速开关"
