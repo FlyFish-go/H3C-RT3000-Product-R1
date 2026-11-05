@@ -40,6 +40,12 @@ h3c_qsdk_member_size() {
 	tar xf "$1" "$2" -O 2>/dev/null | wc -c
 }
 
+# HW-D -> HW-B (D-PCB without 5 GHz FEMs) is the only cross-board update.
+# Both boot config@mp02.1 from the same slot; only the board identity moves.
+h3c_qsdk_cross_board() {
+	[ "$(board_name)" = h3c,nx30-hw-d ] && [ "$1" = sysupgrade-h3c_rt3000/ ]
+}
+
 h3c_qsdk_check_image() {
 	local img="$1" slot mtd name fitconf dir ksz rsz
 
@@ -54,6 +60,16 @@ h3c_qsdk_check_image() {
 	}
 	dir=$(h3c_qsdk_tar_dir "$img")
 	[ -n "$dir" ] || { v "not a sysupgrade tar"; return 1; }
+	if h3c_qsdk_cross_board "$dir"; then
+		. /lib/rt3000/fem.sh
+		[ "$(h3c_fem_probe)" = nofem ] || {
+			v "HW-B image on a board with 5 GHz FEMs (or unknown ART flags): refused"
+			return 1
+		}
+		v "No 5 GHz FEM: HW-D -> HW-B update; settings will NOT be kept"
+		# validate_firmware_image: LuCI then offers no "keep settings".
+		type notify_firmware_no_backup >/dev/null 2>&1 && notify_firmware_no_backup
+	fi
 	ksz=$(h3c_qsdk_member_size "$img" "${dir}kernel")
 	rsz=$(h3c_qsdk_member_size "$img" "${dir}root")
 	[ "${ksz:-0}" -gt 0 ] && [ "${rsz:-0}" -gt 0 ] || {
@@ -93,7 +109,9 @@ h3c_qsdk_do_upgrade() {
 		v "UBI volume update FAILED"
 		return 1
 	}
-	if [ -n "$UPGRADE_BACKUP" ] && [ -f "$UPGRADE_BACKUP" ]; then
+	if [ -n "$UPGRADE_BACKUP" ] && h3c_qsdk_cross_board "$dir"; then
+		v "HW-D -> HW-B: settings not kept (different board configuration)"
+	elif [ -n "$UPGRADE_BACKUP" ] && [ -f "$UPGRADE_BACKUP" ]; then
 		mkdir -p /tmp/new_root
 		if mount -t ubifs /dev/ubi0_2 /tmp/new_root; then
 			mv "$UPGRADE_BACKUP" "/tmp/new_root/${BACKUP_FILE:-sysupgrade.tgz}"

@@ -58,10 +58,16 @@ fwtool_check_image() {
 	[ "$imagecompat" != "1.0" ] && supported=new_supported_devices
 	json_select $supported || return 1
 
+	# A platform may name further boards whose images this unit can take
+	# (H3C: a D-PCB without 5 GHz FEMs takes the HW-B image).
+	local compat=""
+	type platform_compat_devices >/dev/null 2>&1 &&
+		compat="$(platform_compat_devices)"
+
 	json_get_keys dev_keys
 	for k in $dev_keys; do
 		json_get_var dev "$k"
-		if [ "$dev" = "$device" ]; then
+		if [ "$dev" = "$device" ] || list_contains compat "$dev"; then
 			# major compat version -> no sysupgrade
 			if [ "${devicecompat%.*}" != "${imagecompat%.*}" ]; then
 				v "The device is supported, but this image is incompatible for sysupgrade based on the image version ($devicecompat->$imagecompat)."

@@ -3,6 +3,18 @@
 RAMFS_COPY_BIN='fw_printenv fw_setenv fwtool jsonfilter sha256sum mktemp head mknod tar sync'
 RAMFS_COPY_DATA='/etc/fw_env.config /var/lock/fw_printenv.lock'
 
+# fwtool_check_image hook: a D-PCB without 5 GHz FEMs belongs to HW-B, so
+# the HW-B image (h3c,rt3000) is accepted on it without -F. FEM boards and
+# units whose ART flags are not recognised get nothing extra.
+platform_compat_devices() {
+	case "$(board_name)" in
+	h3c,nx30-hw-d)
+		. /lib/rt3000/fem.sh
+		[ "$(h3c_fem_probe)" = nofem ] && echo h3c,rt3000
+		;;
+	esac
+}
+
 platform_check_image() {
 	local board=$(board_name)
 	case $board in

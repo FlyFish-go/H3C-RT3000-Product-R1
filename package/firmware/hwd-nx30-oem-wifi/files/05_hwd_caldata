@@ -1,9 +1,16 @@
 # Copy this unit's Wi-Fi calibration out of its own ART partition before
 # ath11k loads. The firmware paths in /lib/firmware link here; if ART cannot
 # be read, the radios get no calibration rather than another unit's.
+#
+# Also pick the board data set. board-2.bin carries two entries per radio:
+# the NX30 FEM boards (DT board_id 0x10/0x60) and the HW-B no-FEM set
+# (board_id 0x23/0x90, byte-identical to the HW-B image). A D-PCB without
+# 5 GHz FEMs (RC3000 B0) must use the HW-B set, so for "nofem" the board_id
+# override files ath11k reads first get the HW-B ids. "unknown" writes
+# nothing and the DT ids stay in force, as before this check existed.
 
 hwd_caldata() {
-	local dir=/tmp/hwd-cal mtd
+	local dir=/tmp/hwd-cal mtd fem
 
 	mtd=$(sed -n 's/^\(mtd[0-9]*\):.*"0:ART"$/\1/p' /proc/mtd)
 	[ -n "$mtd" ] || { echo "hwd-caldata: no 0:ART partition" > /dev/kmsg; return 0; }
@@ -12,6 +19,24 @@ hwd_caldata() {
 	dd if=/dev/$mtd of="$dir/ipq5018.bin" bs=4096 skip=1 count=32 2>/dev/null
 	dd if=/dev/$mtd of="$dir/qcn6122-1.bin" bs=2048 skip=77 count=64 2>/dev/null
 	dd if=/dev/$mtd of="$dir/qcn6122-2.bin" bs=2048 skip=141 count=64 2>/dev/null
+
+	. /lib/rt3000/fem.sh
+	fem=$(h3c_fem_probe)
+	echo "$fem" > "$dir/fem"
+	case "$fem" in
+	fem)
+		echo 0x10 > "$dir/board_id-2g"
+		echo 0x60 > "$dir/board_id-5g"
+		;;
+	nofem)
+		echo 0x23 > "$dir/board_id-2g"
+		echo 0x90 > "$dir/board_id-5g"
+		echo "hwd-caldata: no 5 GHz FEM in ART: using HW-B board data; this unit should run the HW-B image" > /dev/kmsg
+		;;
+	*)
+		echo "hwd-caldata: FEM flags in ART not recognised; keeping NX30 board data" > /dev/kmsg
+		;;
+	esac
 }
 
 boot_hook_add preinit_main hwd_caldata

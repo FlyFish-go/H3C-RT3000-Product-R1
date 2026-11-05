@@ -2,14 +2,16 @@
 
 > 核对日期：2026-10-19。HW-A/B/C/D 是 **FlyFish-go 的 PCB 工程分组**，不是 H3C 官方 revision、外壳背标 A1/B0/C1/D0、PCB 上的 `VER.A`、固件的 A/B 槽，也不是可通刷列表。**硬件分组**与**精确固件实机验收**须分别记录。
 
+> **2026-11-04 更正（刷机分组）：** MP02.1（machid `0x08040000`）的板子**按 5 GHz 是否有外置 FEM 选固件**。有 FEM → HW-D（NX30）；**没有 FEM → HW-B**，包括 D 型长板上 FEM 焊盘空置的 RC3000 B0。以前文中“RC3000 B0 → HW-D”“不拿 FEM 单独判组”的说法已作废，RC3000 B0 刷 HW-D 镜像会拿到 NX30 的 FEM 校准，5 GHz 信号明显变差（issue #3）。判断依据见下文“MP02.1 的 FEM 判据”；HW-D 固件（r10 起）和 U-Boot（pre.8 起）都会自动识别并提示。
+
 ## 1. 一张表看懂四组与三条 OEM 路由
 
 | HW | PCB / 芯片分组特征 | 代表 OEM machid / 控制 FDT | 代表样机 | U-Boot `v0.1.0-pre.1` | QSDK 11.5 |
 |---|---|---|---|---|---|
 | **HW-A** | 长板；IPQ5018、外置 DDR、QCA8337 | `0x08040001` / MP03.1 | RT3000 A、RC3000 A2 | 独立候选、**本轮未实测** | 目前无完整 QSDK 样机验收 |
-| **HW-B** | 短板；IPQ5000、集成 DDR、QCA8337 | `0x08040000` / MP02.1 | RT3000 B、RC3000 D0 | 独立候选、**本轮未实测** | RT3000 B **Product R1 r5** 已完成阶段验证 |
+| **HW-B** | 短板；IPQ5000、集成 DDR、QCA8337 | `0x08040000` / MP02.1 | RT3000 B、RC3000 D0；**无 FEM 的 RC3000 B0（刷机按 B）** | 独立候选、**本轮未实测** | RT3000 B **Product R1 r5** 已完成阶段验证 |
 | **HW-C** | 长板；IPQ5018、外置 DDR、RTL8367S | `0x08040101` / MP03.1-C2 | RT3000 C、RX3000 | 独立候选、**本轮未实测** | RT3000 C **Native08** 已持久化安装及有界功能验证，仍有开放问题 |
-| **HW-D** | NX30 型长板；IPQ5000、集成 DDR、QCA8337 | `0x08040000` / MP02.1 | NX30、RC3000 B0 | **仅一台 NX30 指定候选有限验收通过** | 有 D 独立构建候选，未取得整机通过结论 |
+| **HW-D** | NX30 型长板；IPQ5000、集成 DDR、QCA8337 | `0x08040000` / MP02.1 | NX30（有 5 GHz FEM） | **仅一台 NX30 指定候选有限验收通过** | 有 D 独立构建候选，未取得整机通过结论 |
 
 **最容易误解的地方：** `0x08040000` 同时存在于 **HW-B 和 HW-D** 的 OEM 代表原始备份。四个 HW 组并没有四种唯一 machid，当前是 **四个工程组、三条已核实的 OEM 路由**。`0x8040000` 与 `0x08040000` 只是前导零写法不同。代表样机结果不可推广为组内每台都具有相同 machid。
 
@@ -36,16 +38,28 @@
 
 ### HW-D
 
-- **NX30 型长板**、IPQ5000、集成 DDR、QCA8337。NX30（`NX-01`，A2 Y2）记录 GigaDevice NAND 与双 KCT8539S FEM；RC3000 B0（`RC-B0-ESMT`，B0 Y2）记录 ESMT F50D1G41LB、`NX30_B0` 板印、独立 5GHz FEM 焊盘空置。是否同一裸板需保留未知。
-- NX30 原始 CDT tuple `[2,8,4,0,0]` → `0x08040000`，OEM MP02.1 / `config@mp02.1`。这与 HW-B 代表备份相同；**主要依靠长短板、布局、器件组合将 B、D 分开**，不拿 FEM 或 NAND 品牌单独判组。
+- **NX30 型长板**、IPQ5000、集成 DDR、QCA8337。NX30（`NX-01`，A2 Y2）记录 GigaDevice NAND 与双 KCT8539S FEM；RC3000 B0（`RC-B0-ESMT`，B0 Y2）记录 ESMT F50D1G41LB、`NX30_B0` 板印、独立 5GHz FEM 焊盘空置。是否同一裸板需保留未知。**RC3000 B0 没有 5 GHz FEM，刷机归 HW-B**（见下）。
+- NX30 原始 CDT tuple `[2,8,4,0,0]` → `0x08040000`，OEM MP02.1 / `config@mp02.1`。这与 HW-B 代表备份相同。PCB 研究上按长短板、布局、器件组合区分 B、D；**选固件则只看 5 GHz FEM**：B 与 D 对软件可见的连接（网口、QCN 复位 GPIO27、LED）一致，真正影响固件的是无线校准（BDF）是否按 FEM 设计。
+
+### MP02.1 的 FEM 判据
+
+读本机 ART 分区偏移 `0x26800`（5 GHz QCN6122 校准块）：
+
+| 块头 `+0x00` | `+0x3a` | `+0x45` | 结论 |
+|---|---|---|---|
+| `01 00 04 04` | `60` | `09` | 有 5 GHz FEM → **HW-D** |
+| `01 00 04 04` | `50` | `01` | 无 5 GHz FEM → **HW-B** |
+| 其他 | | | 不认识，不自动处理，请反馈 |
+
+BootBridge2、QSDK HW-D 固件（r10 起：自动改用 HW-B 的无线数据，LuCI 状态页提示改刷 HW-B，并允许不加 `-F` 直接 sysupgrade 到 HW-B 镜像、不保留配置）和 U-Boot（pre.8 起：系统信息与 U-Boot 更新页显示 FEM 与应选分组）使用同一条规则。
 - U-Boot `v0.1.0-pre.1` 的有限验收仅绑定**一台 NX30**：Winbond W25N01GWZEIG（EF:BA:21）、128 MiB、page 2048、spare 64、ECC4、R012 SBL。安装事务、写后读回、默认原厂 B 启动及维护网页部分流程已验证。其他 NX30 或其他 NAND/ECC/启动链不自动继承。
 - QSDK D 独立候选已出现 `h3c_nx30_hw_d`、`h3c_nx30_hw_d_ram`、`h3c_nx30_hw_d_installer_ram` 等 profile。2026-10-19 的 `build03` 冻结回执明确标注 **BUILD/ARTIFACT BASELINE ONLY**；它不是 NAND INSTALL PASS，更不是整个 HW-D 的验收结论。
 
 ### 三个典型“字母陷阱”
 
-- **RC3000 D0 Y2 → HW-B**；**RC3000 B0 Y2 → HW-D**；商品背标 D0/B0 与工程 HW 字母不是同一套编号。
+- **RC3000 D0 Y2 → HW-B**；**RC3000 B0 Y2** 是 D 型长板但没有 5 GHz FEM，**刷机也走 HW-B**；商品背标 D0/B0 与工程 HW 字母不是同一套编号。
 - 丝印 `H3C AX3000-D VER.A` 不等于 HW-D；原厂 Web 显示 `VER.A` 也不能唯一决定板级 BOM。
-- FEM 是否焊接、GD/ESMT/Winbond NAND、ECC4/ECC8、256/512 MiB DDR 是需要记录的**样机差异与刷写边界**，不等于四组唯一的分类规则。
+- GD/ESMT/Winbond NAND、ECC4/ECC8、256/512 MiB DDR 是需要记录的**样机差异与刷写边界**，不等于四组唯一的分类规则。**5 GHz FEM 例外**：在 MP02.1 上它直接决定刷 HW-B 还是 HW-D。
 
 ## 3. 从 OEM machid 得到什么、得不到什么
 

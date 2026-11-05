@@ -1,0 +1,13 @@
+{
+	"luci-hwd-fem": {
+		"description": "Grant access to the HW-D FEM check result",
+		"read": {
+			"file": {
+				"/tmp/hwd-cal/fem": [ "read" ]
+			},
+			"ubus": {
+				"file": [ "read" ]
+			}
+		}
+	}
+}
