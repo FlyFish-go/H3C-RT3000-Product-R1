@@ -1,0 +1,9 @@
+#!/bin/sh
+# H3C Magic - bridged traffic (one port of br-lan to another) passes the
+# FORWARD chain only so conntrack, and with it NSS ECM, sees the flow.
+# Accept it first, so firewall zone rules behave as before bridge-nf.
+for ipt in iptables ip6tables; do
+	$ipt -w -C FORWARD -m physdev --physdev-is-bridged -j ACCEPT 2>/dev/null ||
+		$ipt -w -I FORWARD 1 -m physdev --physdev-is-bridged -j ACCEPT
+done
+exit 0

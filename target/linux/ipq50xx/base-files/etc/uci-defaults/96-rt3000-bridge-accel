@@ -1,0 +1,12 @@
+#!/bin/sh
+# H3C Magic - register the bridged-traffic firewall include (see rt3000-bridge.fw).
+[ -f /etc/config/firewall ] || exit 0
+uci -q get firewall.rt3000_bridge >/dev/null && exit 0
+uci -q batch <<-EOT
+	set firewall.rt3000_bridge=include
+	set firewall.rt3000_bridge.path='/etc/rt3000-bridge.fw'
+	set firewall.rt3000_bridge.type='script'
+	set firewall.rt3000_bridge.reload='1'
+	commit firewall
+EOT
+exit 0
