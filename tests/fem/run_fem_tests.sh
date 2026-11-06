@@ -55,6 +55,12 @@ runcal nofem;   chk "no FEM -> HW-B ids" "$(ids)" nofem/0x23/0x90
 chk "no FEM kmsg" "$(grep -c 'HW-B board data' "$T/kmsg")" 1
 runcal mixed;   chk "unknown -> no override" "$(ids)" unknown//
 
+echo "board_id links match the ath11k device names"
+MK="$ROOT/package/firmware/hwd-nx30-oem-wifi/Makefile"
+chk "2.4 GHz link (c000000.wifi)" "$(grep -c 'IPQ5018/hw1.0/board_id-ahb-c000000.wifi' "$MK")" 1
+chk "5 GHz link (soc:wifi1@c000000)" "$(grep -c 'qcn6122/hw1.0/board_id-ahb-soc:wifi1@c000000' "$MK")" 1
+chk "no stale 5 GHz link name" "$(grep -c 'board_id-ahb-b00a040' "$MK")" 0
+
 echo "board-2.bin (two entries per radio)"
 for c in ipq5018 qcn6122; do
 	{ cat "$PKG/board-2-$c.bin"; tail -c +21 "$PKG/board-2-$c-hwb.bin"; } > "$T/b2-$c"

@@ -62,7 +62,9 @@ define Package/hwd-nx30-oem-wifi/install
 	{ cat ./files/board-2-qcn6122.bin; tail -c +21 ./files/board-2-qcn6122-hwb.bin; } \
 		> $(1)/lib/firmware/ath11k/qcn6122/hw1.0/board-2.bin
 	$(LN) /tmp/hwd-cal/board_id-2g $(1)/lib/firmware/ath11k/IPQ5018/hw1.0/board_id-ahb-c000000.wifi
-	$(LN) /tmp/hwd-cal/board_id-5g $(1)/lib/firmware/ath11k/qcn6122/hw1.0/board_id-ahb-b00a040.wifi
+	# ath11k looks for board_id-<bus>-<dev_name>; the QCN6122 is the platform
+	# device soc:wifi1@c000000 (dmesg prefix), not its PCI-style address.
+	$(LN) /tmp/hwd-cal/board_id-5g '$(1)/lib/firmware/ath11k/qcn6122/hw1.0/board_id-ahb-soc:wifi1@c000000'
 	$(INSTALL_DIR) $(1)/www/luci-static/resources/view/status/include
 	$(INSTALL_DATA) ./files/luci/05_hwd_fem.js $(1)/www/luci-static/resources/view/status/include/05_hwd_fem.js
 	$(INSTALL_DIR) $(1)/usr/share/rpcd/acl.d
