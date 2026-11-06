@@ -424,9 +424,12 @@ mac80211_hostapd_setup_base() {
 		if [ -n "$he_bss_color" ]; then
 			append base_cfg "he_bss_color=$he_bss_color" "$N"
 		else
-			he_bss_color=$(head -1 /dev/urandom | tr -dc '0-9' | head -c2)
-			he_bss_color=$(($he_bss_color % 63))
-			he_bss_color=$(($he_bss_color + 1))
+			# One random byte as a decimal number. The old "head -1 | tr -dc 0-9 |
+			# head -c2" gave an empty string (no digit in the line) or "08"/"09"
+			# (read as octal) often enough that the arithmetic failed and netifd
+			# had to retry the radio setup.
+			he_bss_color=$(hexdump -n 1 -e '"%u"' /dev/urandom)
+			he_bss_color=$(( ${he_bss_color:-0} % 63 + 1 ))
 			append base_cfg "he_bss_color=$he_bss_color" "$N"
 		fi
 
