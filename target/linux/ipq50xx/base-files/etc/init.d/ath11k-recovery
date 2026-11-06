@@ -1,0 +1,35 @@
+#!/bin/sh /etc/rc.common
+# H3C Magic - let ath11k recover from a Wi-Fi firmware crash.
+#
+# With fw_recovery off (the driver default) a crash of the WLAN firmware on
+# the Q6 makes ath11k call BUG() after dumping its stats, so the whole router
+# panics and reboots. Seen on IPQ5018 2.4 GHz in repeater mode: about a
+# minute after the upstream AP disappears the firmware crashes every time.
+# With recovery on, the radio restarts in about 3 s instead.
+#
+# The debugfs nodes appear only after the Q6 has booted, so wait for them in
+# the background.
+
+START=19
+
+ATH11K=/sys/kernel/debug/ath11k
+
+recovery_on() {
+	local f n=0 i
+	for i in $(seq 60); do
+		n=0
+		for f in "$ATH11K"/*/set_fw_recovery; do
+			[ -e "$f" ] || continue
+			echo 1 > "$f" 2>/dev/null && n=$((n + 1))
+		done
+		[ "$n" -ge "$1" ] && break
+		sleep 1
+	done
+	logger -t ath11k-recovery "firmware crash recovery enabled on $n radio(s)"
+}
+
+start() {
+	[ -d "$ATH11K" ] || mount -t debugfs debugfs /sys/kernel/debug 2>/dev/null
+	# every H3C Magic board has two ath11k radios (2.4 GHz SoC + QCN6122)
+	recovery_on 2 &
+}
