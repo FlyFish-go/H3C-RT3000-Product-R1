@@ -1,0 +1,33 @@
+From: FlyFish-go <2541290956@qq.com>
+Subject: [PATCH] ath11k: nss: skip pdev deinit when the radio is already gone
+
+When firmware-crash recovery fails (qmi set mode times out, "failed to
+start core"), ath11k_core_restart() still runs ath11k_nss_teardown(),
+and ath11k_nss_pdev_deinit() dereferences ab->pdevs[i].ar, which is
+NULL by then (first use: ath11k_nss_peer_stats_disable() ->
+ath11k_nss_stats_cfg() -> ar->ab). The kernel oopses in the restart
+worker and panics. Skip such a radio.
+
+Seen on IPQ5018 (2.4 GHz repeater, upstream AP gone, fw_recovery on):
+2 of 15 recoveries ended in this panic.
+---
+--- a/drivers/net/wireless/ath/ath11k/nss.c
++++ b/drivers/net/wireless/ath/ath11k/nss.c
+@@ -4831,6 +4831,17 @@
+ 	int ret;
+ 
+ 	ath11k_dbg(ab, ATH11K_DBG_NSS, "NSS pdev %d deinit\n", radio_id);
++
++	/* A failed firmware-crash recovery can leave the pdev already torn
++	 * down; everything below needs ar, so skip this radio instead of
++	 * dereferencing NULL and panicking.
++	 */
++	if (!ar) {
++		ath11k_warn(ab, "nss pdev %d deinit skipped: radio not set up\n",
++			    radio_id);
++		return -ENODEV;
++	}
++
+ 	dyn_if_type = ath11k_nss_get_dynamic_interface_type(ab);
+ 
+ 	/* Disable NSS wifili peer stats before teardown */
