@@ -1,0 +1,55 @@
+name: Build H3C Magic OpenWrt (HW-A) iptables ver
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+    - name: 检查代码仓库 (Checkout)
+      uses: actions/checkout@v4
+
+    - name: 初始化编译环境 (Setup Build Environment)
+      env:
+        DEBIAN_FRONTEND: noninteractive
+      run: |
+        sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc
+        sudo apt-get update
+        sudo apt-get install -y build-essential clang flex bison gawk gettext git libncurses5-dev libssl-dev python3-distutils rsync unzip zlib1g-dev file wget coccinelle ocaml
+        sudo apt-get clean
+
+    - name: 更新与安装软件源 (Update & Install Feeds)
+      run: |
+        # 必须在应用配置前更新和安装 Feeds，否则配置中的 LuCI 选项会被系统忽略
+        ./scripts/feeds update -a
+        ./scripts/feeds install -a
+
+    - name: 应用自定义配置文件与内核补丁 (Apply Custom Config & Kernel Patch)
+      run: |
+        # 1. 复制基础配置文件
+        cp configs/iptablesver-h3c-magic.config .config
+        
+        # 2. 运行 defconfig 生成最终配置
+        make defconfig
+        
+    - name: 下载源码依赖包 (Download Packages)
+      run: |
+        make download -j8
+        find dl -size -1024c -exec ls -l {} \;
+        find dl -size -1024c -exec rm -vf {} \;
+
+    - name: 开始固件编译 (Compile Firmware)
+      run: |
+        echo "开始编译..."
+        make -j$(nproc) || make -j1 V=s
+
+    - name: 上传编译出的固件 (Upload Artifacts)
+      uses: actions/upload-artifact@v4
+      with:
+        name: H3C-RW3000-HW-A-Firmware
+        path: |
+          bin/targets/ipq50xx/arm/*.bin
+          bin/targets/ipq50xx/arm/*.img
+          bin/targets/ipq50xx/arm/config.buildinfo
