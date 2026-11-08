@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0-only
 #
-# Copyright (C) 2006-2013 OpenWrt.org
+# Copyright (C) 2006-2013 OpenWrt.org.vd
 
 mainmenu "OpenWrt Configuration"
 
