@@ -1,0 +1,446 @@
+Package: kmod-asn1-decoder
+Version: 5.4-qsdk-11.5.0.5-1
+Depends: kernel (=5.4-qsdk-11.5.0.5-1-5d9ef986bcbbf0d4f440b32f2dd52c07)
+Source: package/kernel/linux
+SourceName: kmod-asn1-decoder
+License: GPL-2.0
+Section: kernel
+SourceDateEpoch: 1794457067
+Architecture: arm_cortex-a7_neon-vfpv4
+Installed-Size: 105
+Filename: kmod-asn1-decoder_5.4-qsdk-11.5.0.5-1_arm_cortex-a7_neon-vfpv4.ipk
+Size: 860
+SHA256sum: 7c717aa6146bc24804dc8faf19951545ccb23a46c1ba784f0a64f72e1984912e
+Description:  Simple ASN1 decoder
+
+Package: kmod-bonding
+Version: 5.4-qsdk-11.5.0.5-1
+Depends: kernel (=5.4-qsdk-11.5.0.5-1-5d9ef986bcbbf0d4f440b32f2dd52c07)
+Source: package/kernel/linux
+SourceName: kmod-bonding
+License: GPL-2.0
+Section: kernel
+SourceDateEpoch: 1794457067
+Architecture: arm_cortex-a7_neon-vfpv4
+Installed-Size: 62756
+Filename: kmod-bonding_5.4-qsdk-11.5.0.5-1_arm_cortex-a7_neon-vfpv4.ipk
+Size: 63368
+SHA256sum: 69a5eaaefeb0871bd6980c58f554a95da621fb8161fca68139250793fa679495
+Description:  Kernel module for NIC bonding.
+
+Package: kmod-dummy
+Version: 5.4-qsdk-11.5.0.5-1
+Depends: kernel (=5.4-qsdk-11.5.0.5-1-5d9ef986bcbbf0d4f440b32f2dd52c07)
+Source: package/kernel/linux
+SourceName: kmod-dummy
+License: GPL-2.0
+Section: kernel
+SourceDateEpoch: 1794457067
+Architecture: arm_cortex-a7_neon-vfpv4
+Installed-Size: 2915
+Filename: kmod-dummy_5.4-qsdk-11.5.0.5-1_arm_cortex-a7_neon-vfpv4.ipk
+Size: 3670
+SHA256sum: 9df5a9488157965bbe2c135c5b6fc0b56ae2d5669fdb996707bd7a6b7ee9b7c6
+Description:  The dummy network device
+
+Package: kmod-gre6
+Version: 5.4-qsdk-11.5.0.5-1
+Depends: kernel (=5.4-qsdk-11.5.0.5-1-5d9ef986bcbbf0d4f440b32f2dd52c07), kmod-iptunnel, kmod-ip6-tunnel, kmod-gre
+Source: package/kernel/linux
+SourceName: kmod-gre6
+License: GPL-2.0
+Section: kernel
+SourceDateEpoch: 1794457067
+Architecture: arm_cortex-a7_neon-vfpv4
+Installed-Size: 15237
+Filename: kmod-gre6_5.4-qsdk-11.5.0.5-1_arm_cortex-a7_neon-vfpv4.ipk
+Size: 15969
+SHA256sum: 760e0efa5c6316ea6aeab7fd24952b0fe597fa1d17394a2208ad4a99f2396628
+Description:  Generic Routing Encapsulation support over IPv6
+
+Package: kmod-ip6-tunnel
+Version: 5.4-qsdk-11.5.0.5-1
+Depends: kernel (=5.4-qsdk-11.5.0.5-1-5d9ef986bcbbf0d4f440b32f2dd52c07), kmod-iptunnel6
+Source: package/kernel/linux
+SourceName: kmod-ip6-tunnel
+License: GPL-2.0
+Section: kernel
+SourceDateEpoch: 1794457067
+Architecture: arm_cortex-a7_neon-vfpv4
+Installed-Size: 17542
+Filename: kmod-ip6-tunnel_5.4-qsdk-11.5.0.5-1_arm_cortex-a7_neon-vfpv4.ipk
+Size: 18298
+SHA256sum: da1db1245cec24a1a8a5a9cc8cf1412771dd908f3f14f8e487f83afb07ca552f
+Description:  Kernel modules for IPv6-in-IPv6 and IPv4-in-IPv6 tunnelling
+
+Package: kmod-ipt-filter
+Version: 5.4-qsdk-11.5.0.5-1
+Depends: kernel (=5.4-qsdk-11.5.0.5-1-5d9ef986bcbbf0d4f440b32f2dd52c07), kmod-ipt-core, kmod-lib-textsearch, kmod-ipt-conntrack
+Source: package/kernel/linux
+SourceName: kmod-ipt-filter
+License: GPL-2.0
+Section: kernel
+SourceDateEpoch: 1794457067
+Architecture: arm_cortex-a7_neon-vfpv4
+Installed-Size: 3162
+Filename: kmod-ipt-filter_5.4-qsdk-11.5.0.5-1_arm_cortex-a7_neon-vfpv4.ipk
+Size: 3995
+SHA256sum: dd51c8032e37af3c94c3e329e9b0c3c4a04835ed1587c26d9a5558940f935ea0
+Description:  Netfilter (IPv4) kernel modules for packet content inspection
+ Includes:
+ - string
+ - bpf
+
+Package: kmod-ipt-hashlimit
+Version: 5.4-qsdk-11.5.0.5-1
+Depends: kernel (=5.4-qsdk-11.5.0.5-1-5d9ef986bcbbf0d4f440b32f2dd52c07), kmod-ipt-core
+Source: package/kernel/linux
+SourceName: kmod-ipt-hashlimit
+License: GPL-2.0
+Section: kernel
+SourceDateEpoch: 1794457067
+Architecture: arm_cortex-a7_neon-vfpv4
+Installed-Size: 8143
+Filename: kmod-ipt-hashlimit_5.4-qsdk-11.5.0.5-1_arm_cortex-a7_neon-vfpv4.ipk
+Size: 8945
+SHA256sum: 1a20fbbeca1f340452dfd929cb9a2b0d4d9437f22acd0c123d3051c2fcae10b1
+Description:  Kernel modules support for the hashlimit bucket match module
+
+Package: kmod-ipt-iprange
+Version: 5.4-qsdk-11.5.0.5-1
+Depends: kernel (=5.4-qsdk-11.5.0.5-1-5d9ef986bcbbf0d4f440b32f2dd52c07), kmod-ipt-core
+Source: package/kernel/linux
+SourceName: kmod-ipt-iprange
+License: GPL-2.0
+Section: kernel
+SourceDateEpoch: 1794457067
+Architecture: arm_cortex-a7_neon-vfpv4
+Installed-Size: 1568
+Filename: kmod-ipt-iprange_5.4-qsdk-11.5.0.5-1_arm_cortex-a7_neon-vfpv4.ipk
+Size: 2390
+SHA256sum: 69afbe26172f2924c2df070f9b5b5ae05436c363ac09dafe8a5f8527843745a4
+Description:  Netfilter (IPv4) module for matching ip ranges
+ Includes:
+ - iprange
+
+Package: kmod-ipt-ipset
+Version: 5.4-qsdk-11.5.0.5-1
+Depends: kernel (=5.4-qsdk-11.5.0.5-1-5d9ef986bcbbf0d4f440b32f2dd52c07), kmod-ipt-core, kmod-nfnetlink
+Source: package/kernel/linux
+SourceName: kmod-ipt-ipset
+License: GPL-2.0
+Section: kernel
+SourceDateEpoch: 1794457067
+Architecture: arm_cortex-a7_neon-vfpv4
+Installed-Size: 183731
+Filename: kmod-ipt-ipset_5.4-qsdk-11.5.0.5-1_arm_cortex-a7_neon-vfpv4.ipk
+Size: 184236
+SHA256sum: f76f94102e055a38b74424ef5eaec1f97d7a095be025cb20cef72acc8c1d49bf
+Description:  IPset netfilter modules
+
+Package: kmod-ipt-nat-extra
+Version: 5.4-qsdk-11.5.0.5-1
+Depends: kernel (=5.4-qsdk-11.5.0.5-1-5d9ef986bcbbf0d4f440b32f2dd52c07), kmod-ipt-core, kmod-ipt-nat
+Source: package/kernel/linux
+SourceName: kmod-ipt-nat-extra
+License: GPL-2.0
+Section: kernel
+SourceDateEpoch: 1794457067
+Architecture: arm_cortex-a7_neon-vfpv4
+Installed-Size: 2007
+Filename: kmod-ipt-nat-extra_5.4-qsdk-11.5.0.5-1_arm_cortex-a7_neon-vfpv4.ipk
+Size: 2850
+SHA256sum: 3a14ad21599ffaf4cd7f1413f0e3dea026a4d86c37a64686f5e53efc1ce12da8
+Description:  Netfilter (IPv4) kernel modules for extra NAT targets
+ Includes:
+ - NETMAP
+ - REDIRECT
+
+Package: kmod-ipt-nat6
+Version: 5.4-qsdk-11.5.0.5-1
+Depends: kernel (=5.4-qsdk-11.5.0.5-1-5d9ef986bcbbf0d4f440b32f2dd52c07), kmod-ipt-core, kmod-nf-nat6, kmod-ipt-core, kmod-ipt-conntrack, kmod-ipt-core, kmod-ipt-nat, kmod-ipt-core, kmod-ip6tables
+Source: package/kernel/linux
+SourceName: kmod-ipt-nat6
+License: GPL-2.0
+Section: kernel
+SourceDateEpoch: 1794457067
+Architecture: arm_cortex-a7_neon-vfpv4
+Installed-Size: 3118
+Filename: kmod-ipt-nat6_5.4-qsdk-11.5.0.5-1_arm_cortex-a7_neon-vfpv4.ipk
+Size: 3933
+SHA256sum: ad3e5faf5619b7f5ce8debcc8da0bab5fdb7ed54d7c205d021c07a663708de6b
+Description:  Netfilter (IPv6) kernel modules for NAT targets
+
+Package: kmod-ipt-raw6
+Version: 5.4-qsdk-11.5.0.5-1
+Depends: kernel (=5.4-qsdk-11.5.0.5-1-5d9ef986bcbbf0d4f440b32f2dd52c07), kmod-ipt-core, kmod-ip6tables
+Source: package/kernel/linux
+SourceName: kmod-ipt-raw6
+License: GPL-2.0
+Section: kernel
+SourceDateEpoch: 1794457067
+Architecture: arm_cortex-a7_neon-vfpv4
+Installed-Size: 1972
+Filename: kmod-ipt-raw6_5.4-qsdk-11.5.0.5-1_arm_cortex-a7_neon-vfpv4.ipk
+Size: 2742
+SHA256sum: f63350104e1a553eef01df4d950f155f1544516215a7eb0bdf388398c4999c68
+Description:  Netfilter IPv6 raw table support
+
+Package: kmod-ipt-tproxy
+Version: 5.4-qsdk-11.5.0.5-1
+Depends: kernel (=5.4-qsdk-11.5.0.5-1-5d9ef986bcbbf0d4f440b32f2dd52c07), kmod-ipt-conntrack, kmod-nf-conntrack6, kmod-ip6tables, kmod-ipt-core
+Source: package/kernel/linux
+SourceName: kmod-ipt-tproxy
+License: GPL-2.0
+Section: kernel
+SourceDateEpoch: 1794457067
+Architecture: arm_cortex-a7_neon-vfpv4
+Installed-Size: 8469
+Filename: kmod-ipt-tproxy_5.4-qsdk-11.5.0.5-1_arm_cortex-a7_neon-vfpv4.ipk
+Size: 9309
+SHA256sum: 3dbf2bffa7825a3da81ff4535584a0783b8d6a4dca8691252e379db9366eb2ae
+Description:  Kernel modules for Transparent Proxying
+
+Package: kmod-iptunnel4
+Version: 5.4-qsdk-11.5.0.5-1
+Depends: kernel (=5.4-qsdk-11.5.0.5-1-5d9ef986bcbbf0d4f440b32f2dd52c07)
+Source: package/kernel/linux
+SourceName: kmod-iptunnel4
+License: GPL-2.0
+Section: kernel
+SourceDateEpoch: 1794457067
+Architecture: arm_cortex-a7_neon-vfpv4
+Installed-Size: 2317
+Filename: kmod-iptunnel4_5.4-qsdk-11.5.0.5-1_arm_cortex-a7_neon-vfpv4.ipk
+Size: 3075
+SHA256sum: a3317370b6563132cd735116d3d6fef136d80a7fcb07a73d248fec0d739658fb
+Description:  Kernel modules for IPv4 tunneling
+
+Package: kmod-iptunnel6
+Version: 5.4-qsdk-11.5.0.5-1
+Depends: kernel (=5.4-qsdk-11.5.0.5-1-5d9ef986bcbbf0d4f440b32f2dd52c07)
+Source: package/kernel/linux
+SourceName: kmod-iptunnel6
+License: GPL-2.0
+Section: kernel
+SourceDateEpoch: 1794457067
+Architecture: arm_cortex-a7_neon-vfpv4
+Installed-Size: 2355
+Filename: kmod-iptunnel6_5.4-qsdk-11.5.0.5-1_arm_cortex-a7_neon-vfpv4.ipk
+Size: 3110
+SHA256sum: 6637e686a8743544a91e9dad6a0553d5bbcd6a79a1986e5de9afaba74824af21
+Description:  Kernel modules for IPv6 tunneling
+
+Package: kmod-l2tp
+Version: 5.4-qsdk-11.5.0.5-1
+Depends: kernel (=5.4-qsdk-11.5.0.5-1-5d9ef986bcbbf0d4f440b32f2dd52c07), kmod-udptunnel4, kmod-udptunnel6
+Source: package/kernel/linux
+SourceName: kmod-l2tp
+License: GPL-2.0
+Section: kernel
+SourceDateEpoch: 1794457067
+Architecture: arm_cortex-a7_neon-vfpv4
+Installed-Size: 15209
+Filename: kmod-l2tp_5.4-qsdk-11.5.0.5-1_arm_cortex-a7_neon-vfpv4.ipk
+Size: 15909
+SHA256sum: dd8a755029bec12f2e49319bf714cd56b47278e8540c7d7e5f08d8d23cbde990
+Description:  Kernel modules for L2TP V3 Support
+
+Package: kmod-lib-textsearch
+Version: 5.4-qsdk-11.5.0.5-1
+Depends: kernel (=5.4-qsdk-11.5.0.5-1-5d9ef986bcbbf0d4f440b32f2dd52c07)
+Source: package/kernel/linux
+SourceName: kmod-lib-textsearch
+License: GPL-2.0
+Section: kernel
+SourceDateEpoch: 1794457067
+Architecture: arm_cortex-a7_neon-vfpv4
+Installed-Size: 4641
+Filename: kmod-lib-textsearch_5.4-qsdk-11.5.0.5-1_arm_cortex-a7_neon-vfpv4.ipk
+Size: 5374
+SHA256sum: b78ad5bd5bb600ead2818ba9fb6a6ee2c1afbef1d2fa25d4bdec37553851ab90
+Description:  Textsearch support
+
+Package: kmod-macvlan
+Version: 5.4-qsdk-11.5.0.5-1
+Depends: kernel (=5.4-qsdk-11.5.0.5-1-5d9ef986bcbbf0d4f440b32f2dd52c07)
+Source: package/kernel/linux
+SourceName: kmod-macvlan
+License: GPL-2.0
+Section: kernel
+SourceDateEpoch: 1794457067
+Architecture: arm_cortex-a7_neon-vfpv4
+Installed-Size: 10702
+Filename: kmod-macvlan_5.4-qsdk-11.5.0.5-1_arm_cortex-a7_neon-vfpv4.ipk
+Size: 11551
+SHA256sum: 29623422493985c0e8433f46b181fccd9b0056709526c326f74fa2309bfdac88
+Description:  A kernel module which allows one to create virtual interfaces that
+ map packets to or from specific MAC addresses to a particular interface
+
+Package: kmod-nf-nat6
+Version: 5.4-qsdk-11.5.0.5-1
+Depends: kernel (=5.4-qsdk-11.5.0.5-1-5d9ef986bcbbf0d4f440b32f2dd52c07), kmod-nf-conntrack6, kmod-nf-nat
+Source: package/kernel/linux
+SourceName: kmod-nf-nat6
+License: GPL-2.0
+Section: kernel
+SourceDateEpoch: 1794457067
+Architecture: arm_cortex-a7_neon-vfpv4
+Installed-Size: 105
+Filename: kmod-nf-nat6_5.4-qsdk-11.5.0.5-1_arm_cortex-a7_neon-vfpv4.ipk
+Size: 872
+SHA256sum: 486edeb2bfe4eeb674bfa00391acb849caf40eaabd6e55fd4cf2080cc6b3abea
+Description:  Netfilter IPV6-NAT
+
+Package: kmod-nf-nathelper-extra
+Version: 5.4-qsdk-11.5.0.5-1
+Depends: kernel (=5.4-qsdk-11.5.0.5-1-5d9ef986bcbbf0d4f440b32f2dd52c07), kmod-nf-nat, kmod-lib-textsearch, kmod-ipt-raw, kmod-asn1-decoder
+Source: package/kernel/linux
+SourceName: kmod-nf-nathelper-extra
+License: GPL-2.0
+Section: kernel
+SourceDateEpoch: 1794457067
+Architecture: arm_cortex-a7_neon-vfpv4
+Installed-Size: 53043
+Filename: kmod-nf-nathelper-extra_5.4-qsdk-11.5.0.5-1_arm_cortex-a7_neon-vfpv4.ipk
+Size: 53936
+SHA256sum: 77cdf8f5dc05ae53e64ecfa966856caa75a35524df53a76cc8aec1d230a00ff1
+Description:  Extra Netfilter (IPv4) Conntrack and NAT helpers
+ Includes:
+ - amanda
+ - h323
+ - irc
+ - mms
+ - pptp
+ - proto_gre
+ - sip
+ - snmp_basic
+ - tftp
+ - broadcast
+
+Package: kmod-nfnetlink
+Version: 5.4-qsdk-11.5.0.5-1
+Depends: kernel (=5.4-qsdk-11.5.0.5-1-5d9ef986bcbbf0d4f440b32f2dd52c07)
+Source: package/kernel/linux
+SourceName: kmod-nfnetlink
+License: GPL-2.0
+Section: kernel
+SourceDateEpoch: 1794457067
+Architecture: arm_cortex-a7_neon-vfpv4
+Installed-Size: 4742
+Filename: kmod-nfnetlink_5.4-qsdk-11.5.0.5-1_arm_cortex-a7_neon-vfpv4.ipk
+Size: 5517
+SHA256sum: 83ef6b7c93f46baee6c52616eb12b6e30c1ca8b11ecfcd64a9262cf186fea4f4
+Description:  Kernel modules support for a netlink-based userspace interface
+
+Package: kmod-pppol2tp
+Version: 5.4-qsdk-11.5.0.5-1
+Depends: kernel (=5.4-qsdk-11.5.0.5-1-5d9ef986bcbbf0d4f440b32f2dd52c07), kmod-ppp, kmod-pppox, kmod-l2tp
+Source: package/kernel/linux
+SourceName: kmod-pppol2tp
+License: GPL-2.0
+Section: kernel
+SourceDateEpoch: 1794457067
+Architecture: arm_cortex-a7_neon-vfpv4
+Installed-Size: 9925
+Filename: kmod-pppol2tp_5.4-qsdk-11.5.0.5-1_arm_cortex-a7_neon-vfpv4.ipk
+Size: 10733
+SHA256sum: 8bee2723425232b1f0511bcb9b913a4daa3318a40cf2f4bf94415885385be782
+Description:  Kernel modules for PPPoL2TP (PPP over L2TP) support
+
+Package: kmod-sit
+Version: 5.4-qsdk-11.5.0.5-1
+Depends: kernel (=5.4-qsdk-11.5.0.5-1-5d9ef986bcbbf0d4f440b32f2dd52c07), kmod-iptunnel, kmod-iptunnel4
+Source: package/kernel/linux
+SourceName: kmod-sit
+License: GPL-2.0
+Section: kernel
+SourceDateEpoch: 1794457067
+Architecture: arm_cortex-a7_neon-vfpv4
+Installed-Size: 12494
+Filename: kmod-sit_5.4-qsdk-11.5.0.5-1_arm_cortex-a7_neon-vfpv4.ipk
+Size: 13262
+SHA256sum: 62ca955fa8592c6ebf7cf0112e5007c1cb1dc2cf9aaff501eb9bf287a0d8ab56
+Description:  Kernel modules for IPv6-in-IPv4 tunnelling
+
+Package: kmod-tcp-bbr
+Version: 5.4-qsdk-11.5.0.5-1
+Depends: kernel (=5.4-qsdk-11.5.0.5-1-5d9ef986bcbbf0d4f440b32f2dd52c07)
+Source: package/kernel/linux
+SourceName: kmod-tcp-bbr
+License: GPL-2.0
+Section: kernel
+SourceDateEpoch: 1794457067
+Architecture: arm_cortex-a7_neon-vfpv4
+Installed-Size: 6116
+Filename: kmod-tcp-bbr_5.4-qsdk-11.5.0.5-1_arm_cortex-a7_neon-vfpv4.ipk
+Size: 6994
+SHA256sum: 637d9ec8522e1c7b8f83361917717122a9e424906998539e8ebd1f6e235ac9a1
+Description:  Kernel module for BBR (Bottleneck Bandwidth and RTT) TCP congestion
+ control. It requires the fq ("Fair Queue") pacing packet scheduler.
+ For kernel 4.13+, TCP internal pacing is implemented as fallback.
+
+Package: kmod-udptunnel4
+Version: 5.4-qsdk-11.5.0.5-1
+Depends: kernel (=5.4-qsdk-11.5.0.5-1-5d9ef986bcbbf0d4f440b32f2dd52c07)
+Source: package/kernel/linux
+SourceName: kmod-udptunnel4
+License: GPL-2.0
+Section: kernel
+SourceDateEpoch: 1794457067
+Architecture: arm_cortex-a7_neon-vfpv4
+Installed-Size: 2629
+Filename: kmod-udptunnel4_5.4-qsdk-11.5.0.5-1_arm_cortex-a7_neon-vfpv4.ipk
+Size: 3389
+SHA256sum: 022282f94952d5f4545908f64b4f076b539a9038c79be7e90701f1782ce14129
+Description:  IPv4 UDP tunneling support
+
+Package: kmod-udptunnel6
+Version: 5.4-qsdk-11.5.0.5-1
+Depends: kernel (=5.4-qsdk-11.5.0.5-1-5d9ef986bcbbf0d4f440b32f2dd52c07)
+Source: package/kernel/linux
+SourceName: kmod-udptunnel6
+License: GPL-2.0
+Section: kernel
+SourceDateEpoch: 1794457067
+Architecture: arm_cortex-a7_neon-vfpv4
+Installed-Size: 2024
+Filename: kmod-udptunnel6_5.4-qsdk-11.5.0.5-1_arm_cortex-a7_neon-vfpv4.ipk
+Size: 2818
+SHA256sum: 04b7c985b7bd5e16bf54c904c20c09f880b946ce1f878a5d1b5387ad270339ba
+Description:  IPv6 UDP tunneling support
+
+Package: kmod-veth
+Version: 5.4-qsdk-11.5.0.5-1
+Depends: kernel (=5.4-qsdk-11.5.0.5-1-5d9ef986bcbbf0d4f440b32f2dd52c07)
+Source: package/kernel/linux
+SourceName: kmod-veth
+License: GPL-2.0
+Section: kernel
+SourceDateEpoch: 1794457067
+Architecture: arm_cortex-a7_neon-vfpv4
+Installed-Size: 9696
+Filename: kmod-veth_5.4-qsdk-11.5.0.5-1_arm_cortex-a7_neon-vfpv4.ipk
+Size: 10545
+SHA256sum: 6db9d2fc8bb260d6667014bc9bb32cc5f3f962cd7d225928252e2c53fc34647d
+Description:  This device is a local ethernet tunnel. Devices are created in pairs.
+ When one end receives the packet it appears on its pair and vice
+ versa.
+
+Package: kmod-wireguard
+Version: 5.4-qsdk-11.5.0.5+1.0.20220627-1
+Depends: kernel (=5.4-qsdk-11.5.0.5-1-5d9ef986bcbbf0d4f440b32f2dd52c07), kmod-udptunnel4, kmod-udptunnel6
+Source: package/kernel/wireguard-compat
+SourceName: kmod-wireguard
+License: GPL-2.0
+LicenseFiles: COPYING
+Section: kernel
+SourceDateEpoch: 1794457067
+Architecture: arm_cortex-a7_neon-vfpv4
+Installed-Size: 61674
+Filename: kmod-wireguard_5.4-qsdk-11.5.0.5+1.0.20220627-1_arm_cortex-a7_neon-vfpv4.ipk
+Size: 62505
+SHA256sum: b6138baea3f34e76b70fd5194ba4c12a71a26bc7c4688b68131e9a3394f91f29
+Description:  WireGuard VPN kernel module, built from wireguard-linux-compat because the
+ QSDK 5.4 kernel does not include WireGuard.
+
