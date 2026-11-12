@@ -1,11 +1,21 @@
 #!/bin/sh
-# Upstream 21.02 user-space packages only; ipq50xx/QSDK has no upstream core feed.
+# OpenWrt 21.02 user-space packages come from a mirror in China. Kernel modules
+# and toolchain libraries come from this project's own feed: ipq50xx/QSDK has no
+# upstream core feed, and the modules only fit the exact kernel they were built
+# with, so the feed is named after the installed kernel package version.
+# Runs again after a keep-settings upgrade and rewrites older mirror settings.
 . /lib/functions.sh
 case "$(board_name)" in h3c,rt3000|h3c,rt3000-rtl8367s|h3c,rw3000-hw-a|h3c,nx30-hw-d) ;; *) exit 0 ;; esac
-file=/etc/opkg/distfeeds.conf
-[ -f "$file" ] || exit 1
-sed -i \
-	-e '\|^src/gz openwrt_core .*targets/ipq50xx/arm/packages$|s|^|# QSDK kernel packages require this project build: |' \
-	-e 's|https\?://downloads.openwrt.org/releases/21.02.7/packages/|https://mirrors.sjtug.sjtu.edu.cn/openwrt/releases/21.02.7/packages/|g' \
-	"$file" || exit 1
+kver=$(sed -n '/^Package: kernel$/,/^$/s/^Version: //p' /usr/lib/opkg/status)
+[ -n "$kver" ] || exit 1
+core=https://flyfish-go.github.io/H3C-RT3000-Product-R1/core/$kver
+mirror=https://mirrors.aliyun.com/openwrt/releases/21.02.7/packages/arm_cortex-a7_neon-vfpv4
+cat > /etc/opkg/distfeeds.conf <<EOF
+src/gz h3c_magic_core $core
+src/gz openwrt_base $mirror/base
+src/gz openwrt_luci $mirror/luci
+src/gz openwrt_packages $mirror/packages
+src/gz openwrt_routing $mirror/routing
+src/gz openwrt_telephony $mirror/telephony
+EOF
 exit 0
