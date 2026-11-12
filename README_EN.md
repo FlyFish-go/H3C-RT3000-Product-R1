@@ -4,21 +4,21 @@
 
 **Qualcomm QSDK 11.5 OpenWrt firmware for the H3C RT3000 / RW3000 / RC3000 / NX30**
 
-First stable release r10 · NSS offload: wired NAT at ~940 Mbps, bridged Wi-Fi↔LAN too · dual-band Wi-Fi 6 · coexists with the stock firmware
+r11 · NSS offload: wired NAT at ~940 Mbps, bridged Wi-Fi↔LAN too · dual-band Wi-Fi 6 · coexists with the stock firmware
 
-[![Release](https://img.shields.io/badge/release-r10-e76f51)](https://github.com/FlyFish-go/H3C-RT3000-Product-R1/releases/tag/r10)
+[![Release](https://img.shields.io/badge/release-r11-e76f51)](https://github.com/FlyFish-go/H3C-RT3000-Product-R1/releases/tag/r11)
 [![QSDK](https://img.shields.io/badge/QSDK-11.5-2a9d8f)](#)
 [![OpenWrt](https://img.shields.io/badge/OpenWrt-21.02.7-00a3e0)](#)
 [![Kernel](https://img.shields.io/badge/Linux-5.4.164-555)](#)
 [![Stars](https://img.shields.io/github/stars/FlyFish-go/H3C-RT3000-Product-R1?style=social)](https://github.com/FlyFish-go/H3C-RT3000-Product-R1/stargazers)
 
-### [⬇️ Download r10](https://github.com/FlyFish-go/H3C-RT3000-Product-R1/releases/tag/r10)
+### [⬇️ Download r11](https://github.com/FlyFish-go/H3C-RT3000-Product-R1/releases/tag/r11)
 
 [Install](#install) · [Install U-Boot first (BootBridge)](https://github.com/FlyFish-go/H3C-NX30-Uboot) · [Performance](#performance) · [Community](#community-and-feedback) · [简体中文](README.md)
 
 </div>
 
-> **r10 stable:** IPv6 on WAN works; bridged Wi-Fi <-> LAN traffic is NSS-accelerated too (5 GHz at full speed: CPU ~55 % -> ~5 %); a 2.4 GHz repeater no longer reboots the router when the upstream AP goes away; D-PCBs without 5 GHz FEMs use the HW-B Wi-Fi data automatically ([#3](https://github.com/FlyFish-go/H3C-RT3000-Product-R1/issues/3)); new SQM, hardware-acceleration switch and UPnP/DDNS/WoL (off by default). Keep-settings upgrade from r9 works. Requires U-Boot v0.1.0-pre.5 or later; v0.1.0 recommended. See the [r10 release notes](rt3000-machine-b/release/RELEASE-NOTES-r10.md) (Chinese with English summary); previous: [r9](rt3000-machine-b/release/RELEASE-NOTES-r9.md).
+> **r11:** the OpenWrt feeds now use the Aliyun mirror (the SJTU mirror no longer works from China; a keep-settings upgrade switches automatically); the project publishes its own kernel-module feed, so `opkg` installs WireGuard, TPROXY, BBR and other modules; the image ships tun, the C++ runtime and zram swap, so OpenVPN, WireGuard, Tailscale and UDPspeeder install directly; fixes a kernel crash when the router itself sends UDP tunnel packets (e.g. a WireGuard handshake). Keep-settings upgrade from r10 works. Requires U-Boot v0.1.0-pre.5 or later; v0.1.0 recommended. See the [r11 release notes](rt3000-machine-b/release/RELEASE-NOTES-r11.md) (Chinese with English summary); previous: [r10](rt3000-machine-b/release/RELEASE-NOTES-r10.md).
 
 <table>
 <tr>
@@ -43,12 +43,12 @@ These routers use Qualcomm IPQ50xx (IPQ5018 / IPQ5000) with a QCN6102 5 GHz radi
 
 ## Supported devices
 
-| Board | Retail model | SoC / switch | r10 image | r6 hardware baseline |
+| Board | Retail model | SoC / switch | r11 image | r6 hardware baseline |
 |---|---|---|---|:---:|
-| **HW-A** | RW3000 / RC3000 | IPQ5018 · QCA8337 | `H3C-Magic-r10-HW-A-*` | ✅ RW3000 |
-| **HW-B** | RT3000 | IPQ5000 · QCA8337 | `H3C-Magic-r10-HW-B-*` | ✅ RT3000 |
-| **HW-C** | RT3000 | IPQ5018 · RTL8367S | `H3C-Magic-r10-HW-C-*` | ✅ RT3000 |
-| **HW-D** | NX30 / RX3000 | IPQ5000 · QCA8337 | `H3C-Magic-r10-HW-D-*` | ✅ NX30 |
+| **HW-A** | RW3000 / RC3000 | IPQ5018 · QCA8337 | `H3C-Magic-r11-HW-A-*` | ✅ RW3000 |
+| **HW-B** | RT3000 | IPQ5000 · QCA8337 | `H3C-Magic-r11-HW-B-*` | ✅ RT3000 |
+| **HW-C** | RT3000 | IPQ5018 · RTL8367S | `H3C-Magic-r11-HW-C-*` | ✅ RT3000 |
+| **HW-D** | NX30 / RX3000 | IPQ5000 · QCA8337 | `H3C-Magic-r11-HW-D-*` | ✅ NX30 |
 
 <p align="center"><img src="docs/images/hardware-research-v1/rt3000-abc-board-front-comparison.webp" alt="Board comparison of three RT3000 units" width="90%"><br><sub>Three RT3000 units, three different boards: IPQ5018 + QCA8337 (HW-A), IPQ5000 + QCA8337 (HW-B), IPQ5018 + RTL8367S (HW-C)</sub></p>
 
@@ -78,10 +78,10 @@ Wireless numbers are limited by the test client (2×2, HE80), not the router. An
 
 | Board | First install (rescue page) | Upgrade (LuCI) |
 |---|---|---|
-| HW-A | `H3C-Magic-r10-HW-A-nand-factory.ubi` | `H3C-Magic-r10-HW-A-sysupgrade.bin` |
-| HW-B | `H3C-Magic-r10-HW-B-nand-factory.ubi` | `H3C-Magic-r10-HW-B-sysupgrade.bin` |
-| HW-C | `H3C-Magic-r10-HW-C-nand-factory.ubi` | `H3C-Magic-r10-HW-C-sysupgrade.bin` |
-| HW-D | `H3C-Magic-r10-HW-D-nand-factory.ubi` | `H3C-Magic-r10-HW-D-sysupgrade.bin` |
+| HW-A | `H3C-Magic-r11-HW-A-nand-factory.ubi` | `H3C-Magic-r11-HW-A-sysupgrade.bin` |
+| HW-B | `H3C-Magic-r11-HW-B-nand-factory.ubi` | `H3C-Magic-r11-HW-B-sysupgrade.bin` |
+| HW-C | `H3C-Magic-r11-HW-C-nand-factory.ubi` | `H3C-Magic-r11-HW-C-sysupgrade.bin` |
+| HW-D | `H3C-Magic-r11-HW-D-nand-factory.ubi` | `H3C-Magic-r11-HW-D-sysupgrade.bin` |
 
 1. Power off, hold Reset, power on to enter the rescue page; connect to a **LAN** port and open `http://192.168.10.1`.
 2. Back up both system slots under "Flash Backup".
@@ -118,7 +118,7 @@ git clone https://github.com/FlyFish-go/H3C-RT3000-Product-R1.git
 cd H3C-RT3000-Product-R1
 ```
 
-Read the [public build guide](rt3000-machine-b/docs/BUILD_PUBLIC.md) first. r10 images are built from [`configs/h3c-magic.config`](configs/h3c-magic.config): copy it to `.config`, append the device line described in its header (two more lines for HW-C), then run `make defconfig && make`. Before building, export `IGNORE_PACKAGES="asu luci-app-samba4 keepalived"` to omit legacy Kconfig menu cycles in those three unselected feed applications; the release package selection is unchanged.
+Read the [public build guide](rt3000-machine-b/docs/BUILD_PUBLIC.md) first. r11 images are built from [`configs/h3c-magic.config`](configs/h3c-magic.config): copy it to `.config`, append the device line described in its header (two more lines for HW-C), then run `make defconfig && make`. Before building, export `IGNORE_PACKAGES="asu luci-app-samba4 keepalived"` to omit legacy Kconfig menu cycles in those three unselected feed applications; the release package selection is unchanged.
 
 | Path | Contents |
 |---|---|
