@@ -6,7 +6,11 @@
 # Runs again after a keep-settings upgrade and rewrites older mirror settings.
 . /lib/functions.sh
 case "$(board_name)" in h3c,rt3000|h3c,rt3000-rtl8367s|h3c,rw3000-hw-a|h3c,nx30-hw-d) ;; *) exit 0 ;; esac
-kver=$(sed -n '/^Package: kernel$/,/^$/s/^Version: //p' /usr/lib/opkg/status)
+# opkg never upgrades the kernel, so read its version from the read-only
+# image; the overlay copy of the status file can be lost or emptied.
+status=/rom/usr/lib/opkg/status
+[ -s "$status" ] || status=/usr/lib/opkg/status
+kver=$(sed -n '/^Package: kernel$/,/^$/s/^Version: //p' "$status")
 [ -n "$kver" ] || exit 1
 core=https://flyfish-go.github.io/H3C-RT3000-Product-R1/core/$kver
 mirror=https://mirrors.aliyun.com/openwrt/releases/21.02.7/packages/arm_cortex-a7_neon-vfpv4
