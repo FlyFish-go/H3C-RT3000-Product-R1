@@ -1,206 +1,281 @@
 msgid ""
 msgstr "Content-Type: text/plain; charset=UTF-8"
 
-msgid "%s (via this browser)"
-msgstr ""
-
+#: htdocs/luci-static/resources/view/h3c-update/update.js:45
 msgid "%s (via router)"
 msgstr ""
 
-msgid "OK, signature valid"
+#: htdocs/luci-static/resources/view/h3c-update/update.js:45
+msgid "%s (via this browser)"
 msgstr ""
 
-msgid "cannot connect"
-msgstr ""
-
-msgid "no release list published yet"
-msgstr ""
-
-msgid "timed out"
-msgstr ""
-
-msgid "signature check failed"
-msgstr ""
-
-msgid "wrong or damaged release list"
-msgstr ""
-
-msgid "Install %s"
-msgstr ""
-
-msgid "The downloaded image has been checked (size, SHA-256 and sysupgrade image test). It is written to the system slot the router is running from now. The other slot is not touched, so you can still boot it from the U-Boot rescue page if anything goes wrong."
-msgstr ""
-
-msgid "Keep current settings"
-msgstr ""
-
-msgid "Settings of %s cannot be carried over to %s. The router will start with default settings at 192.168.10.1."
-msgstr ""
-
-msgid "Do not power off the router during the upgrade. It takes about 3 to 5 minutes."
-msgstr ""
-
-msgid "Cancel"
-msgstr ""
-
-msgid "Install"
-msgstr ""
-
-msgid "Installing…"
-msgstr ""
-
-msgid "The system is flashing now.<br /> DO NOT POWER OFF THE DEVICE!<br /> Wait a few minutes before you try to reconnect. It might be necessary to renew the address of your computer to reach the device again, depending on your settings."
-msgstr ""
-
-msgid "Install failed: %s"
-msgstr ""
-
-msgid "unknown error"
-msgstr ""
-
-msgid "This firmware"
-msgstr ""
-
-msgid "Firmware"
-msgstr ""
-
-msgid "Hardware group"
-msgstr ""
-
-msgid "not supported yet"
-msgstr ""
-
-msgid "Online update is not available for this hardware group yet. Upgrade from System → Backup / Flash Firmware instead."
-msgstr ""
-
-msgid "Checking from the router…"
-msgstr ""
-
-msgid "Last check from the router: %s (%s)"
-msgstr ""
-
-msgid "automatic"
-msgstr ""
-
-msgid "manual"
-msgstr ""
-
-msgid "The router has not checked yet."
-msgstr ""
-
-msgid "Checking from this browser…"
-msgstr ""
-
-msgid "Check from this browser:"
-msgstr ""
-
-msgid "Check for updates"
-msgstr ""
-
-msgid "The router asks GitHub and Gitee at the same time and uses whichever answers with a valid signed release list. If the router cannot reach either, try the check from this browser: it uses your computer's connection and lets the router verify the result."
-msgstr ""
-
-msgid "Check from router"
-msgstr ""
-
-msgid "Check from this browser"
-msgstr ""
-
-msgid "Downloading from %s…"
-msgstr ""
-
-msgid "Downloaded and verified: %s (%s)."
-msgstr ""
-
-msgid "Install…"
-msgstr ""
-
-msgid "Discard"
-msgstr ""
-
-msgid "Download failed: %s"
-msgstr ""
-
-msgid "Download %s (%s)"
-msgstr ""
-
-msgid "Latest release"
-msgstr ""
-
-msgid "Version"
-msgstr ""
-
-msgid "new"
-msgstr ""
-
-msgid "Release list from"
-msgstr ""
-
-msgid "Changes"
-msgstr ""
-
-msgid "Release page"
-msgstr ""
-
-msgid "This router runs the latest release."
-msgstr ""
-
-msgid "Automatic check"
-msgstr ""
-
-msgid "Check automatically"
-msgstr ""
-
-msgid "Off by default. When on, the router checks GitHub and Gitee by itself at the interval below and shows new releases here and on the Status page. It never installs anything by itself."
-msgstr ""
-
-msgid "Check interval (hours)"
-msgstr ""
-
-msgid "6 hours"
-msgstr ""
-
+#: htdocs/luci-static/resources/view/h3c-update/update.js:468
 msgid "12 hours"
 msgstr ""
 
+#: htdocs/luci-static/resources/view/h3c-update/update.js:469
 msgid "24 hours"
 msgstr ""
 
+#: htdocs/luci-static/resources/view/h3c-update/update.js:470
 msgid "3 days"
 msgstr ""
 
+#: htdocs/luci-static/resources/view/h3c-update/update.js:467
+msgid "6 hours"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/h3c-update/update.js:471
 msgid "7 days"
 msgstr ""
 
-msgid "Download site"
-msgstr ""
-
+#: htdocs/luci-static/resources/view/h3c-update/update.js:481
 msgid "Automatic (GitHub and Gitee, use whichever works)"
 msgstr ""
 
-msgid "Gitee (mainland China)"
+#: htdocs/luci-static/resources/view/h3c-update/update.js:456
+msgid "Automatic check"
 msgstr ""
 
-msgid "Firmware Update"
+#: root/usr/share/luci/menu.d/zz-luci-app-h3c-update.json:13
+msgid "Backup / Flash Firmware"
 msgstr ""
 
-msgid "Checks for new H3C Magic releases, downloads the image for this hardware group, verifies it and installs it. Nothing is installed without your confirmation."
+#: htdocs/luci-static/resources/view/h3c-update/update.js:222
+#: htdocs/luci-static/resources/view/h3c-update/update.js:385
+msgid "Cancel"
 msgstr ""
 
-msgid "New firmware %s is available. Open the update page"
+#: htdocs/luci-static/resources/view/h3c-update/update.js:413
+msgid "Changes"
 msgstr ""
 
-msgid "Up to date (checked %s)"
+#: htdocs/luci-static/resources/view/h3c-update/update.js:459
+msgid "Check automatically"
 msgstr ""
 
+#: htdocs/luci-static/resources/view/h3c-update/update.js:436
+msgid "Check for updates"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/h3c-update/update.js:356
+msgid "Check from this browser:"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/h3c-update/update.js:463
+msgid "Check interval (hours)"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/h3c-update/update.js:308
+msgid "Checking for updates…"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/h3c-update/update.js:502
+msgid ""
+"Checks for new H3C Magic releases. The image is downloaded and verified on "
+"the router, and nothing is installed without your confirmation."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/h3c-update/update.js:331
+msgid ""
+"Could not reach the update servers. Check the internet connection and try "
+"again."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/h3c-update/update.js:506
 msgid "Details"
 msgstr ""
 
-msgid "Automatic check is on, no result yet"
+#: htdocs/luci-static/resources/view/h3c-update/update.js:392
+msgid "Discard"
 msgstr ""
 
-msgid "Automatic check is off"
+#: htdocs/luci-static/resources/view/h3c-update/update.js:220
+msgid ""
+"Do not power off the router during the upgrade. It takes about 3 to 5 "
+"minutes."
 msgstr ""
 
-msgid "Check now"
+#: htdocs/luci-static/resources/view/h3c-update/update.js:407
+msgid "Download %s (%s)"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/h3c-update/update.js:402
+msgid "Download failed: %s"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/h3c-update/update.js:480
+msgid "Download site"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/h3c-update/update.js:389
+msgid "Downloaded and verified: %s (%s)."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/h3c-update/update.js:382
+msgid "Downloading from %s…"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/h3c-update/update.js:342
+msgid "Firmware"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/status/include/15_h3c_update.js:13
+msgid "Firmware Update"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/h3c-update/update.js:483
+msgid "Gitee (mainland China)"
+msgstr ""
+
+#: root/usr/share/rpcd/acl.d/luci-app-h3c-update.json:3
+msgid "Grant access to firmware update check and install"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/h3c-update/update.js:343
+msgid "Hardware group"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/h3c-update/update.js:226
+msgid "Install"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/h3c-update/update.js:215
+msgid "Install %s"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/h3c-update/update.js:239
+msgid "Install failed: %s"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/h3c-update/update.js:232
+#: htdocs/luci-static/resources/view/h3c-update/update.js:397
+msgid "Installing…"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/h3c-update/update.js:391
+msgid "Install…"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/h3c-update/update.js:217
+msgid "Keep current settings"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/h3c-update/update.js:348
+msgid "Last check from the router: %s (%s)"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/status/include/15_h3c_update.js:26
+msgid "New firmware %s is available."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/h3c-update/update.js:311
+msgid "New version available:"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/h3c-update/update.js:329
+msgid "No release list has been published yet."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/h3c-update/update.js:321
+msgid "Not checked yet."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/h3c-update/update.js:50
+msgid "OK, signature valid"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/h3c-update/update.js:460
+msgid ""
+"Off by default. When on, the router checks for new releases at the interval "
+"below. It never installs anything by itself."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/h3c-update/update.js:500
+#: root/usr/share/luci/menu.d/zz-luci-app-h3c-update.json:25
+msgid "Online Update"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/h3c-update/update.js:426
+msgid ""
+"Online update is not available for this hardware group yet. Flash new "
+"firmware manually instead."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/h3c-update/update.js:345
+msgid "Release list from"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/h3c-update/update.js:414
+msgid "Release page"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/h3c-update/update.js:219
+msgid ""
+"Settings of %s cannot be carried over to %s. The router will start with "
+"default settings at 192.168.10.1."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/h3c-update/update.js:216
+msgid ""
+"The downloaded image has been checked (size, SHA-256 and sysupgrade image "
+"test). It is written to the system slot the router is running from now. The "
+"other slot is not touched, so you can still boot it from the U-Boot rescue "
+"page if anything goes wrong."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/h3c-update/update.js:233
+msgid ""
+"The system is flashing now.<br /> DO NOT POWER OFF THE DEVICE!<br /> Wait a "
+"few minutes before you try to reconnect. It might be necessary to renew the "
+"address of your computer to reach the device again, depending on your "
+"settings."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/h3c-update/update.js:317
+msgid "This router runs the latest release (checked %s)."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/h3c-update/update.js:318
+msgid "This router runs the latest release."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/status/include/15_h3c_update.js:27
+msgid "View update"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/h3c-update/update.js:349
+msgid "automatic"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/h3c-update/update.js:51
+msgid "cannot connect"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/h3c-update/update.js:349
+msgid "manual"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/h3c-update/update.js:52
+msgid "no release list published yet"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/h3c-update/update.js:343
+msgid "not supported yet"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/h3c-update/update.js:54
+msgid "signature check failed"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/h3c-update/update.js:53
+msgid "timed out"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/h3c-update/update.js:239
+msgid "unknown error"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/h3c-update/update.js:55
+msgid "wrong or damaged release list"
 msgstr ""

@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-only
 #
-# System -> Firmware Update: check, download and install new H3C Magic
-# releases. Status -> Overview shows a line when a new release is found.
+# System -> Backup / Flash -> Online Update: check, download and install new H3C Magic
+# releases. Status -> Overview shows a line only when a newer release is found.
 
 include $(TOPDIR)/rules.mk
 

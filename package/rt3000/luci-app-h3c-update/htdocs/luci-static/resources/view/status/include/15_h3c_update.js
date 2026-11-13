@@ -2,7 +2,10 @@
 'require baseclass';
 'require rpc';
 
-/* Status -> Overview: one line about firmware updates. */
+/*
+ * Status -> Overview: stays hidden unless a newer release has been found
+ * (by the automatic check or a manual one).
+ */
 
 var callStatus = rpc.declare({ object: 'h3c.update', method: 'status' });
 
@@ -14,27 +17,14 @@ return baseclass.extend({
 	},
 
 	render: function(st) {
-		var lt = st && st.latest,
-		    last = st && st.last,
-		    link = L.url('admin/system/h3c-update'),
-		    msg;
+		var lt = st && st.latest;
 
-		if (!st || !st.group)
+		if (!st || !st.group || !lt || !lt.newer)
 			return null;
 
-		if (lt && lt.newer)
-			msg = E('a', { 'href': link }, E('strong', {}, _('New firmware %s is available. Open the update page').format(lt.version)));
-		else if (lt && last && last.ok)
-			msg = [ _('Up to date (checked %s)').format(new Date(last.checked * 1000).toLocaleString()), ' · ',
-				E('a', { 'href': link }, _('Details')) ];
-		else if (st.config && st.config.auto == '1')
-			msg = [ _('Automatic check is on, no result yet'), ' · ', E('a', { 'href': link }, _('Details')) ];
-		else
-			msg = [ _('Automatic check is off'), ' · ', E('a', { 'href': link }, _('Check now')) ];
-
-		return E('table', { 'class': 'table' }, E('tr', { 'class': 'tr' }, [
-			E('td', { 'class': 'td left', 'width': '33%' }, '%s %s'.format(st.line == 'nss' ? 'H3C-Magic-NSS' : 'H3C-Magic', st.release)),
-			E('td', { 'class': 'td left' }, msg)
-		]));
+		return E('p', {}, [
+			_('New firmware %s is available.').format(lt.version), ' ',
+			E('a', { 'href': L.url('admin/system/flash/update') }, _('View update'))
+		]);
 	}
 });

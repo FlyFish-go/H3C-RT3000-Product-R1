@@ -8,12 +8,12 @@
 'require dom';
 
 /*
- * Two ways to check:
- *  - "Check from router": the router fetches the signed manifest from GitHub
- *    and Gitee itself (h3c.update check).
- *  - "Check from this browser": this page fetches it through the computer's
- *    own connection (GitHub Pages, Gitee API) and hands it to the router,
- *    which verifies the signature before using it.
+ * System -> Backup / Flash -> Online Update.
+ *
+ * "Check for updates" first lets the router fetch the signed release list
+ * from GitHub and Gitee (h3c.update check). If that fails, this page fetches
+ * it through the computer's own connection (GitHub Pages, Gitee API) and hands
+ * it to the router, which verifies the signature before using it.
  * Downloads and installs are always done by the router.
  */
 
@@ -199,10 +199,6 @@ return view.extend({
 		}, this));
 	},
 
-	handleRouterCheck: function(ev) {
-		return callCheck().then(L.bind(this.refresh, this));
-	},
-
 	handleDownload: function(ev) {
 		return callDownload().then(L.bind(this.refresh, this));
 	},
@@ -251,10 +247,39 @@ return view.extend({
 		});
 	},
 
+	/*
+	 * One button: the router checks first; if it cannot reach GitHub or
+	 * Gitee, this browser fetches the release list and the router verifies it.
+	 */
+	handleCheck: function(ev) {
+		if (this.checking || this.browserBusy)
+			return;
+
+		this.checking = true;
+		this.browserResults = null;
+		this.redraw();
+
+		return L.resolveDefault(callCheck(), null).then(L.bind(this.refresh, this));
+	},
+
+	/* called after every status refresh while a check is running */
+	checkProgress: function() {
+		var st = this.st || {};
+
+		if (!this.checking || st.job == 'check')
+			return;
+
+		this.checking = false;
+
+		if (!(st.last && st.last.ok) && st.group)
+			this.handleBrowserCheck();
+	},
+
 	refresh: function() {
 		return L.resolveDefault(callStatus(), null).then(L.bind(function(st) {
 			if (st)
 				this.st = st;
+			this.checkProgress();
 			this.redraw();
 		}, this));
 	},
@@ -271,131 +296,158 @@ return view.extend({
 		]);
 	},
 
-	renderStatus: function(st) {
+	/* one line: what the last check found */
+	renderSummary: function(st) {
 		var lt = st.latest,
 		    last = st.last,
-		    dl = st.download || {},
+		    br = this.browserResults || [],
+		    results = [],
+		    okNow;
+
+		if (this.checking || this.browserBusy || st.job == 'check')
+			return E('p', { 'class': 'spinning' }, _('Checking for updates…'));
+
+		if (lt && lt.newer)
+			return E('p', {}, [ _('New version available:') , ' ', E('strong', {}, lt.version), lt.date ? ' (' + lt.date + ')' : '' ]);
+
+		okNow = (last && last.ok) || br.some(function(r) { return r.result == 'ok'; });
+
+		if (lt && okNow)
+			return E('p', {}, last && last.checked
+				? _('This router runs the latest release (checked %s).').format(fmtTime(last.checked))
+				: _('This router runs the latest release.'));
+
+		if (!last && !br.length)
+			return E('p', {}, _('Not checked yet.'));
+
+		if (last && last.sources)
+			for (var k in last.sources)
+				results.push(last.sources[k].result);
+		br.forEach(function(r) { results.push(r.result); });
+
+		if (results.indexOf('notfound') > -1)
+			return E('p', {}, _('No release list has been published yet.'));
+
+		return E('p', {}, _('Could not reach the update servers. Check the internet connection and try again.'));
+	},
+
+	/* everything a normal user does not need: per-source results, versions */
+	renderDetails: function(st) {
+		var lt = st.latest,
+		    last = st.last,
 		    lineName = (st.line == 'nss') ? 'H3C-Magic-NSS' : 'H3C-Magic (QSDK)',
-		    nodes = [];
+		    rows = [],
+		    info = [];
 
-		/* this firmware */
-		nodes.push(E('div', { 'class': 'cbi-section' }, [
-			E('h3', {}, _('This firmware')),
-			E('table', { 'class': 'table' }, [
-				this.renderRow(_('Firmware'), '%s %s'.format(lineName, st.release || '?')),
-				this.renderRow(_('Hardware group'), st.group || _('not supported yet'))
-			]),
-			st.group ? '' : E('p', { 'class': 'alert-message warning' },
-				_('Online update is not available for this hardware group yet. Upgrade from System → Backup / Flash Firmware instead.'))
-		]));
+		rows.push(this.renderRow(_('Firmware'), '%s %s'.format(lineName, st.release || '?')));
+		rows.push(this.renderRow(_('Hardware group'), st.group || _('not supported yet')));
+		if (lt)
+			rows.push(this.renderRow(_('Release list from'), sourceLabel(lt.source)));
 
-		/* checking */
-		var checkInfo = [];
-
-		if (st.job == 'check')
-			checkInfo.push(E('p', { 'class': 'spinning' }, _('Checking from the router…')));
-		else if (last) {
-			checkInfo.push(E('p', {}, _('Last check from the router: %s (%s)').format(
+		if (last) {
+			info.push(E('p', {}, _('Last check from the router: %s (%s)').format(
 				fmtTime(last.checked), last.mode == 'auto' ? _('automatic') : _('manual'))));
-			checkInfo.push(resultList(Object.keys(last.sources || {}).map(function(k) {
+			info.push(resultList(Object.keys(last.sources || {}).map(function(k) {
 				return { source: k, result: last.sources[k].result, ms: last.sources[k].ms };
 			})));
 		}
-		else
-			checkInfo.push(E('p', {}, _('The router has not checked yet.')));
 
-		if (this.browserBusy)
-			checkInfo.push(E('p', { 'class': 'spinning' }, _('Checking from this browser…')));
-		else if (this.browserResults) {
-			checkInfo.push(E('p', {}, _('Check from this browser:')));
-			checkInfo.push(resultList(this.browserResults));
+		if (this.browserResults) {
+			info.push(E('p', {}, _('Check from this browser:')));
+			info.push(resultList(this.browserResults));
 		}
 
-		nodes.push(E('div', { 'class': 'cbi-section' }, [
-			E('h3', {}, _('Check for updates')),
-			E('p', {}, _('The router asks GitHub and Gitee at the same time and uses whichever answers with a valid signed release list. If the router cannot reach either, try the check from this browser: it uses your computer\'s connection and lets the router verify the result.')),
-			E('div', {}, checkInfo),
-			E('div', {}, [
-				E('button', {
+		return [ E('table', { 'class': 'table' }, rows) ].concat(info);
+	},
+
+	renderRelease: function(st) {
+		var lt = st.latest,
+		    dl = st.download || {},
+		    summary = isZh() ? (lt.summary_zh || lt.summary_en) : (lt.summary_en || lt.summary_zh),
+		    links = [],
+		    action = [];
+
+		if (lt.release_github)
+			links.push(E('a', { 'href': lt.release_github, 'target': '_blank', 'rel': 'noreferrer' }, 'GitHub'));
+		if (lt.release_gitee) {
+			if (links.length)
+				links.push(' · ');
+			links.push(E('a', { 'href': lt.release_gitee, 'target': '_blank', 'rel': 'noreferrer' }, 'Gitee'));
+		}
+
+		if (lt.file) {
+			switch (dl.state) {
+			case 'downloading':
+				var pct = lt.size ? Math.floor(100 * dl.bytes / lt.size) : 0;
+				action.push(E('p', {}, _('Downloading from %s…').format(SOURCE_NAME[dl.source] || '…')));
+				action.push(E('div', { 'class': 'cbi-progressbar', 'title': '%d%% (%s / %s)'.format(pct, fmtSize(dl.bytes), fmtSize(lt.size)) },
+					E('div', { 'style': 'width:%d%%'.format(pct) })));
+				action.push(E('p', {}, E('button', { 'class': 'btn cbi-button-reset', 'click': ui.createHandlerFn(this, 'handleCancel') }, _('Cancel'))));
+				break;
+
+			case 'ready':
+				action.push(E('p', {}, _('Downloaded and verified: %s (%s).').format(lt.file, fmtSize(lt.size))));
+				action.push(E('p', {}, [
+					E('button', { 'class': 'btn cbi-button-action important', 'click': ui.createHandlerFn(this, 'handleInstall') }, _('Install…')), ' ',
+					E('button', { 'class': 'btn cbi-button-reset', 'click': ui.createHandlerFn(this, 'handleCancel') }, _('Discard'))
+				]));
+				break;
+
+			case 'installing':
+				action.push(E('p', { 'class': 'spinning' }, _('Installing…')));
+				break;
+
+			default:
+				if (dl.state == 'error')
+					action.push(E('p', { 'class': 'alert-message warning' }, _('Download failed: %s').format('%h'.format(dl.error))));
+				action.push(E('p', {}, E('button', {
 					'class': 'btn cbi-button-action',
-					'disabled': (st.job || !st.group) ? '' : null,
-					'click': ui.createHandlerFn(this, 'handleRouterCheck')
-				}, _('Check from router')), ' ',
+					'disabled': st.job ? '' : null,
+					'click': ui.createHandlerFn(this, 'handleDownload')
+				}, _('Download %s (%s)').format(lt.version, fmtSize(lt.size)))));
+			}
+		}
+
+		return E('div', {}, [
+			E('table', { 'class': 'table' }, [
+				summary ? this.renderRow(_('Changes'), E('div', { 'style': 'white-space:pre-line' }, '%h'.format(summary))) : '',
+				links.length ? this.renderRow(_('Release page'), links) : ''
+			]),
+			E('div', {}, action)
+		]);
+	},
+
+	renderStatus: function(st) {
+		var busy = this.checking || this.browserBusy || !!st.job,
+		    nodes = [];
+
+		if (!st.group) {
+			nodes.push(E('p', { 'class': 'alert-message warning' },
+				_('Online update is not available for this hardware group yet. Flash new firmware manually instead.')));
+		}
+		else {
+			/* status line with a plain "check" button on the right */
+			nodes.push(E('div', { 'style': 'display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.5em 1em' }, [
+				this.renderSummary(st),
 				E('button', {
 					'class': 'btn cbi-button',
-					'disabled': (this.browserBusy || !st.group) ? '' : null,
-					'click': ui.createHandlerFn(this, 'handleBrowserCheck')
-				}, _('Check from this browser'))
-			])
-		]));
-
-		/* latest release */
-		if (lt) {
-			var summary = isZh() ? (lt.summary_zh || lt.summary_en) : (lt.summary_en || lt.summary_zh),
-			    links = [],
-			    action = [];
-
-			if (lt.release_github)
-				links.push(E('a', { 'href': lt.release_github, 'target': '_blank', 'rel': 'noreferrer' }, 'GitHub'));
-			if (lt.release_gitee) {
-				if (links.length)
-					links.push(' · ');
-				links.push(E('a', { 'href': lt.release_gitee, 'target': '_blank', 'rel': 'noreferrer' }, 'Gitee'));
-			}
-
-			if (lt.newer && st.group && lt.file) {
-				switch (dl.state) {
-				case 'downloading':
-					var pct = lt.size ? Math.floor(100 * dl.bytes / lt.size) : 0;
-					action.push(E('p', {}, _('Downloading from %s…').format(SOURCE_NAME[dl.source] || '…')));
-					action.push(E('div', { 'class': 'cbi-progressbar', 'title': '%d%% (%s / %s)'.format(pct, fmtSize(dl.bytes), fmtSize(lt.size)) },
-						E('div', { 'style': 'width:%d%%'.format(pct) })));
-					action.push(E('p', {}, E('button', { 'class': 'btn cbi-button-reset', 'click': ui.createHandlerFn(this, 'handleCancel') }, _('Cancel'))));
-					break;
-
-				case 'ready':
-					action.push(E('p', {}, _('Downloaded and verified: %s (%s).').format(lt.file, fmtSize(lt.size))));
-					action.push(E('p', {}, [
-						E('button', { 'class': 'btn cbi-button-action important', 'click': ui.createHandlerFn(this, 'handleInstall') }, _('Install…')), ' ',
-						E('button', { 'class': 'btn cbi-button-reset', 'click': ui.createHandlerFn(this, 'handleCancel') }, _('Discard'))
-					]));
-					break;
-
-				case 'installing':
-					action.push(E('p', { 'class': 'spinning' }, _('Installing…')));
-					break;
-
-				default:
-					if (dl.state == 'error')
-						action.push(E('p', { 'class': 'alert-message warning' }, _('Download failed: %s').format('%h'.format(dl.error))));
-					action.push(E('p', {}, E('button', {
-						'class': 'btn cbi-button-action',
-						'disabled': st.job ? '' : null,
-						'click': ui.createHandlerFn(this, 'handleDownload')
-					}, _('Download %s (%s)').format(lt.version, fmtSize(lt.size)))));
-				}
-			}
-
-			nodes.push(E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, _('Latest release')),
-				E('table', { 'class': 'table' }, [
-					this.renderRow(_('Version'), [
-						E('strong', {}, lt.version), lt.date ? ' (' + lt.date + ')' : '',
-						lt.newer ? E('span', { 'class': 'label', 'style': 'margin-left:.5em' }, _('new')) : ''
-					]),
-					this.renderRow(_('Release list from'), sourceLabel(lt.source)),
-					summary ? this.renderRow(_('Changes'), E('div', { 'style': 'white-space:pre-line' }, '%h'.format(summary))) : '',
-					links.length ? this.renderRow(_('Release page'), links) : ''
-				]),
-				lt.newer ? E('div', {}, action) : E('p', {}, _('This router runs the latest release.'))
+					'disabled': busy ? '' : null,
+					'click': ui.createHandlerFn(this, 'handleCheck')
+				}, _('Check for updates'))
 			]));
+
+			if (st.latest && st.latest.newer)
+				nodes.push(this.renderRelease(st));
 		}
+
+		if (this.detailsNode)
+			dom.content(this.detailsNode, this.renderDetails(st));
 
 		return nodes;
 	},
 
 	render: function(data) {
-		var m, s, o;
+		var m, m2, s, o;
 
 		this.st = data[0] || {};
 
@@ -405,7 +457,7 @@ return view.extend({
 		s.addremove = false;
 
 		o = s.option(form.Flag, 'auto', _('Check automatically'),
-			_('Off by default. When on, the router checks GitHub and Gitee by itself at the interval below and shows new releases here and on the Status page. It never installs anything by itself.'));
+			_('Off by default. When on, the router checks for new releases at the interval below. It never installs anything by itself.'));
 		o.rmempty = false;
 
 		o = s.option(form.Value, 'interval', _('Check interval (hours)'));
@@ -419,29 +471,42 @@ return view.extend({
 		o.value('168', _('7 days'));
 		o.depends('auto', '1');
 
+		/* second map, shown inside "Details"; the view saves every map on the page */
+		m2 = new form.Map('h3c_update', null, null);
+
+		s = m2.section(form.NamedSection, 'main', 'h3c_update');
+		s.addremove = false;
+
 		o = s.option(form.ListValue, 'source', _('Download site'));
 		o.value('auto', _('Automatic (GitHub and Gitee, use whichever works)'));
 		o.value('github', 'GitHub');
 		o.value('gitee', _('Gitee (mainland China)'));
 		o.default = 'auto';
 
-		return m.render().then(L.bind(function(mapEl) {
-			this.statusNode = E('div', {});
+		return Promise.all([ m.render(), m2.render() ]).then(L.bind(function(maps) {
+			this.statusNode = E('div', { 'class': 'cbi-section' });
+			this.detailsNode = E('div', {});
 			this.redraw();
 
 			poll.add(L.bind(function() {
-				var busy = this.st && (this.st.job || (this.st.download && this.st.download.state == 'downloading'));
+				var st = this.st || {},
+				    busy = this.checking || st.job || (st.download && st.download.state == 'downloading');
 				this.pollCount = (this.pollCount || 0) + 1;
 				if (busy || this.pollCount % 5 == 0)
 					return this.refresh();
 			}, this), 2);
 
 			return E([], [
-				E('h2', {}, _('Firmware Update')),
+				E('h2', {}, _('Online Update')),
 				E('div', { 'class': 'cbi-map-descr' },
-					_('Checks for new H3C Magic releases, downloads the image for this hardware group, verifies it and installs it. Nothing is installed without your confirmation.')),
+					_('Checks for new H3C Magic releases. The image is downloaded and verified on the router, and nothing is installed without your confirmation.')),
 				this.statusNode,
-				mapEl
+				maps[0],
+				E('details', { 'class': 'cbi-section', 'style': 'margin-top:1em' }, [
+					E('summary', { 'style': 'cursor:pointer' }, _('Details')),
+					this.detailsNode,
+					maps[1]
+				])
 			]);
 		}, this));
 	}
