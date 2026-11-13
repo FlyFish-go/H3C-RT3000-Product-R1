@@ -1,0 +1,10 @@
+{
+	"luci-app-rt3000-thermal": {
+		"description": "Read SoC and Wi-Fi temperatures for the status page",
+		"read": {
+			"file": {
+				"/usr/libexec/rt3000-thermal": [ "exec" ]
+			}
+		}
+	}
+}

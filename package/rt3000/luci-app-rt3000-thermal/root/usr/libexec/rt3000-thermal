@@ -1,0 +1,27 @@
+#!/bin/sh
+# Print the SoC and Wi-Fi temperatures as JSON for the LuCI status page.
+# tsens zones report degrees on this kernel (millidegrees elsewhere); the
+# ath11k hwmon sensors report millidegrees.
+deg() { [ "$1" -gt 1000 ] 2>/dev/null && echo $(( $1 / 1000 )) || echo "$1"; }
+printf '{"cpu":['
+sep=
+for z in /sys/class/thermal/thermal_zone*; do
+	case "$(cat "$z/type" 2>/dev/null)" in tsens*|cpu*) ;; *) continue ;; esac
+	t=$(cat "$z/temp" 2>/dev/null) || continue
+	printf '%s%s' "$sep" "$(deg "$t")"; sep=,
+done
+printf '],"wifi":['
+sep=
+for h in /sys/class/hwmon/hwmon*; do
+	[ "$(cat "$h/name" 2>/dev/null)" = ath11k_hwmon ] || continue
+	t=$(cat "$h/temp1_input" 2>/dev/null) || continue
+	# ath11k registers the sensor on the wiphy: device -> .../ieee80211/phyN
+	dev=$(readlink -f "$h/device")
+	band=
+	case "$dev" in
+	*/ieee80211/phy*)
+		iw phy "${dev##*/}" info 2>/dev/null | grep -q '\* 5[0-9][0-9][0-9]\(\.0\)\? MHz' && band=5 || band=2.4 ;;
+	esac
+	printf '%s{"band":"%s","temp":%s}' "$sep" "${band:-?}" "$(deg "$t")"; sep=,
+done
+printf ']}\n'
