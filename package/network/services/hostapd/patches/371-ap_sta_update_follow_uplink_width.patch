@@ -1,0 +1,106 @@
+--- a/hostapd/ctrl_iface.c
++++ b/hostapd/ctrl_iface.c
+@@ -143,22 +143,91 @@ static char *get_option(char *opt, char
+ 		return NULL;
+ }
+ 
++/*
++ * The station interface on this radio follows its uplink and passes the
++ * uplink channel and secondary channel offset in UPDATE. Keep the width
++ * this AP was configured with and derive what the new channel needs:
++ * the secondary channel offset (the uplink may run at 20 MHz) and the
++ * VHT/HE centre frequency (it was computed for the configured channel,
++ * or left at 0 for automatic channel selection).
++ */
++static void hostapd_ctrl_iface_follow_uplink(struct hostapd_config *conf,
++					     int orig_sec)
++{
++	int ch = conf->channel;
++	int sec = conf->secondary_channel;
++	u8 bw = hostapd_get_oper_chwidth(conf);
++	int seg0 = 0;
++
++	conf->acs = 0;
++
++	if (!orig_sec) {
++		/* configured for 20 MHz: stay at 20 MHz */
++		sec = 0;
++	} else if (!sec) {
++		if (conf->hw_mode == HOSTAPD_MODE_IEEE80211A)
++			sec = ((ch / 4) % 2) ? 1 : -1;
++		else
++			sec = ch <= 7 ? 1 : -1;
++		if (conf->hw_mode == HOSTAPD_MODE_IEEE80211A && ch >= 165)
++			sec = 0;
++	}
++
++	if (conf->hw_mode == HOSTAPD_MODE_IEEE80211A) {
++		if (bw == CHANWIDTH_160MHZ) {
++			if (ch >= 36 && ch <= 64)
++				seg0 = 50;
++			else if (ch >= 100 && ch <= 128)
++				seg0 = 114;
++			else
++				bw = CHANWIDTH_80MHZ;
++		}
++		if (bw == CHANWIDTH_80MHZ || bw == CHANWIDTH_80P80MHZ) {
++			if (ch >= 36 && ch <= 144)
++				seg0 = 36 + ((ch - 36) / 16) * 16 + 6;
++			else if (ch >= 149 && ch <= 161)
++				seg0 = 155;
++			else
++				bw = CHANWIDTH_USE_HT;
++			if (bw == CHANWIDTH_80P80MHZ)
++				bw = CHANWIDTH_80MHZ;
++		}
++	}
++	if (!sec)
++		bw = CHANWIDTH_USE_HT;
++	if (bw == CHANWIDTH_USE_HT)
++		seg0 = sec ? ch + 2 * sec : ch;
++
++	conf->secondary_channel = sec;
++	hostapd_set_oper_chwidth(conf, bw);
++	hostapd_set_oper_centr_freq_seg0_idx(conf, seg0);
++	hostapd_set_oper_centr_freq_seg1_idx(conf, 0);
++
++	wpa_printf(MSG_INFO,
++		   "UPDATE: follow uplink channel %d sec %d chwidth %d seg0 %d",
++		   ch, sec, bw, seg0);
++}
++
+ static struct hostapd_config *hostapd_ctrl_iface_config_read(const char *fname)
+ {
+ 	struct hostapd_config *conf;
+ 	char *opt, *val;
++	int orig_sec, chan_set = 0;
+ 
+ 	conf = hostapd_config_read(fname);
+ 	if (!conf)
+ 		return NULL;
+ 
++	orig_sec = conf->secondary_channel;
++
+ 	for (opt = strtok(reload_opts, " ");
+ 	     opt;
+ 		 opt = strtok(NULL, " ")) {
+ 
+-		if ((val = get_option(opt, "channel=")))
++		if ((val = get_option(opt, "channel="))) {
+ 			conf->channel = atoi(val);
+-		else if ((val = get_option(opt, "ht_capab=")))
++			chan_set = 1;
++		} else if ((val = get_option(opt, "ht_capab=")))
+ 			conf->ht_capab = atoi(val);
+ 		else if ((val = get_option(opt, "ht_capab_mask=")))
+ 			conf->ht_capab &= atoi(val);
+@@ -172,6 +241,9 @@ static struct hostapd_config *hostapd_ct
+ 			break;
+ 	}
+ 
++	if (chan_set)
++		hostapd_ctrl_iface_follow_uplink(conf, orig_sec);
++
+ 	return conf;
+ }
+ 
