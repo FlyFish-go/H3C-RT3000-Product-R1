@@ -117,9 +117,12 @@ fetch_src() {
 	rm -rf "$d"
 	mkdir -p "$d"
 	t0=$(uptime_ms)
-	if uclient-fetch -q -T 15 -O "$d/m.json" "$b/update.json?t=$t0" >"$d/log" 2>&1 &&
-	   uclient-fetch -q -T 15 -O "$d/m.sig" "$b/update.json.sig?t=$t0" >>"$d/log" 2>&1; then
+	# no -q: the log must keep "HTTP error 404" (release list not published)
+	if uclient-fetch -T 15 -O "$d/m.json" "$b/update.json?t=$t0" >"$d/log" 2>&1 &&
+	   uclient-fetch -T 15 -O "$d/m.sig" "$b/update.json.sig?t=$t0" >>"$d/log" 2>&1; then
 		verify_dir "$d" >"$d/result"
+	elif grep -qs "HTTP error 404" "$d/log"; then
+		echo notfound >"$d/result"
 	else
 		echo fetch >"$d/result"
 	fi

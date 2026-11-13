@@ -7,10 +7,13 @@ msgstr ""
 msgid "%s (via router)"
 msgstr ""
 
-msgid "OK"
+msgid "OK, signature valid"
 msgstr ""
 
 msgid "cannot connect"
+msgstr ""
+
+msgid "no release list published yet"
 msgstr ""
 
 msgid "timed out"

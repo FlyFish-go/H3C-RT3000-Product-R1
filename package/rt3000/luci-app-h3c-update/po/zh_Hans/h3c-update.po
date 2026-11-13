@@ -11,11 +11,14 @@ msgstr "%s（通过本浏览器）"
 msgid "%s (via router)"
 msgstr "%s（通过路由器）"
 
-msgid "OK"
-msgstr "正常"
+msgid "OK, signature valid"
+msgstr "正常，签名有效"
 
 msgid "cannot connect"
 msgstr "无法连接"
+
+msgid "no release list published yet"
+msgstr "尚未发布版本清单"
 
 msgid "timed out"
 msgstr "超时"

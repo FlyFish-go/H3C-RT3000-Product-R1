@@ -47,8 +47,9 @@ function sourceLabel(src) {
 
 function resultText(r) {
 	switch (r) {
-	case 'ok': return _('OK');
+	case 'ok': return _('OK, signature valid');
 	case 'fetch': return _('cannot connect');
+	case 'notfound': return _('no release list published yet');
 	case 'timeout': return _('timed out');
 	case 'signature': return _('signature check failed');
 	case 'manifest': return _('wrong or damaged release list');
@@ -157,7 +158,8 @@ return view.extend({
 		}, function(err) {
 			return {
 				source: src,
-				result: (err && err.message == 'timeout') ? 'timeout' : 'fetch',
+				result: (err && err.message == 'timeout') ? 'timeout' :
+					(err && err.message == 'HTTP 404') ? 'notfound' : 'fetch',
 				ms: Date.now() - t0
 			};
 		});
