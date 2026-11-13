@@ -1,0 +1,207 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: zh_Hans\n"
+"MIME-Version: 1.0\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+msgid "%s (via this browser)"
+msgstr "%s（通过本浏览器）"
+
+msgid "%s (via router)"
+msgstr "%s（通过路由器）"
+
+msgid "OK"
+msgstr "正常"
+
+msgid "cannot connect"
+msgstr "无法连接"
+
+msgid "timed out"
+msgstr "超时"
+
+msgid "signature check failed"
+msgstr "签名校验失败"
+
+msgid "wrong or damaged release list"
+msgstr "版本清单错误或损坏"
+
+msgid "Install %s"
+msgstr "安装 %s"
+
+msgid "The downloaded image has been checked (size, SHA-256 and sysupgrade image test). It is written to the system slot the router is running from now. The other slot is not touched, so you can still boot it from the U-Boot rescue page if anything goes wrong."
+msgstr "下载的固件已通过校验（大小、SHA-256 和 sysupgrade 镜像检查）。它会写入当前正在运行的系统槽，另一个系统槽不受影响；万一出问题，仍可在 U-Boot 救援页里从另一个槽启动。"
+
+msgid "Keep current settings"
+msgstr "保留当前设置"
+
+msgid "Settings of %s cannot be carried over to %s. The router will start with default settings at 192.168.10.1."
+msgstr "%s 的设置无法带到 %s，升级后路由器将恢复默认设置，地址为 192.168.10.1。"
+
+msgid "Do not power off the router during the upgrade. It takes about 3 to 5 minutes."
+msgstr "升级过程中请勿断电，大约需要 3 到 5 分钟。"
+
+msgid "Cancel"
+msgstr "取消"
+
+msgid "Install"
+msgstr "安装"
+
+msgid "Installing…"
+msgstr "正在安装…"
+
+msgid "The system is flashing now.<br /> DO NOT POWER OFF THE DEVICE!<br /> Wait a few minutes before you try to reconnect. It might be necessary to renew the address of your computer to reach the device again, depending on your settings."
+msgstr "正在刷写固件。<br />请勿断开设备电源！<br />请等待几分钟后再尝试重新连接。根据你的设置，可能需要让电脑重新获取地址才能再次访问路由器。"
+
+msgid "Install failed: %s"
+msgstr "安装失败：%s"
+
+msgid "unknown error"
+msgstr "未知错误"
+
+msgid "This firmware"
+msgstr "当前固件"
+
+msgid "Firmware"
+msgstr "固件"
+
+msgid "Hardware group"
+msgstr "硬件分组"
+
+msgid "not supported yet"
+msgstr "暂不支持"
+
+msgid "Online update is not available for this hardware group yet. Upgrade from System → Backup / Flash Firmware instead."
+msgstr "此硬件分组暂不支持在线更新，请在“系统 → 备份/升级”中手动升级。"
+
+msgid "Checking from the router…"
+msgstr "路由器正在检测…"
+
+msgid "Last check from the router: %s (%s)"
+msgstr "路由器上次检测：%s（%s）"
+
+msgid "automatic"
+msgstr "自动"
+
+msgid "manual"
+msgstr "手动"
+
+msgid "The router has not checked yet."
+msgstr "路由器还没有检测过。"
+
+msgid "Checking from this browser…"
+msgstr "本浏览器正在检测…"
+
+msgid "Check from this browser:"
+msgstr "本浏览器检测结果："
+
+msgid "Check for updates"
+msgstr "检测更新"
+
+msgid "The router asks GitHub and Gitee at the same time and uses whichever answers with a valid signed release list. If the router cannot reach either, try the check from this browser: it uses your computer's connection and lets the router verify the result."
+msgstr "路由器会同时访问 GitHub 和 Gitee，哪边返回了签名有效的版本清单就用哪边。如果路由器两边都连不上，可以试试“从本浏览器检测”：它走你电脑的网络，结果交给路由器校验签名。"
+
+msgid "Check from router"
+msgstr "从路由器检测"
+
+msgid "Check from this browser"
+msgstr "从本浏览器检测"
+
+msgid "Downloading from %s…"
+msgstr "正在从 %s 下载…"
+
+msgid "Downloaded and verified: %s (%s)."
+msgstr "已下载并校验：%s（%s）。"
+
+msgid "Install…"
+msgstr "安装…"
+
+msgid "Discard"
+msgstr "丢弃"
+
+msgid "Download failed: %s"
+msgstr "下载失败：%s"
+
+msgid "Download %s (%s)"
+msgstr "下载 %s（%s）"
+
+msgid "Latest release"
+msgstr "最新版本"
+
+msgid "Version"
+msgstr "版本"
+
+msgid "new"
+msgstr "新"
+
+msgid "Release list from"
+msgstr "版本清单来源"
+
+msgid "Changes"
+msgstr "更新内容"
+
+msgid "Release page"
+msgstr "发布页"
+
+msgid "This router runs the latest release."
+msgstr "当前已是最新版本。"
+
+msgid "Automatic check"
+msgstr "自动检测"
+
+msgid "Check automatically"
+msgstr "自动检测更新"
+
+msgid "Off by default. When on, the router checks GitHub and Gitee by itself at the interval below and shows new releases here and on the Status page. It never installs anything by itself."
+msgstr "默认关闭。开启后，路由器按下面的间隔自行访问 GitHub 和 Gitee 检测，发现新版本会在本页和状态页提示，但不会自行安装。"
+
+msgid "Check interval (hours)"
+msgstr "检测间隔（小时）"
+
+msgid "6 hours"
+msgstr "6 小时"
+
+msgid "12 hours"
+msgstr "12 小时"
+
+msgid "24 hours"
+msgstr "24 小时"
+
+msgid "3 days"
+msgstr "3 天"
+
+msgid "7 days"
+msgstr "7 天"
+
+msgid "Download site"
+msgstr "下载站点"
+
+msgid "Automatic (GitHub and Gitee, use whichever works)"
+msgstr "自动（同时尝试 GitHub 和 Gitee，用能连上的）"
+
+msgid "Gitee (mainland China)"
+msgstr "Gitee（中国大陆）"
+
+msgid "Firmware Update"
+msgstr "固件更新"
+
+msgid "Checks for new H3C Magic releases, downloads the image for this hardware group, verifies it and installs it. Nothing is installed without your confirmation."
+msgstr "检测 H3C Magic 新版本，下载适用于本硬件分组的固件，校验后安装。未经你确认不会安装任何东西。"
+
+msgid "New firmware %s is available. Open the update page"
+msgstr "发现新固件 %s，前往更新页"
+
+msgid "Up to date (checked %s)"
+msgstr "已是最新（检测于 %s）"
+
+msgid "Details"
+msgstr "详情"
+
+msgid "Automatic check is on, no result yet"
+msgstr "自动检测已开启，暂无结果"
+
+msgid "Automatic check is off"
+msgstr "自动检测未开启"
+
+msgid "Check now"
+msgstr "立即检测"

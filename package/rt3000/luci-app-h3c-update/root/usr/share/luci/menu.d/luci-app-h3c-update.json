@@ -1,0 +1,13 @@
+{
+	"admin/system/h3c-update": {
+		"title": "Firmware Update",
+		"order": 71,
+		"action": {
+			"type": "view",
+			"path": "h3c-update/update"
+		},
+		"depends": {
+			"acl": [ "luci-app-h3c-update" ]
+		}
+	}
+}

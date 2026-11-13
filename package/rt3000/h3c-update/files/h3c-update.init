@@ -1,0 +1,21 @@
+#!/bin/sh /etc/rc.common
+# Adds the hourly tick to root's crontab. The tick returns at once unless
+# automatic checking is turned on (h3c_update.main.auto), and only checks
+# when the configured interval has passed, so the line costs nothing while
+# the feature is off.
+
+START=99
+
+TAB=/etc/crontabs/root
+CMD=/usr/libexec/h3c-update/update.sh
+
+start() {
+	grep -qsF "$CMD tick" "$TAB" && return 0
+	mkdir -p /etc/crontabs
+	{
+		echo "# H3C Magic firmware update check: does nothing unless turned on in System > Firmware Update"
+		echo "$(awk 'BEGIN { srand(); print int(rand() * 60) }') * * * * $CMD tick"
+	} >>"$TAB"
+	/etc/init.d/cron enable
+	/etc/init.d/cron restart
+}
