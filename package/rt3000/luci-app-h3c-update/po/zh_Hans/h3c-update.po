@@ -26,8 +26,8 @@ msgstr "6 小时"
 msgid "7 days"
 msgstr "7 天"
 
-msgid "Automatic (GitHub and Gitee, use whichever works)"
-msgstr "自动（同时尝试 GitHub 和 Gitee，用能连上的）"
+msgid "Automatic (whichever site works)"
+msgstr "自动（哪个能连用哪个）"
 
 msgid "Automatic check"
 msgstr "自动检测"
@@ -35,7 +35,7 @@ msgstr "自动检测"
 msgid "Cancel"
 msgstr "取消"
 
-msgid "Changes"
+msgid "Release notes"
 msgstr "更新内容"
 
 msgid "Check automatically"

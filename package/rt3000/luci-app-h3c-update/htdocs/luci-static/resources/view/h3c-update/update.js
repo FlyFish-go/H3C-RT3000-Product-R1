@@ -410,7 +410,7 @@ return view.extend({
 
 		return E('div', {}, [
 			E('table', { 'class': 'table' }, [
-				summary ? this.renderRow(_('Changes'), E('div', { 'style': 'white-space:pre-line' }, '%h'.format(summary))) : '',
+				summary ? this.renderRow(_('Release notes'), E('div', { 'style': 'white-space:pre-line' }, '%h'.format(summary))) : '',
 				links.length ? this.renderRow(_('Release page'), links) : ''
 			]),
 			E('div', {}, action)
@@ -427,8 +427,11 @@ return view.extend({
 		}
 		else {
 			/* status line with a plain "check" button on the right */
-			nodes.push(E('div', { 'style': 'display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.5em 1em' }, [
-				this.renderSummary(st),
+			var line = this.renderSummary(st);
+			line.style.margin = '0';
+
+			nodes.push(E('div', { 'style': 'display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.5em 1em;margin-bottom:1em' }, [
+				line,
 				E('button', {
 					'class': 'btn cbi-button',
 					'disabled': busy ? '' : null,
@@ -478,7 +481,7 @@ return view.extend({
 		s.addremove = false;
 
 		o = s.option(form.ListValue, 'source', _('Download site'));
-		o.value('auto', _('Automatic (GitHub and Gitee, use whichever works)'));
+		o.value('auto', _('Automatic (whichever site works)'));
 		o.value('github', 'GitHub');
 		o.value('gitee', _('Gitee (mainland China)'));
 		o.default = 'auto';

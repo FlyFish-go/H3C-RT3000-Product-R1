@@ -30,7 +30,7 @@ msgid "7 days"
 msgstr ""
 
 #: htdocs/luci-static/resources/view/h3c-update/update.js:481
-msgid "Automatic (GitHub and Gitee, use whichever works)"
+msgid "Automatic (whichever site works)"
 msgstr ""
 
 #: htdocs/luci-static/resources/view/h3c-update/update.js:456
@@ -47,7 +47,7 @@ msgid "Cancel"
 msgstr ""
 
 #: htdocs/luci-static/resources/view/h3c-update/update.js:413
-msgid "Changes"
+msgid "Release notes"
 msgstr ""
 
 #: htdocs/luci-static/resources/view/h3c-update/update.js:459
