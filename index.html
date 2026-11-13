@@ -1,12 +1,21 @@
 <!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><title>H3C-RT3000-Product-R1 kernel module feed</title></head>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>H3C-RT3000-Product-R1 package feeds</title></head>
 <body>
-<h1>H3C-RT3000-Product-R1 内核模块源 / kernel module feed</h1>
-<p>r11 起，固件的 <code>/etc/opkg/distfeeds.conf</code> 自动包含这个源（<code>h3c_magic_core</code>）。目录以内核版本命名，只包含对应内核的模块。</p>
-<p>Since r11 the firmware lists this feed (<code>h3c_magic_core</code>) in <code>/etc/opkg/distfeeds.conf</code>. Each directory is named after a kernel package version and only holds modules built for that kernel.</p>
+<h1>H3C-RT3000-Product-R1 软件源 / package feeds</h1>
+<p>固件的 <code>/etc/opkg/distfeeds.conf</code> 自动包含这些源，不需要手动添加。</p>
+<p>The firmware lists these feeds in <code>/etc/opkg/distfeeds.conf</code> by itself.</p>
+<h2>内核模块 / kernel modules (<code>h3c_magic_core</code>)</h2>
+<p>目录以内核版本命名，只包含对应内核的模块。Each directory is named after a kernel package version and only holds modules built for that kernel.</p>
 <ul>
+<li><a href="core/5.4-qsdk-11.5.0.5-1-1e213776ce356b98a797cf085c8cae95/Packages">r14 HW-A / HW-B / HW-D</a></li>
+<li><a href="core/5.4-qsdk-11.5.0.5-1-c2c31ec413d75c1b3a87b0ae10c306c8/Packages">r14 HW-C</a></li>
 <li><a href="core/5.4-qsdk-11.5.0.5-1-5d9ef986bcbbf0d4f440b32f2dd52c07/Packages">r11 HW-A / HW-B / HW-D</a></li>
 <li><a href="core/5.4-qsdk-11.5.0.5-1-cf10163c2b58bdf4bfc1afd1205e6f1a/Packages">r11 HW-C</a></li>
 </ul>
+<h2>插件 / extra packages (<code>h3c_magic_extra</code>, r14+)</h2>
+<p>OpenClash、PassWall（<code>opkg install h3c-passwall</code>）、Tailscale、AdGuard Home、Argon 主题设置。代理插件需要 U-Boot 的大分区。Proxy plugins need the U-Boot merged single-system layout.</p>
+<ul><li><a href="extra/Packages">extra/Packages</a></li></ul>
+<h2>在线更新 / online update</h2>
+<ul><li><a href="update/update.json">update/update.json</a>（签名 / signature: update.json.sig）</li></ul>
 <p><a href="https://github.com/FlyFish-go/H3C-RT3000-Product-R1">FlyFish-go/H3C-RT3000-Product-R1</a></p>
 </body></html>

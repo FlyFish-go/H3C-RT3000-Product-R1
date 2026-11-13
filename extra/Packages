@@ -1,0 +1,462 @@
+Package: adguardhome
+Version: 0.107.80-1
+Depends: libc, ca-bundle
+Source: package/rt3000-extra/adguardhome
+SourceName: adguardhome
+License: GPL-3.0-only
+LicenseFiles: LICENSE.txt
+Section: net
+Require-User: adguardhome=853:adguardhome=853
+SourceDateEpoch: 1794579910
+CPE-ID: cpe:/a:adguard:adguardhome
+Maintainer: Dobroslaw Kijowski <dobo90@gmail.com>, George Sapkin <george@sapk.in>
+Architecture: arm_cortex-a7_neon-vfpv4
+Installed-Size: 12074809
+Filename: adguardhome_0.107.80-1_arm_cortex-a7_neon-vfpv4.ipk
+Size: 12059294
+SHA256sum: 5ecea5f924f0a3555feccb96663049c0af67614d455c63cd1576d8a0017f80c9
+Description:  Free and open source, powerful network-wide ads and trackers blocking DNS server.
+
+Package: chinadns-ng
+Version: 2025.08.09-1
+Depends: libc
+Source: feeds/passwall_packages/chinadns-ng
+SourceName: chinadns-ng
+License: AGPL-3.0-only
+LicenseFiles: LICENSE
+Section: net
+SourceDateEpoch: 1755050199
+Maintainer: sbwml <admin@cooluc.com>
+Architecture: arm_cortex-a7_neon-vfpv4
+Installed-Size: 270102
+Filename: chinadns-ng_2025.08.09-1_arm_cortex-a7_neon-vfpv4.ipk
+Size: 270083
+SHA256sum: cdbcfb6b7868732c5fd2a43ebfed4b351563fafddd66ec972b43e15c1d22f682
+Description:  ChinaDNS next generation, refactoring with epoll and ipset.
+
+Package: dns2socks
+Version: 2.1-3
+Depends: libc, libpthread
+Source: feeds/passwall_packages/dns2socks
+SourceName: dns2socks
+License: BSD-3-Clause
+Section: net
+SourceDateEpoch: 1792331412
+Maintainer: ghostmaker
+Architecture: arm_cortex-a7_neon-vfpv4
+Installed-Size: 10681
+Filename: dns2socks_2.1-3_arm_cortex-a7_neon-vfpv4.ipk
+Size: 11481
+SHA256sum: 23f373cb0cb6514b7de2d5b0eadbc1c558ea4ad602055296a5bbffb54befe59c
+Description:  This is a command line utility to resolve DNS requests via
+ a SOCKS tunnel like Tor or a HTTP proxy.
+
+Package: geoview
+Version: 0.2.9-1
+Depends: libc
+Source: feeds/passwall_packages/geoview
+SourceName: geoview
+License: Apache-2.0
+LicenseFiles: LICENSE
+Section: net
+SourceDateEpoch: 1793159362
+Maintainer: snowie2000
+Architecture: arm_cortex-a7_neon-vfpv4
+Installed-Size: 3240878
+Filename: geoview_0.2.9-1_arm_cortex-a7_neon-vfpv4.ipk
+Size: 3236772
+SHA256sum: ce0e9aa950bc3abe7e70492037b95ac52fad9de370d85cb02981f4530ffd188e
+Description:  geoview is a handy tool to extract useful information from geo* files.
+
+Package: h3c-passwall
+Version: 1-1
+Depends: libc, luci-app-passwall, luci-i18n-passwall-zh-cn, xray-core, geoview, v2ray-geoip, v2ray-geosite, ipset, ipt2socks, dnsmasq-full, iptables-mod-tproxy, iptables-mod-socket, iptables-mod-iprange, iptables-mod-conntrack-extra, iptables-mod-extra, kmod-ipt-nat
+Source: package/rt3000-extra/h3c-passwall
+SourceName: h3c-passwall
+License: GPL-2.0-only
+Section: luci
+SourceDateEpoch: 1794579910
+Architecture: all
+Installed-Size: 105
+Filename: h3c-passwall_1-1_all.ipk
+Size: 1034
+SHA256sum: 7f6355be750c4bb399456c85b18dd2c88e230be5fa7a71b1f32f69ce05530698
+Description:  Installs PassWall, its Chinese translation, Xray and the iptables
+ transparent proxy dependencies in one step. Too large for the standard
+ dual-system layout; switch to the merged 80 MiB layout first.
+
+Package: hysteria
+Version: 2.13.0-1
+Depends: libc, ca-bundle
+Source: feeds/passwall_packages/hysteria
+SourceName: hysteria
+License: MIT
+Section: net
+SourceDateEpoch: 1791186690
+Maintainer: Tianling Shen <cnsztl@immortalwrt.org>
+Architecture: arm_cortex-a7_neon-vfpv4
+Installed-Size: 8667821
+Filename: hysteria_2.13.0-1_arm_cortex-a7_neon-vfpv4.ipk
+Size: 8658539
+SHA256sum: c071d21d0fffaf8739e2e4c840817d5ee1be8e2e5efb8616f41be13b0a08619a
+Description:  Hysteria is a feature-packed network utility optimized for networks
+ of poor quality (e.g. satellite connections, congested public Wi-Fi,
+ connecting from China to servers abroad) powered by a custom version
+ of QUIC protocol.
+
+Package: ipt2socks
+Version: 1.1.4-3
+Depends: libc, libpthread
+Source: feeds/passwall_packages/ipt2socks
+SourceName: ipt2socks
+License: AGPL-3.0
+Section: net
+SourceDateEpoch: 1716035253
+Architecture: arm_cortex-a7_neon-vfpv4
+Installed-Size: 26725
+Filename: ipt2socks_1.1.4-3_arm_cortex-a7_neon-vfpv4.ipk
+Size: 27537
+SHA256sum: 910f6b5e17778c6e5f8320d94889ed0652affe7ba5ef1a07d8b8c855e02987f3
+Description:  Utility for converting iptables (redirect/tproxy) to socks5.
+
+Package: iptables-mod-iprange
+Version: 1.8.7-1
+Depends: libc, iptables, kmod-ipt-iprange
+Source: package/network/utils/iptables
+SourceName: iptables-mod-iprange
+License: GPL-2.0
+Section: net
+SourceDateEpoch: 1790007827
+CPE-ID: cpe:/a:netfilter_core_team:iptables
+Architecture: arm_cortex-a7_neon-vfpv4
+Installed-Size: 3052
+Filename: iptables-mod-iprange_1.8.7-1_arm_cortex-a7_neon-vfpv4.ipk
+Size: 3823
+SHA256sum: 08d51e6afb59f72828f1f02aebdd06b93861627844fa523744396fc13363807a
+Description:  iptables extensions for matching ip ranges.
+ 
+ Matches:
+ - iprange
+ 
+
+Package: iptables-mod-socket
+Version: 1-1
+Depends: libc, iptables-mod-tproxy, kmod-ipt-tproxy
+Source: package/rt3000-extra/iptables-mod-socket
+SourceName: iptables-mod-socket
+License: GPL-2.0-only
+Section: net
+SourceDateEpoch: 1794579910
+Architecture: all
+Installed-Size: 105
+Filename: iptables-mod-socket_1-1_all.ipk
+Size: 835
+SHA256sum: 0725cb0ef8dee3651b2d444ae1934bf46e81b3f57f09a9bb4ca24aee2da92c08
+Description:  iptables socket match (provided by iptables-mod-tproxy)
+
+Package: iptables-mod-tproxy
+Version: 1.8.7-1
+Depends: libc, iptables, kmod-ipt-tproxy
+Source: package/network/utils/iptables
+SourceName: iptables-mod-tproxy
+License: GPL-2.0
+Section: net
+SourceDateEpoch: 1790007827
+CPE-ID: cpe:/a:netfilter_core_team:iptables
+Architecture: arm_cortex-a7_neon-vfpv4
+Installed-Size: 2606
+Filename: iptables-mod-tproxy_1.8.7-1_arm_cortex-a7_neon-vfpv4.ipk
+Size: 3397
+SHA256sum: 208a50525fa8fb6720d705093eef5ec78e81ad467c5406619a6684db5e94311a
+Description:  Transparent proxy iptables extensions.
+ 
+ Matches:
+ - socket
+ 
+ Targets:
+ - TPROXY
+ 
+
+Package: luci-app-adguardhome
+Version: git-26.317.51910-efd8eec
+Depends: adguardhome (>=0.107.73), libc, adguardhome, luci-base
+Source: package/rt3000-extra/luci-app-adguardhome
+SourceName: luci-app-adguardhome
+License: GPL-2.0-only
+Section: luci
+SourceDateEpoch: 1794579910
+Maintainer: George Sapkin <george@sapk.in>
+Architecture: all
+Installed-Size: 2962
+Filename: luci-app-adguardhome_git-26.317.51910-efd8eec_all.ipk
+Size: 3862
+SHA256sum: e0e908b408915c5bd47c5f20887a621b8aa063a8e58d6cdcd50bdf40e47da328
+Description:  LuCI support for AdGuard Home
+
+Package: luci-app-argon-config
+Version: 0.9
+Depends: libc, luci-compat, luci-lib-ipkg
+Source: package/rt3000-extra/luci-app-argon-config
+SourceName: luci-app-argon-config
+Section: luci
+SourceDateEpoch: 1794579910
+Maintainer: OpenWrt LuCI community
+Architecture: all
+Installed-Size: 3596
+Filename: luci-app-argon-config_0.9_all.ipk
+Size: 4489
+SHA256sum: b7deed46e7d4f1b2488420cb713756c848769a34be004fc3b054108d25bf78ba
+Description:  LuCI page for Argon Config
+
+Package: luci-app-openclash
+Version: 0.48.002
+Depends: libc, dnsmasq-full, bash, curl, ca-bundle, ip-full, ruby, ruby-yaml, kmod-tun, unzip
+Source: feeds/openclash/luci-app-openclash
+SourceName: luci-app-openclash
+Section: opt
+SourceDateEpoch: 1791695457
+Maintainer: vernesong
+Architecture: all
+Installed-Size: 8355195
+Filename: luci-app-openclash_0.48.002_all.ipk
+Size: 8339502
+SHA256sum: fe316660eaef30cbafd25e28bebff9e36a180764b1459ca610e625b44652aacb
+Description:  A LuCI support for clash
+
+Package: luci-app-passwall
+Version: 26.11.11
+Depends: libc, coreutils, coreutils-base64, coreutils-nohup, coreutils-timeout, curl, chinadns-ng, dns2socks, dnsmasq-full, ip-full, libuci-lua, lua, luci-compat, luci-lib-jsonc, microsocks, resolveip, tcping, lyaml
+Source: feeds/passwall/luci-app-passwall
+SourceName: luci-app-passwall
+Section: luci
+SourceDateEpoch: 1794499080
+Maintainer: OpenWrt LuCI community
+Architecture: all
+Installed-Size: 867135
+Filename: luci-app-passwall_26.11.11_all.ipk
+Size: 867369
+SHA256sum: 907886d9a8b7a71989b27e6665685a362465d5dee409563b4512a7e6145ae385
+Description:  LuCI support for PassWall
+
+Package: luci-i18n-adguardhome-zh-cn
+Version: git-26.317.51910-efd8eec
+Depends: libc, luci-app-adguardhome
+Source: package/rt3000-extra/luci-app-adguardhome
+SourceName: luci-i18n-adguardhome-zh-cn
+License: GPL-2.0-only
+Section: luci
+SourceDateEpoch: 1794579910
+Architecture: all
+Installed-Size: 1488
+Filename: luci-i18n-adguardhome-zh-cn_git-26.317.51910-efd8eec_all.ipk
+Size: 2368
+SHA256sum: 272ea2d1bce52be174eae401c4d5e28c44a3240b868e6811da11adfd4831f23a
+Description:  Translation for luci-app-adguardhome - 简体中文 (Chinese Simplified)
+
+Package: luci-i18n-argon-config-zh-cn
+Version: git-26.317.51910-efd8eec
+Depends: libc, luci-app-argon-config
+Source: package/rt3000-extra/luci-app-argon-config
+SourceName: luci-i18n-argon-config-zh-cn
+Section: luci
+SourceDateEpoch: 1794579910
+Maintainer: jerrykuku <jerrykuku@qq.com>
+Architecture: all
+Installed-Size: 1454
+Filename: luci-i18n-argon-config-zh-cn_git-26.317.51910-efd8eec_all.ipk
+Size: 2344
+SHA256sum: e7e91156da7607542aa8914d5ef4ae1c2deb579c3fcf1e06f2f279950c0ff61e
+Description:  Translation for luci-app-argon-config - 简体中文 (Chinese Simplified)
+
+Package: luci-i18n-passwall-zh-cn
+Version: 26.11.11
+Depends: libc, luci-app-passwall
+Source: feeds/passwall/luci-app-passwall
+SourceName: luci-i18n-passwall-zh-cn
+Section: luci
+SourceDateEpoch: 1794499080
+Architecture: all
+Installed-Size: 16839
+Filename: luci-i18n-passwall-zh-cn_26.11.11_all.ipk
+Size: 17681
+SHA256sum: bddfa471609c69af332e1dc21d3373c5d25f7299e4d15dddf5dcbcc9eabf7966
+Description:  Translation for luci-app-passwall - 简体中文 (Chinese Simplified)
+
+Package: microsocks
+Version: 1.0.5-2
+Depends: libc, libpthread
+Source: feeds/passwall_packages/microsocks
+SourceName: microsocks
+License: MIT
+LicenseFiles: COPYING
+Section: net
+SourceDateEpoch: 1793363191
+Maintainer: lean
+Architecture: arm_cortex-a7_neon-vfpv4
+Installed-Size: 5477
+Filename: microsocks_1.0.5-2_arm_cortex-a7_neon-vfpv4.ipk
+Size: 6312
+SHA256sum: 0f156e8b0128299f329245a074d01af44ae78eeee958e1c224e1fcecc6bc7104
+Description:  A SOCKS5 service that you can run on your remote boxes to tunnel connections
+ through them, if for some reason SSH doesn't cut it for you.
+ This version supports forwarding rules.
+
+Package: simple-obfs-client
+Version: 0.0.5-3
+Depends: libc, libpthread, libev
+Provides: simple-obfs
+Source: feeds/passwall_packages/simple-obfs
+SourceName: simple-obfs-client
+License: GPL-3.0-or-later
+LicenseFiles: LICENSE
+Section: net
+SourceDateEpoch: 1754489965
+Maintainer: Jian Chang <aa65535@live.com>
+Architecture: arm_cortex-a7_neon-vfpv4
+Installed-Size: 27101
+Filename: simple-obfs-client_0.0.5-3_arm_cortex-a7_neon-vfpv4.ipk
+Size: 27986
+SHA256sum: 59d86cab68f58c0116e899ba944f674fa12b33266b0c051481d3c6969ef2607a
+Description:  Simple-obfs is a simple obfusacting tool, designed as plugin server of shadowsocks.
+
+Package: sing-box
+Version: 1.14.4-1
+Depends: libc, ca-bundle, kmod-tun
+Source: feeds/passwall_packages/sing-box
+SourceName: sing-box
+License: GPL-3.0-or-later
+LicenseFiles: LICENSE
+Section: net
+Require-User: sing-box=5566:sing-box=5566
+SourceDateEpoch: 1792828062
+Maintainer: Tianling Shen <cnsztl@immortalwrt.org>
+Architecture: arm_cortex-a7_neon-vfpv4
+Installed-Size: 20108430
+Filename: sing-box_1.14.4-1_arm_cortex-a7_neon-vfpv4.ipk
+Size: 20083689
+SHA256sum: 5a0b47b4570362692fb896e6ac0792e78c419b00e15cd80ef3d8f59459a2519a
+Description:  Sing-box is a universal proxy platform which supports hysteria, SOCKS, Shadowsocks,
+ ShadowTLS, Tor, trojan, VLess, VMess, WireGuard and so on.
+
+Package: tailscale
+Version: 1.104.4-1
+Depends: libc, ca-bundle, kmod-tun
+Provides: tailscaled
+Source: package/rt3000-extra/tailscale
+SourceName: tailscale
+License: BSD-3-Clause
+LicenseFiles: LICENSE
+Section: net
+SourceDateEpoch: 1794579910
+CPE-ID: cpe:/a:tailscale:tailscale
+Maintainer: Zephyr Lykos <self@mochaa.ws>, Sandro Jäckel <sandro.jaeckel@gmail.com>
+Architecture: arm_cortex-a7_neon-vfpv4
+Installed-Size: 11037053
+Filename: tailscale_1.104.4-1_arm_cortex-a7_neon-vfpv4.ipk
+Size: 11028396
+SHA256sum: 47dcd2367cac3b6c6c2214ba803b600ef058ad1a42b7317bfb37fc307d56ae36
+Description:  It creates a secure network between your servers, computers,
+ and cloud instances. Even when separated by firewalls or subnets.
+
+Package: tcping
+Version: 0.3-1
+Depends: libc
+Source: feeds/passwall_packages/tcping
+SourceName: tcping
+License: GPL-2.0-only
+LicenseFiles: license.txt
+Section: net
+SourceDateEpoch: 1754734070
+Architecture: arm_cortex-a7_neon-vfpv4
+Installed-Size: 3265
+Filename: tcping_0.3-1_arm_cortex-a7_neon-vfpv4.ipk
+Size: 3989
+SHA256sum: 832bd3ccca5d80a5de3c8498565e47b125b0ebcbd7fd41fe48bbf70c967df52d
+Description:  tcping measures the latency of a tcp-connection
+
+Package: v2ray-geoip
+Version: 202611050019.1
+Depends: libc
+Source: feeds/passwall_packages/v2ray-geodata
+SourceName: v2ray-geoip
+License: CC-BY-SA-4.0
+LicenseFiles: LICENSE
+Section: net
+SourceDateEpoch: 1794227900
+Maintainer: Tianling Shen <cnsztl@immortalwrt.org>
+Architecture: all
+Installed-Size: 3676196
+Filename: v2ray-geoip_202611050019.1_all.ipk
+Size: 3429566
+SHA256sum: 72a597fc062f241272a5e1fd3703821dd6eb75c270482f63e116489f913e8ebf
+Description:  GeoIP List for V2Ray
+
+Package: v2ray-geosite
+Version: 202611082203.1
+Depends: libc
+Source: feeds/passwall_packages/v2ray-geodata
+SourceName: v2ray-geosite
+License: MIT
+LicenseFiles: LICENSE
+Section: net
+SourceDateEpoch: 1794227900
+Maintainer: Tianling Shen <cnsztl@immortalwrt.org>
+Architecture: all
+Installed-Size: 3752752
+Filename: v2ray-geosite_202611082203.1_all.ipk
+Size: 3753275
+SHA256sum: db5ea3666bc4cbf7f6f2c2191f42ab93822879af64b68d65bb616fa55290b647
+Description:  Geosite List for V2Ray
+
+Package: v2ray-plugin
+Version: 5.49.0-1
+Depends: libc, ca-bundle
+Source: feeds/passwall_packages/v2ray-plugin
+SourceName: v2ray-plugin
+License: MIT
+LicenseFiles: LICENSE
+Section: net
+SourceDateEpoch: 1776086252
+Maintainer: madeye <max.c.lv@gmail.com>
+Architecture: arm_cortex-a7_neon-vfpv4
+Installed-Size: 6544918
+Filename: v2ray-plugin_5.49.0-1_arm_cortex-a7_neon-vfpv4.ipk
+Size: 6537886
+SHA256sum: 78d9bbaef25789e987830b2169fe494e5bb6d92a359e6fd00d8f03f2d44879fa
+Description:  SIP003 plugin for shadowsocks, based on v2ray
+
+Package: xray-core
+Version: 26.11.9-1
+Depends: libc, ca-bundle
+Source: feeds/passwall_packages/xray-core
+SourceName: xray-core
+License: MPL-2.0
+LicenseFiles: LICENSE
+Section: net
+SourceDateEpoch: 1794208038
+Maintainer: Tianling Shen <cnsztl@immortalwrt.org>
+Architecture: arm_cortex-a7_neon-vfpv4
+Installed-Size: 11559396
+Filename: xray-core_26.11.9-1_arm_cortex-a7_neon-vfpv4.ipk
+Size: 11547820
+SHA256sum: 54ab6718dcdc95c4ddc89185f0174a985b57be0195c2be09e259ca39ff75d19b
+Description:  Xray, Penetrates Everything. It helps you to build your own computer network.
+ It secures your network connections and thus protects your privacy.
+
+Package: xray-plugin
+Version: 1.8.24-1
+Depends: libc, ca-bundle
+Source: feeds/passwall_packages/xray-plugin
+SourceName: xray-plugin
+License: MIT
+LicenseFiles: LICENSE
+Section: net
+SourceDateEpoch: 1771732515
+Maintainer: Tianling Shen <cnsztl@immortalwrt.org>
+Architecture: arm_cortex-a7_neon-vfpv4
+Installed-Size: 7382304
+Filename: xray-plugin_1.8.24-1_arm_cortex-a7_neon-vfpv4.ipk
+Size: 7373968
+SHA256sum: 217ca7fb78749ca039b877be180b2177a29e4f60da1c44d4f88cb7dba09a6f18
+Description:  SIP003 plugin for Shadowsocks, based on Xray
+
