@@ -2,3 +2,6 @@ src-git-full packages https://git.openwrt.org/feed/packages.git^48242ee7a190db77
 src-git-full luci https://git.openwrt.org/project/luci.git^e98243ef9eb838cca80cdd6d1bd0cf69a509d103
 src-git-full routing https://git.openwrt.org/feed/routing.git^8071852b4556a02533cacb7a0f6a432df3507302
 src-git-full telephony https://git.openwrt.org/feed/telephony.git^920fbc5c0a2e4badf51bceff42e9a1e3eb693462
+src-git passwall_packages https://github.com/Openwrt-Passwall/openwrt-passwall-packages.git^b094b79c32ac4e4de3113a5c44971c6182eee535
+src-git passwall https://github.com/Openwrt-Passwall/openwrt-passwall.git^aada0ff42f2437b35be36b44acbb462be35306e0
+src-git openclash https://github.com/vernesong/OpenClash.git^e553e82e01c697aefbe1555261a503f425e00ccd
