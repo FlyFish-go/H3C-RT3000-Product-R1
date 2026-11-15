@@ -42,14 +42,10 @@ H3C_QSDK_PACKAGES := \
 	ath11k-firmware-ipq5018 \
 	ath11k-firmware-qcn6122 \
 	kmod-qca-nss-ecm-standard \
-	iperf3 \
 	luci \
 	luci-i18n-base-zh-cn \
 	luci-i18n-firewall-zh-cn \
-	luci-i18n-opkg-zh-cn \
-	ttyd \
-	luci-app-ttyd \
-	luci-i18n-ttyd-zh-cn
+	luci-i18n-opkg-zh-cn
 
 define Device/cmcc_rax3000q
   $(call Device/FitImage)

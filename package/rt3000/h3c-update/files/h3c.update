@@ -1,0 +1,25 @@
+#!/bin/sh
+# rpcd plugin: ubus object h3c.update for the LuCI firmware update page.
+U=/usr/libexec/h3c-update/update.sh
+
+case "$1" in
+list)
+	echo '{ "status": {}, "check": {}, "verify": { "source": "str", "json": "str", "sig": "str" }, "download": {}, "cancel": {}, "install": { "keep": true } }'
+	;;
+call)
+	case "$2" in
+	status) $U status ;;
+	check) $U start check manual ;;
+	download) $U start download ;;
+	cancel) $U cancel ;;
+	verify) $U verify ;;
+	install)
+		read -r input
+		keep=$(jsonfilter -s "$input" -e @.keep 2>/dev/null)
+		case "$keep" in false | 0) keep=0 ;; *) keep=1 ;; esac
+		$U install "$keep"
+		;;
+	*) echo '{ "error": "unknown method" }' ;;
+	esac
+	;;
+esac

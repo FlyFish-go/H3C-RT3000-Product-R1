@@ -76,6 +76,9 @@ static int __init h3c_rt3000_filter_bootargs(char *output, size_t capacity,
 #define H3C_RT3000_SLOT_HIGH	0x3100000ULL
 #define H3C_RT3000_SLOT_SIZE	0x2800000ULL
 #define H3C_RT3000_SINGLE_SIZE	0x5000000ULL
+/* Extra-large single layout: rootfs also takes pdt_data, pdt_data_1, exp
+ * and plugin, up to 0x7d00000. */
+#define H3C_RT3000_SINGLE_XL_SIZE	0x7400000ULL
 
 /* Parse the one <key><number> U-Boot appended. Return false when it is
  * absent, repeated or not a number.
@@ -204,13 +207,22 @@ static const char * __init h3c_rt3000_select_slot(const char *storage, size_t le
 /* U-Boot's PTABLE "big partition" layout replaces both 40 MiB slots with one
  * 80 MiB rootfs at 0x900000. Rewrite the two adjacent DT slot entries (named
  * rootfs and oem_rootfs either way round) into that one writable rootfs and
- * update *len. Anything unexpected keeps the DT map.
+ * update *len. The extra-large layout (116 MiB) also takes the OEM data
+ * partitions that follow; they must be exactly the OEM ones. Anything
+ * unexpected keeps the DT map.
  */
-static const char * __init h3c_rt3000_single_slot(const char *storage, size_t *len)
+static const char * __init h3c_rt3000_single_slot(const char *storage, size_t *len,
+						  unsigned long long size)
 {
 	static const char low[] = "0x2800000@0x900000(";
 	static const char high[] = ",0x2800000@0x3100000(";
-	static const char single[] = "0x5000000@0x900000(rootfs)";
+	static const char oem_tail[] =
+		",0x600000@0x5900000(pdt_data)ro,0x600000@0x5f00000(pdt_data_1)ro"
+		",0x100000@0x6500000(exp)ro,0x1700000@0x6600000(plugin)ro";
+	const int xl = size == H3C_RT3000_SINGLE_XL_SIZE;
+	const char *single = xl ? "0x7400000@0x900000(rootfs)" :
+				  "0x5000000@0x900000(rootfs)";
+	const size_t single_len = strlen(single);
 	const char *first, *second, *start, *end;
 	size_t first_len, second_len, head, tail;
 	char *out = h3c_rt3000_slot_storage;
@@ -234,13 +246,20 @@ static const char * __init h3c_rt3000_single_slot(const char *storage, size_t *l
 	      h3c_rt3000_label_is(second, second_len, "rootfs")))
 		goto keep;
 	end = second + second_len;
+	if (xl) {
+		if (memcmp(end, oem_tail, sizeof(oem_tail) - 1) ||
+		    (end[sizeof(oem_tail) - 1] != ' ' &&
+		     end[sizeof(oem_tail) - 1] != '\0'))
+			goto keep;
+		end += sizeof(oem_tail) - 1;
+	}
 	head = start - storage;
 	tail = storage + *len - end;
 	memcpy(out, storage, head);
-	memcpy(out + head, single, sizeof(single) - 1);
-	memcpy(out + head + sizeof(single) - 1, end, tail);
-	*len = head + sizeof(single) - 1 + tail;
-	pr_info("H3C: single 80 MiB rootfs at 0x900000\n");
+	memcpy(out + head, single, single_len);
+	memcpy(out + head + single_len, end, tail);
+	*len = head + single_len + tail;
+	pr_info("H3C: single %llu MiB rootfs at 0x900000\n", size >> 20);
 	return h3c_rt3000_slot_storage;
 keep:
 	pr_warn("H3C: cannot map single rootfs, keeping DT rootfs\n");
@@ -262,8 +281,9 @@ static int __init h3c_rt3000_storage_bootargs(char *cmdline, size_t capacity,
 	slot = h3c_rt3000_boot_slot(cmdline);
 	size = h3c_rt3000_boot_size(cmdline);
 	/* No size (U-Boot before pre.4) means the two-slot layout. */
-	if (slot == H3C_RT3000_SLOT_LOW && size == H3C_RT3000_SINGLE_SIZE) {
-		storage = h3c_rt3000_single_slot(storage, &len);
+	if (slot == H3C_RT3000_SLOT_LOW && (size == H3C_RT3000_SINGLE_SIZE ||
+					    size == H3C_RT3000_SINGLE_XL_SIZE)) {
+		storage = h3c_rt3000_single_slot(storage, &len, size);
 	} else {
 		if (size && size != H3C_RT3000_SLOT_SIZE)
 			pr_warn("H3C: unexpected h3c.boot_size 0x%llx, assuming two slots\n",

@@ -1,0 +1,27 @@
+From: FlyFish-go <2541290956@qq.com>
+Subject: net: ip_tunnel: check the input device before the VXLAN test
+
+The QSDK change to iptunnel_xmit() looks up the input device from
+skb->skb_iif and passes it to netif_is_vxlan() without a NULL check.
+Packets the router sends itself through a UDP tunnel have no input
+interface, so in_dev is NULL and netif_is_vxlan() dereferences it.
+A WireGuard handshake response crashes the kernel this way:
+
+  Unable to handle kernel NULL pointer dereference at virtual address 0000050c
+  PC is at iptunnel_xmit+0x248/0x2a4
+  ... wg_socket_send_skb_to_peer [wireguard] ...
+
+Only test for VXLAN when there is an input device.
+---
+--- a/net/ipv4/ip_tunnel_core.c
++++ b/net/ipv4/ip_tunnel_core.c
+@@ -86,7 +86,8 @@
+ 		in_dev = __dev_get_by_index(&init_net, skb_iif);
+ 	}
+ 
+-	if (proto == IPPROTO_IPV6 || proto == IPPROTO_GRE || netif_is_vxlan(in_dev)) {
++	if (proto == IPPROTO_IPV6 || proto == IPPROTO_GRE ||
++	    (in_dev && netif_is_vxlan(in_dev))) {
+ 		skb->skb_iif = skb_iif;
+ 	}
+ 

@@ -1,0 +1,11 @@
+msgid ""
+msgstr "Content-Type: text/plain; charset=UTF-8"
+
+msgid "Temperatures (H3C Magic)"
+msgstr ""
+
+msgid "SoC (hottest sensor)"
+msgstr ""
+
+msgid "Wi-Fi %s GHz radio"
+msgstr ""

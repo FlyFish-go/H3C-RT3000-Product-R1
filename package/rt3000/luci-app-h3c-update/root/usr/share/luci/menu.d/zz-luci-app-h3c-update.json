@@ -1,0 +1,35 @@
+{
+	"admin/system/flash": {
+		"action": {
+			"type": "alias",
+			"path": "admin/system/flash/flash"
+		},
+		"depends": {
+			"acl": [ "luci-mod-system-flash" ]
+		}
+	},
+
+	"admin/system/flash/flash": {
+		"title": "Backup / Flash Firmware",
+		"order": 1,
+		"action": {
+			"type": "view",
+			"path": "system/flash"
+		},
+		"depends": {
+			"acl": [ "luci-mod-system-flash" ]
+		}
+	},
+
+	"admin/system/flash/update": {
+		"title": "Online Update",
+		"order": 2,
+		"action": {
+			"type": "view",
+			"path": "h3c-update/update"
+		},
+		"depends": {
+			"acl": [ "luci-app-h3c-update" ]
+		}
+	}
+}

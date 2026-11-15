@@ -1,0 +1,17 @@
+{
+	"luci-app-h3c-update": {
+		"description": "Grant access to firmware update check and install",
+		"read": {
+			"ubus": {
+				"h3c.update": [ "status" ]
+			},
+			"uci": [ "h3c_update" ]
+		},
+		"write": {
+			"ubus": {
+				"h3c.update": [ "check", "verify", "download", "cancel", "install" ]
+			},
+			"uci": [ "h3c_update" ]
+		}
+	}
+}

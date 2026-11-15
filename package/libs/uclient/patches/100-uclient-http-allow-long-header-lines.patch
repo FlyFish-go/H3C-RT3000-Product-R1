@@ -1,0 +1,44 @@
+From: FlyFish-go <2541290956@qq.com>
+Subject: [PATCH] uclient-http: allow header lines longer than 4 KiB
+
+The header parser looks for the end of a line inside one ustream read
+buffer. With the default buffer of 4096 bytes a longer line never
+completes and the request stalls until it times out. GitHub release
+downloads (github.com/<owner>/<repo>/releases/download/...) answer with a
+Content-Security-Policy header of about 4.2 KiB, so uclient-fetch could
+not download them.
+
+Use a 16 KiB read buffer for the HTTP and HTTPS streams.
+---
+--- a/uclient-http.c
++++ b/uclient-http.c
+@@ -114,6 +114,13 @@
+ 
+ static int uclient_http_connect(struct uclient *cl);
+ 
++/*
++ * Header lines are parsed inside a single read buffer, so it must hold the
++ * longest header line. The libubox default of 4096 bytes is too small for
++ * GitHub, which sends a Content-Security-Policy line of more than 4 KiB.
++ */
++#define UCLIENT_HTTP_RBUF_LEN	16384
++
+ static int uclient_do_connect(struct uclient_http *uh, const char *port)
+ {
+ 	socklen_t sl;
+@@ -828,6 +835,7 @@
+ 	uh->ssl = false;
+ 
+ 	us->string_data = true;
++	us->r.buffer_len = UCLIENT_HTTP_RBUF_LEN;
+ 	us->notify_state = uclient_notify_state;
+ 	us->notify_read = uclient_notify_read;
+ 	us->notify_write = uclient_notify_write;
+@@ -904,6 +912,7 @@
+ 		return UCLIENT_ERROR_CONNECT;
+ 
+ 	us->string_data = true;
++	us->r.buffer_len = UCLIENT_HTTP_RBUF_LEN;
+ 	us->notify_state = uclient_ssl_notify_state;
+ 	us->notify_read = uclient_ssl_notify_read;
+ 	us->notify_write = uclient_ssl_notify_write;
