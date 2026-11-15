@@ -29,7 +29,7 @@ jobs:
     - name: 应用自定义配置文件与内核补丁 (Apply Custom Config & Kernel Patch)
       run: |
         # 1. 复制基础配置文件
-        cp configs/iptablesver-h3c-magic.config .config
+        cp configs/mod-h3c-magic.config .config
         
         # 2. 运行 defconfig 生成最终配置
         make defconfig
